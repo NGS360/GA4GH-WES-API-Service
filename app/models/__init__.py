@@ -1,3 +1,3 @@
-from api.extensions import DB as db
+from app.extensions import DB as db
 
 # Define models here
