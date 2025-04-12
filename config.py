@@ -16,7 +16,7 @@ class DefaultConfig: # pylint: disable=too-few-public-methods
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
         'sqlite:///' + os.path.join(basedir, 'app.db'
     )
-        
+
 class TestConfig(DefaultConfig): # pylint: disable=too-few-public-methods
     """Unit Test Config profile"""
     TESTING = True

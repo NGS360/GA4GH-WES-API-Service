@@ -2,10 +2,10 @@
 Main application entry point
 '''
 from flask import current_app
-from app import create_app
-from app.extensions import DB
 from dotenv import load_dotenv
 from sqlalchemy.sql import text
+from app import create_app
+from app.extensions import DB
 
 load_dotenv()
 application = create_app()
