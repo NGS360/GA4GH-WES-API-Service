@@ -1,2 +1,4 @@
 flask
 dotenv
+flask_sqlalchemy
+flask_migrate

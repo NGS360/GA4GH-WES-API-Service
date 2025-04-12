@@ -6,7 +6,7 @@ from logging.config import dictConfig
 from flask import Flask
 
 from config import DefaultConfig
-#from app.extensions import init_extensions
+from app.extensions import init_extensions
 
 #from app.api import BLUEPRINT_API
 
@@ -46,7 +46,7 @@ def create_app(config_class=DefaultConfig):
         app.logger.info('%s: %s', key, value)
 
     # Initialize 3rd party extensions
-    #init_extensions(app)
+    init_extensions(app)
 
     # Register blueprints
     register_blueprints(app)
