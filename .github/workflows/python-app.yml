@@ -28,12 +28,12 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements-dev.txt
+        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
     - name: Lint with Pylint
       run: |
-        pylint --rcfile=.pylintrc *.py apiserver/ # tests/
+        pylint --rcfile=.pylintrc *.py app/ # tests/
 
     #- name: Lint with flake8
     #  run: |
