@@ -21,6 +21,9 @@ class DefaultConfig: # pylint: disable=too-few-public-methods
     AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
     AWS_OMICS_ROLE_ARN = os.environ.get('AWS_OMICS_ROLE_ARN')
 
+    # Celery Configuration
+    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+
 class TestConfig(DefaultConfig): # pylint: disable=too-few-public-methods
     """Unit Test Config profile"""
     TESTING = True

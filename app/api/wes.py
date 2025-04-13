@@ -5,6 +5,7 @@ import os
 from flask import current_app, request
 from flask_restx import Namespace, Resource, fields
 from app.models.workflow import WorkflowRun as WorkflowRunModel
+from app.models.workflow import TaskLog
 from app.extensions import DB
 from app.services.aws_omics import HealthOmicsService
 
@@ -141,6 +142,37 @@ class WorkflowRun(Resource):
     def get(self, run_id): # pylint: disable=inconsistent-return-statements
         """Get detailed run log"""
         try:
+            # First check database for completed runs
+            workflow_run = WorkflowRunModel.query.get(run_id)
+            if workflow_run and workflow_run.state in ['COMPLETE', 'EXECUTOR_ERROR', 'CANCELED']:
+                # Get task logs from database
+                task_logs = TaskLog.query.filter_by(run_id=run_id).all()
+
+                return {
+                    'run_id': workflow_run.run_id,
+                    'state': workflow_run.state,
+                    'run_log': {
+                        'name': workflow_run.workflow_url,
+                        'start_time': 
+                          workflow_run.start_time.isoformat() if workflow_run.start_time else None,
+                        'end_time': 
+                          workflow_run.end_time.isoformat() if workflow_run.end_time else None,
+                    },
+                    'task_logs': [{
+                        'id': task.id,
+                        'name': task.name,
+                        'cmd': task.cmd,
+                        'start_time': task.start_time.isoformat() if task.start_time else None,
+                        'end_time': task.end_time.isoformat() if task.end_time else None,
+                        'stdout': task.stdout,
+                        'stderr': task.stderr,
+                        'exit_code': task.exit_code,
+                        'system_logs': task.system_logs
+                    } for task in task_logs],
+                    'outputs': workflow_run.output
+                }
+
+            # If not in database or not completed, get from AWS HealthOmics
             run = omics_service.get_run(run_id)
 
             state = omics_service.map_run_state(run['status'])
@@ -196,7 +228,40 @@ class WorkflowTasks(Resource):
     def get(self, run_id): # pylint: disable=inconsistent-return-statements
         """List tasks for a workflow run"""
         try:
-            # Get AWS HealthOmics run details
+            # First check database for completed runs
+            workflow_run = WorkflowRunModel.query.get(run_id)
+            if workflow_run and workflow_run.state in ['COMPLETE', 'EXECUTOR_ERROR', 'CANCELED']:
+                # Get task logs from database with pagination
+                page_size = request.args.get('page_size', 100, type=int)
+                page_token = request.args.get('page_token', None)
+
+                query = TaskLog.query.filter_by(run_id=run_id)
+                if page_token:
+                    query = query.offset(int(page_token))
+                tasks = query.limit(page_size + 1).all()
+
+                # Check if there are more results
+                next_token = ''
+                if len(tasks) > page_size:
+                    next_token = str(int(page_token or 0) + page_size)
+                    tasks = tasks[:page_size]
+
+                return {
+                    'task_logs': [{
+                        'id': task.id,
+                        'name': task.name,
+                        'cmd': task.cmd,
+                        'start_time': task.start_time.isoformat() if task.start_time else None,
+                        'end_time': task.end_time.isoformat() if task.end_time else None,
+                        'stdout': task.stdout,
+                        'stderr': task.stderr,
+                        'exit_code': task.exit_code,
+                        'system_logs': task.system_logs
+                    } for task in tasks],
+                    'next_page_token': next_token
+                }
+
+            # If not in database or not completed, get from AWS HealthOmics
             run = omics_service.get_run(run_id)
 
             # Get pagination parameters

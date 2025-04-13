@@ -50,6 +50,14 @@ class HealthOmicsService:
         except ClientError as error:
             raise RuntimeError(f"Failed to cancel run {run_id}: {str(error)}") from error
 
+    def delete_run(self, run_id):
+        """Delete a workflow run"""
+        try:
+            self.client.delete_run(id=run_id)
+            return True
+        except ClientError as error:
+            raise RuntimeError(f"Failed to delete run {run_id}: {str(error)}") from error
+
     @staticmethod
     def map_run_state(omics_status):
         """Map AWS HealthOmics run status to WES state"""

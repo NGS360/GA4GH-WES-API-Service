@@ -4,3 +4,5 @@ flask_sqlalchemy
 flask_migrate
 flask_restx
 boto3
+celery
+redis
