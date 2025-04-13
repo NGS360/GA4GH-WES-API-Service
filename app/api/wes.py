@@ -3,7 +3,7 @@
 from datetime import datetime
 import uuid
 import os
-from flask import current_app
+from flask import current_app, request
 from flask_restx import Namespace, Resource, fields
 from app.models.workflow import WorkflowRun as WorkflowRunModel, TaskLog
 from app.extensions import DB
@@ -39,6 +39,23 @@ run_log = api.model('RunLog', {
     'outputs': fields.Raw()
 })
 
+task_log = api.model('TaskLog', {
+    'id': fields.String(required=True, description='Task ID'),
+    'name': fields.String(required=True, description='Task name'),
+    'cmd': fields.List(fields.String, description='Command executed'),
+    'start_time': fields.String(description='Task start time'),
+    'end_time': fields.String(description='Task end time'),
+    'stdout': fields.String(description='URL to stdout logs'),
+    'stderr': fields.String(description='URL to stderr logs'),
+    'exit_code': fields.Integer(description='Exit code'),
+    'system_logs': fields.List(fields.String, description='System logs')
+})
+
+task_list_response = api.model('TaskListResponse', {
+    'task_logs': fields.List(fields.Nested(task_log)),
+    'next_page_token': fields.String(description='Token for the next page')
+})
+
 @api.route('/service-info')
 class ServiceInfo(Resource):
     def get(self):
@@ -55,7 +72,8 @@ class ServiceInfo(Resource):
             },
             'default_workflow_engine_parameters': [],
             'system_state_counts': {},
-            'auth_instructions_url': 'https://docs.aws.amazon.com/omics/latest/dev/what-is-service.html',
+            'auth_instructions_url':
+                'https://docs.aws.amazon.com/omics/latest/dev/what-is-service.html',
             'tags': {
                 'workflow_engine': 'aws-omics'
             }
@@ -89,7 +107,7 @@ class WorkflowRuns(Resource):
         try:
             workflow_params = api.payload.get('workflow_params', {})
             tags = api.payload.get('tags', {})
-            
+
             # Start AWS HealthOmics workflow run
             run_id = omics_service.start_run(
                 workflow_id=api.payload['workflow_url'],
@@ -98,7 +116,7 @@ class WorkflowRuns(Resource):
                 output_uri=workflow_params.get('outputUri'),
                 tags=tags
             )
-            
+
             # Create local record
             new_run = WorkflowRunModel(
                 run_id=run_id,
@@ -113,7 +131,7 @@ class WorkflowRuns(Resource):
             )
             DB.session.add(new_run)
             DB.session.commit()
-            
+
             return {'run_id': run_id}
         except Exception as e:
             current_app.logger.error(f"Failed to start run: {str(e)}")
@@ -125,11 +143,11 @@ class WorkflowRun(Resource):
         """Get detailed run log"""
         try:
             run = omics_service.get_run(run_id)
-            
+
             state = omics_service.map_run_state(run['status'])
             start_time = run.get('startTime')
             end_time = run.get('stopTime')
-            
+
             return {
                 'run_id': run_id,
                 'state': state,
@@ -171,3 +189,94 @@ class WorkflowRunCancel(Resource):
         except Exception as e:
             current_app.logger.error(f"Failed to cancel run {run_id}: {str(e)}")
             api.abort(500, f"Failed to cancel run {run_id}: {str(e)}")
+
+@api.route('/runs/<string:run_id>/tasks')
+class WorkflowTasks(Resource):
+    @api.doc('list_tasks')
+    @api.marshal_with(task_list_response)
+    def get(self, run_id):
+        """List tasks for a workflow run"""
+        try:
+            # Get AWS HealthOmics run details
+            run = omics_service.get_run(run_id)
+
+            # Get pagination parameters
+            page_size = request.args.get('page_size', 100, type=int)
+            page_token = request.args.get('page_token', None)
+
+            # Extract task information from the run
+            tasks = []
+
+            # AWS HealthOmics provides task information in the run logs
+            for task in run.get('logStream', {}).get('tasks', []):
+                task_log = {
+                    'id': task.get('taskId'),
+                    'name': task.get('name', 'unknown'),
+                    'cmd': task.get('command', []),
+                    'start_time': task.get('startTime'),
+                    'end_time': task.get('stopTime'),
+                    'stdout': f"s3://{run['outputUri']}/logs/{task['taskId']}/stdout.log",
+                    'stderr': f"s3://{run['outputUri']}/logs/{task['taskId']}/stderr.log",
+                    'exit_code': task.get('exitCode'),
+                    'system_logs': task.get('systemLogs', [])
+                }
+                tasks.append(task_log)
+
+            # Implement basic pagination
+            start_idx = 0
+            if page_token:
+                start_idx = int(page_token)
+
+            end_idx = start_idx + page_size
+            current_tasks = tasks[start_idx:end_idx]
+
+            # Generate next page token
+            next_token = ''
+            if end_idx < len(tasks):
+                next_token = str(end_idx)
+
+            return {
+                'task_logs': current_tasks,
+                'next_page_token': next_token
+            }
+
+        except Exception as e:
+            current_app.logger.error(f"Failed to list tasks for run {run_id}: {str(e)}")
+            api.abort(500, f"Failed to list tasks: {str(e)}")
+
+@api.route('/runs/<string:run_id>/tasks/<string:task_id>')
+class WorkflowTask(Resource):
+    @api.doc('get_task')
+    @api.marshal_with(task_log)
+    def get(self, run_id, task_id):
+        """Get task details"""
+        try:
+            # Get AWS HealthOmics run details
+            run = omics_service.get_run(run_id)
+
+            # Find the specific task
+            task = None
+            for t in run.get('logStream', {}).get('tasks', []):
+                if t.get('taskId') == task_id:
+                    task = t
+                    break
+
+            if not task:
+                api.abort(404, f"Task {task_id} not found in run {run_id}")
+
+            # Format task information
+            return {
+                'id': task.get('taskId'),
+                'name': task.get('name', 'unknown'),
+                'cmd': task.get('command', []),
+                'start_time': task.get('startTime'),
+                'end_time': task.get('stopTime'),
+                'stdout': f"s3://{run['outputUri']}/logs/{task_id}/stdout.log",
+                'stderr': f"s3://{run['outputUri']}/logs/{task_id}/stderr.log",
+                'exit_code': task.get('exitCode'),
+                'system_logs': task.get('systemLogs', [])
+            }
+
+        except Exception as e:
+            current_app.logger.error(f"Failed to get task {task_id} for run {run_id}: {str(e)}")
+            api.abort(500, f"Failed to get task: {str(e)}")
