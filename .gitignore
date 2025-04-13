@@ -1,3 +1,4 @@
+.env
 *venv
 app.db
 **/__pycache__
