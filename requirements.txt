@@ -2,3 +2,4 @@ flask
 dotenv
 flask_sqlalchemy
 flask_migrate
+flask_restx
