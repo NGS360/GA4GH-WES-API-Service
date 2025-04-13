@@ -1,14 +1,16 @@
-from flask_restx import Namespace, Resource, fields
-from app.models.workflow import WorkflowRun, TaskLog
-from app.extensions import DB
-import uuid
+''' GA4GH WES API Implementation '''
+#pylint: disable=missing-module-docstring, missing-class-docstring
 from datetime import datetime
+import uuid
+from flask_restx import Namespace, Resource, fields
+from app.models.workflow import WorkflowRun as WorkflowRunModel, TaskLog
+from app.extensions import DB
 
 # Create namespace
 api = Namespace('ga4gh/wes/v1', description='Workflow Execution Service API')
 
 # Define API models
-state_enum = ['UNKNOWN', 'QUEUED', 'INITIALIZING', 'RUNNING', 'PAUSED', 
+state_enum = ['UNKNOWN', 'QUEUED', 'INITIALIZING', 'RUNNING', 'PAUSED',
               'COMPLETE', 'EXECUTOR_ERROR', 'SYSTEM_ERROR', 'CANCELED', 'CANCELING']
 
 run_request = api.model('RunRequest', {
@@ -57,7 +59,7 @@ class WorkflowRuns(Resource):
     @api.doc('list_runs')
     def get(self):
         """List workflow runs"""
-        runs = WorkflowRun.query.all()
+        runs = WorkflowRunModel.query.all()
         return {
             'runs': [{
                 'run_id': run.run_id,
@@ -71,7 +73,7 @@ class WorkflowRuns(Resource):
     def post(self):
         """Run a workflow"""
         run_id = str(uuid.uuid4())
-        new_run = WorkflowRun(
+        new_run = WorkflowRunModel(
             run_id=run_id,
             state='QUEUED',
             workflow_type=api.payload['workflow_type'],
@@ -85,16 +87,16 @@ class WorkflowRuns(Resource):
         )
         DB.session.add(new_run)
         DB.session.commit()
-        
+
         return {'run_id': run_id}
 
 @api.route('/runs/<string:run_id>')
 class WorkflowRun(Resource):
     def get(self, run_id):
         """Get detailed run log"""
-        run = WorkflowRun.query.get_or_404(run_id)
+        run = WorkflowRunModel.query.get_or_404(run_id)
         tasks = TaskLog.query.filter_by(run_id=run_id).all()
-        
+
         return {
             'run_id': run.run_id,
             'state': run.state,
@@ -119,7 +121,7 @@ class WorkflowRun(Resource):
 class WorkflowRunStatus(Resource):
     def get(self, run_id):
         """Get run status"""
-        run = WorkflowRun.query.get_or_404(run_id)
+        run = WorkflowRunModel.query.get_or_404(run_id)
         return {
             'run_id': run.run_id,
             'state': run.state
@@ -129,7 +131,7 @@ class WorkflowRunStatus(Resource):
 class WorkflowRunCancel(Resource):
     def post(self, run_id):
         """Cancel a run"""
-        run = WorkflowRun.query.get_or_404(run_id)
+        run = WorkflowRunModel.query.get_or_404(run_id)
         run.state = 'CANCELED'
         DB.session.commit()
         return {'run_id': run_id}

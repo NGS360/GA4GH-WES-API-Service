@@ -1,11 +1,12 @@
 ''' GA4GH WES API Workflow Execution Service Model '''
-from datetime import datetime
+# pylint: disable=too-few-public-methods
+
 from app.extensions import DB
 
 class WorkflowRun(DB.Model):
     """Workflow run model"""
     __tablename__ = 'workflow_runs'
-    
+
     run_id = DB.Column(DB.String(36), primary_key=True)
     state = DB.Column(DB.String(20), nullable=False)
     workflow_params = DB.Column(DB.JSON)
@@ -21,7 +22,7 @@ class WorkflowRun(DB.Model):
 class TaskLog(DB.Model):
     """Task log model"""
     __tablename__ = 'task_logs'
-    
+
     id = DB.Column(DB.String(36), primary_key=True)
     run_id = DB.Column(DB.String(36), DB.ForeignKey('workflow_runs.run_id'))
     name = DB.Column(DB.String(200), nullable=False)
