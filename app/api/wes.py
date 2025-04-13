@@ -1,11 +1,10 @@
 ''' GA4GH WES API Implementation '''
 #pylint: disable=missing-module-docstring, missing-class-docstring
 from datetime import datetime
-import uuid
 import os
 from flask import current_app, request
 from flask_restx import Namespace, Resource, fields
-from app.models.workflow import WorkflowRun as WorkflowRunModel, TaskLog
+from app.models.workflow import WorkflowRun as WorkflowRunModel
 from app.extensions import DB
 from app.services.aws_omics import HealthOmicsService
 
@@ -82,7 +81,7 @@ class ServiceInfo(Resource):
 @api.route('/runs')
 class WorkflowRuns(Resource):
     @api.doc('list_runs')
-    def get(self):
+    def get(self): # pylint: disable=inconsistent-return-statements
         """List workflow runs"""
         try:
             response = omics_service.list_runs()
@@ -96,13 +95,13 @@ class WorkflowRuns(Resource):
                 'runs': runs,
                 'next_page_token': response.get('nextToken', '')
             }
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to list runs: {str(e)}")
             api.abort(500, f"Failed to list runs: {str(e)}")
 
     @api.doc('run_workflow')
     @api.expect(run_request)
-    def post(self):
+    def post(self): # pylint: disable=inconsistent-return-statements
         """Run a workflow"""
         try:
             workflow_params = api.payload.get('workflow_params', {})
@@ -133,13 +132,13 @@ class WorkflowRuns(Resource):
             DB.session.commit()
 
             return {'run_id': run_id}
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to start run: {str(e)}")
             api.abort(500, f"Failed to start run: {str(e)}")
 
 @api.route('/runs/<string:run_id>')
 class WorkflowRun(Resource):
-    def get(self, run_id):
+    def get(self, run_id): # pylint: disable=inconsistent-return-statements
         """Get detailed run log"""
         try:
             run = omics_service.get_run(run_id)
@@ -161,13 +160,13 @@ class WorkflowRun(Resource):
                 'task_logs': [],  # AWS HealthOmics doesn't provide detailed task logs
                 'outputs': run.get('output', {})
             }
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to get run {run_id}: {str(e)}")
             api.abort(500, f"Failed to get run {run_id}: {str(e)}")
 
 @api.route('/runs/<string:run_id>/status')
 class WorkflowRunStatus(Resource):
-    def get(self, run_id):
+    def get(self, run_id): # pylint: disable=inconsistent-return-statements
         """Get run status"""
         try:
             run = omics_service.get_run(run_id)
@@ -175,18 +174,18 @@ class WorkflowRunStatus(Resource):
                 'run_id': run_id,
                 'state': omics_service.map_run_state(run['status'])
             }
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to get run status {run_id}: {str(e)}")
             api.abort(500, f"Failed to get run status {run_id}: {str(e)}")
 
 @api.route('/runs/<string:run_id>/cancel')
 class WorkflowRunCancel(Resource):
-    def post(self, run_id):
+    def post(self, run_id): # pylint: disable=inconsistent-return-statements
         """Cancel a run"""
         try:
             omics_service.cancel_run(run_id)
             return {'run_id': run_id}
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to cancel run {run_id}: {str(e)}")
             api.abort(500, f"Failed to cancel run {run_id}: {str(e)}")
 
@@ -194,7 +193,7 @@ class WorkflowRunCancel(Resource):
 class WorkflowTasks(Resource):
     @api.doc('list_tasks')
     @api.marshal_with(task_list_response)
-    def get(self, run_id):
+    def get(self, run_id): # pylint: disable=inconsistent-return-statements
         """List tasks for a workflow run"""
         try:
             # Get AWS HealthOmics run details
@@ -209,7 +208,7 @@ class WorkflowTasks(Resource):
 
             # AWS HealthOmics provides task information in the run logs
             for task in run.get('logStream', {}).get('tasks', []):
-                task_log = {
+                task_log_instance = {
                     'id': task.get('taskId'),
                     'name': task.get('name', 'unknown'),
                     'cmd': task.get('command', []),
@@ -220,7 +219,7 @@ class WorkflowTasks(Resource):
                     'exit_code': task.get('exitCode'),
                     'system_logs': task.get('systemLogs', [])
                 }
-                tasks.append(task_log)
+                tasks.append(task_log_instance)
 
             # Implement basic pagination
             start_idx = 0
@@ -240,7 +239,7 @@ class WorkflowTasks(Resource):
                 'next_page_token': next_token
             }
 
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to list tasks for run {run_id}: {str(e)}")
             api.abort(500, f"Failed to list tasks: {str(e)}")
 
@@ -248,7 +247,7 @@ class WorkflowTasks(Resource):
 class WorkflowTask(Resource):
     @api.doc('get_task')
     @api.marshal_with(task_log)
-    def get(self, run_id, task_id):
+    def get(self, run_id, task_id): # pylint: disable=inconsistent-return-statements
         """Get task details"""
         try:
             # Get AWS HealthOmics run details
@@ -277,6 +276,6 @@ class WorkflowTask(Resource):
                 'system_logs': task.get('systemLogs', [])
             }
 
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to get task {task_id} for run {run_id}: {str(e)}")
             api.abort(500, f"Failed to get task: {str(e)}")
