@@ -5,7 +5,7 @@ import uuid
 import os
 from flask import current_app
 from flask_restx import Namespace, Resource, fields
-from app.models.workflow import WorkflowRunModel, TaskLog
+from app.models.workflow import WorkflowRun as WorkflowRunModel, TaskLog
 from app.extensions import DB
 from app.services.aws_omics import HealthOmicsService
 
