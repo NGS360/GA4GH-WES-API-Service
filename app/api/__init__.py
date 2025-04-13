@@ -3,15 +3,13 @@ REST API
 '''
 from flask import Blueprint
 from flask_restx import Api
-
-# Import the projects namespace
-#from .projects import NS as projects_ns
+from .wes import api as wes_api
 
 BLUEPRINT_API = Blueprint('api', __name__, url_prefix='/api')
 API = Api(BLUEPRINT_API,
-            title='NGS360 API',
-            version='1.0',
-            description='NGS360 REST API',
-            doc='/docs')
+          title='GA4GH WES API',
+          version='1.0',
+          description='GA4GH Workflow Execution Service API',
+          doc='/docs')
 
-#API.add_namespace(projects_ns)
+API.add_namespace(wes_api)
