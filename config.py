@@ -17,6 +17,10 @@ class DefaultConfig: # pylint: disable=too-few-public-methods
         'sqlite:///' + os.path.join(basedir, 'app.db'
     )
 
+    # AWS Configuration
+    AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
+    AWS_OMICS_ROLE_ARN = os.environ.get('AWS_OMICS_ROLE_ARN')
+
 class TestConfig(DefaultConfig): # pylint: disable=too-few-public-methods
     """Unit Test Config profile"""
     TESTING = True
