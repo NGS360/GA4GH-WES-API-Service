@@ -19,6 +19,7 @@ def runs():
         for run in response.get('items', []):
             runs_list.append({
                 'run_id': run['id'],
+                'name': run['name'],
                 'state': omics_service.map_run_state(run['status']),
                 'start_time': run.get('startTime'),
                 'end_time': run.get('stopTime')
