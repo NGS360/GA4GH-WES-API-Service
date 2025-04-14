@@ -58,8 +58,8 @@ class HealthOmicsService:
             'STARTING': 'INITIALIZING',
             'RUNNING': 'RUNNING',
             'STOPPING': 'CANCELING',
-            'STOPPED': 'CANCELED',
+            'CANCELLED': 'CANCELLED',
             'COMPLETED': 'COMPLETE',
-            'FAILED': 'EXECUTOR_ERROR'
+            'FAILED': 'FAILED'
         }
         return status_map.get(omics_status, 'UNKNOWN')

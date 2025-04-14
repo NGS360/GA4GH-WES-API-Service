@@ -14,16 +14,22 @@ def index():
 @web.route('/runs')
 def runs():
     try:
-        response = omics_service.list_runs()
+        # List all runs from AWS HealthOmics
         runs_list = []
-        for run in response.get('items', []):
-            runs_list.append({
-                'run_id': run['id'],
-                'name': run['name'],
-                'state': omics_service.map_run_state(run['status']),
-                'start_time': run.get('startTime'),
-                'end_time': run.get('stopTime')
-            })
+        next_token = None
+        while True:
+            response = omics_service.list_runs(next_token=next_token)
+            for run in response.get('items', []):
+                runs_list.append({
+                    'run_id': run['id'],
+                    'name': run['name'],
+                    'state': omics_service.map_run_state(run['status']),
+                    'start_time': run.get('startTime'),
+                    'end_time': run.get('stopTime')
+                })
+            next_token = response.get('nextToken')
+            if not next_token:
+                break
         return render_template('runs.html', runs=runs_list)
     except Exception as e:
         current_app.logger.error(f"Failed to list runs: {str(e)}")

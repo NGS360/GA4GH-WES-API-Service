@@ -8,9 +8,9 @@ def state_to_bootstrap_class(state):
         'INITIALIZING': 'info',
         'RUNNING': 'primary',
         'PAUSED': 'warning',
-        'EXECUTOR_ERROR': 'danger',
+        'FAILED': 'danger',
         'SYSTEM_ERROR': 'danger',
-        'CANCELED': 'dark',
+        'CANCELLED': 'secondary',
         'CANCELING': 'warning'
     }
     return state_map.get(state, 'secondary')
