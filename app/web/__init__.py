@@ -1,5 +1,7 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app
+''' WebUI for AWS Omics Service '''
+# pylint: disable=missing-function-docstring, broad-exception-caught
 import json
+from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app
 from app.services.aws_omics import HealthOmicsService
 
 web = Blueprint('web', __name__)
@@ -13,15 +15,15 @@ def index():
 def runs():
     try:
         response = omics_service.list_runs()
-        runs = []
+        runs_list = []
         for run in response.get('items', []):
-            runs.append({
+            runs_list.append({
                 'run_id': run['id'],
                 'state': omics_service.map_run_state(run['status']),
                 'start_time': run.get('startTime'),
                 'end_time': run.get('stopTime')
             })
-        return render_template('runs.html', runs=runs)
+        return render_template('runs.html', runs=runs_list)
     except Exception as e:
         current_app.logger.error(f"Failed to list runs: {str(e)}")
         flash(f"Error: {str(e)}", 'error')
@@ -32,7 +34,7 @@ def run_detail(run_id):
     try:
         run = omics_service.get_run(run_id)
         state = omics_service.map_run_state(run['status'])
-        
+
         run_data = {
             'run_id': run_id,
             'state': state,
@@ -44,7 +46,7 @@ def run_detail(run_id):
                 'stderr': run.get('logStream')
             }
         }
-        
+
         tasks = []
         for task in run.get('logStream', {}).get('tasks', []):
             tasks.append({
@@ -56,7 +58,7 @@ def run_detail(run_id):
                 'stdout': f"s3://{run['outputUri']}/logs/{task['taskId']}/stdout.log",
                 'stderr': f"s3://{run['outputUri']}/logs/{task['taskId']}/stderr.log"
             })
-            
+
         return render_template('run_detail.html', run=run_data, tasks=tasks)
     except Exception as e:
         current_app.logger.error(f"Failed to get run details: {str(e)}")
@@ -70,7 +72,7 @@ def new_run():
             workflow_params = json.loads(request.form.get('workflow_params', '{}'))
             run_id = omics_service.start_run(
                 workflow_id=request.form['workflow_url'],
-                role_arn=os.environ['AWS_OMICS_ROLE_ARN'],
+                role_arn=current_app.config['AWS_OMICS_ROLE_ARN'],
                 parameters=workflow_params
             )
             flash(f'Workflow run started with ID: {run_id}', 'success')
@@ -79,7 +81,6 @@ def new_run():
             current_app.logger.error(f"Failed to start run: {str(e)}")
             flash(f"Error: {str(e)}", 'error')
             return render_template('new_run.html')
-            
     return render_template('new_run.html')
 
 @web.route('/runs/<run_id>/cancel', methods=['POST'])
