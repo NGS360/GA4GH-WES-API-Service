@@ -9,4 +9,12 @@
     <a class="btn btn-primary btn-lg" href="{{ url_for('web.runs') }}" role="button">View Runs</a>
     <a class="btn btn-success btn-lg" href="{{ url_for('web.new_run') }}" role="button">New Run</a>
 </div>
+
+<footer class="footer mt-auto py-3 bg-light">
+    <div class="container text-center">
+        <span class="text-muted">
+            View the <a href="{{ url_for('api.doc') }}">API Documentation</a>
+        </span>
+    </div>
+</footer>
 {% endblock %}
