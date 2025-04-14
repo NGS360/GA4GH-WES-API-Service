@@ -10,7 +10,7 @@ from app.extensions import init_extensions
 
 from app.api import BLUEPRINT_API
 from app.web import web as web_blueprint
-from app.template_filters import state_to_bootstrap_class
+from app.template_filters import state_to_bootstrap_class, format_datetime
 
 # Configure (default) logging
 dictConfig({
@@ -58,6 +58,7 @@ def create_app(config_class=DefaultConfig):
 
     # Register template filters
     app.jinja_env.filters['state_to_bootstrap'] = state_to_bootstrap_class
+    app.jinja_env.filters['datetime'] = format_datetime
 
     app.logger.info('%s loaded.', app.config['APP_NAME'])
     return app
