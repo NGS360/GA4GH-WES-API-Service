@@ -42,7 +42,7 @@ GA4GH-WES-API-Service/
 2. Create a virtual environment:
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
+source venv/bin/activate
 ```
 
 3. Install dependencies:
@@ -77,11 +77,15 @@ The application will start on `http://localhost:5000`
 
 - `/healthcheck`: Application health check endpoint
 - `/api/docs`: Swagger UI API documentation
+
+#### GA4GH WES API Specific Endpoint
+
 - `/`: Index page
 - `/runs`: Runs page
 - `/runs/<run_id>`: Run detail page
 - `/runs/new`: Create run page
 - `/runs/<run_id>/cancel`: Cancel run
+- `/api/ga4gh/wes/v1`: GA4GH WES REST API
 
 ## Development
 
