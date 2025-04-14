@@ -40,7 +40,7 @@ class HealthOmicsService:
             response = self.client.list_runs(**params)
             return response
         except ClientError as error:
-            raise RuntimeError("Failed to list runs: {str(error)}") from error
+            raise RuntimeError(f"Failed to list runs: {str(error)}") from error
 
     def cancel_run(self, run_id):
         """Cancel a workflow run"""
