@@ -1,6 +1,6 @@
-# FlaskApp-Skeleton
+# GA4GH WES API Service
 
-A Flask application skeleton that provides a solid foundation for building Flask-based REST APIs.
+A Flask-based implementation of the GA4GH WES API Service using AWS HealthOmics.
 
 ## Features
 
@@ -15,7 +15,7 @@ A Flask application skeleton that provides a solid foundation for building Flask
 ## Project Structure
 
 ```
-FlaskApp-Skeleton/
+GA4GH-WES-API-Service/
 ├── app/
 │   ├── api/           # API blueprints and endpoints
 │   ├── models/        # SQLAlchemy database models
@@ -34,6 +34,7 @@ FlaskApp-Skeleton/
 - Flask-Migrate
 - Flask-RESTX
 - python-dotenv
+- boto3
 
 ## Installation
 
@@ -59,10 +60,10 @@ The application supports different configuration profiles:
 - `TestConfig`: Configuration for unit tests
 
 Key configuration options:
-- `APP_NAME`: Application name (default: "FlaskApp-Skeleton")
-- `APP_VERSION`: Application version (default: "1.0.0")
-- `FLASK_DEBUG`: Debug mode flag
 - `DATABASE_URL`: Database connection URL
+- `SECRET_KEY`: Secret Key used by application to secure session information
+- `AWS_REGION`: AWS Region
+- `AWS_OMICS_ROLE_ARN`: AWS Omics Role
 
 ## Running the Application
 
@@ -76,6 +77,11 @@ The application will start on `http://localhost:5000`
 
 - `/healthcheck`: Application health check endpoint
 - `/api/docs`: Swagger UI API documentation
+- `/`: Index page
+- `/runs`: Runs page
+- `/runs/<run_id>`: Run detail page
+- `/runs/new`: Create run page
+- `/runs/<run_id>/cancel`: Cancel run
 
 ## Development
 
