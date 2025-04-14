@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Workflow Run Details</h2>
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Run ID: {{ run.run_id }}</h5>
+        <h6 class="card-subtitle mb-2 text-muted">Status: {{ run.state }}</h6>
+        
+        <div class="mt-4">
+            <h5>Run Log</h5>
+            <div class="table-responsive">
+                <table class="table">
+                    <tr><th>Name</th><td>{{ run.run_log.name }}</td></tr>
+                    <tr><th>Start Time</th><td>{{ run.run_log.start_time|default('N/A') }}</td></tr>
+                    <tr><th>End Time</th><td>{{ run.run_log.end_time|default('N/A') }}</td></tr>
+                    <tr><th>Stdout</th><td><a href="{{ run.run_log.stdout }}">View</a></td></tr>
+                    <tr><th>Stderr</th><td><a href="{{ run.run_log.stderr }}">View</a></td></tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            <h5>Tasks</h5>
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Task ID</th>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>Start Time</th>
+                            <th>End Time</th>
+                            <th>Exit Code</th>
+                            <th>Logs</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for task in tasks %}
+                        <tr>
+                            <td>{{ task.id }}</td>
+                            <td>{{ task.name }}</td>
+                            <td>{{ task.exit_code|default('Running') }}</td>
+                            <td>{{ task.start_time|default('N/A') }}</td>
+                            <td>{{ task.end_time|default('N/A') }}</td>
+                            <td>{{ task.exit_code|default('N/A') }}</td>
+                            <td>
+                                <a href="{{ task.stdout }}">stdout</a> |
+                                <a href="{{ task.stderr }}">stderr</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

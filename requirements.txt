@@ -1,6 +1,7 @@
 flask
-dotenv
+python-dotenv
 flask_sqlalchemy
 flask_migrate
 flask_restx
 boto3
+flask-bootstrap4

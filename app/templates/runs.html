@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Workflow Runs</h2>
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Run ID</th>
+                <th>Status</th>
+                <th>Start Time</th>
+                <th>End Time</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in runs %}
+            <tr>
+                <td>{{ run.run_id }}</td>
+                <td><span class="badge bg-{{ run.state|lower }}">{{ run.state }}</span></td>
+                <td>{{ run.start_time|default('N/A') }}</td>
+                <td>{{ run.end_time|default('N/A') }}</td>
+                <td>
+                    <a href="{{ url_for('web.run_detail', run_id=run.run_id) }}" class="btn btn-sm btn-info">Details</a>
+                    {% if run.state in ['QUEUED', 'RUNNING'] %}
+                    <form method="POST" action="{{ url_for('web.cancel_run', run_id=run.run_id) }}" style="display: inline;">
+                        <button type="submit" class="btn btn-sm btn-danger">Cancel</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
