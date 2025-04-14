@@ -29,7 +29,9 @@ while True:
         # Decide if we want to keep the run
         status = run.get('status')
         created = run.get("creationTime")
-        if status in ["COMPLETED", "FAILED", "CANCELLED"] and created < cutoff:
+        #if status in ["COMPLETED", "FAILED", "CANCELLED"] and created < cutoff:
+        #    runs_to_delete.append(run['id'])
+        if status in ["FAILED", "CANCELLED"]:
             runs_to_delete.append(run['id'])
 
         total_runs += 1
