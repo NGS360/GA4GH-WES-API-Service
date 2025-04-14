@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="jumbotron">
+    <h1 class="display-4">GA4GH Workflow Execution Service</h1>
+    <p class="lead">Run and monitor workflow executions using AWS HealthOmics</p>
+    <hr class="my-4">
+    <p>Use this interface to submit, monitor, and manage your workflow runs.</p>
+    <a class="btn btn-primary btn-lg" href="{{ url_for('web.runs') }}" role="button">View Runs</a>
+    <a class="btn btn-success btn-lg" href="{{ url_for('web.new_run') }}" role="button">New Run</a>
+</div>
+{% endblock %}

@@ -9,6 +9,7 @@ from config import DefaultConfig
 from app.extensions import init_extensions
 
 from app.api import BLUEPRINT_API
+from app.web import web as web_blueprint
 
 # Configure (default) logging
 dictConfig({
@@ -33,6 +34,9 @@ def register_blueprints(app):
 
     app.logger.debug("Registering API blueprint")
     app.register_blueprint(BLUEPRINT_API)
+
+    app.logger.debug("Registering Web blueprint")
+    app.register_blueprint(web_blueprint)
 
     app.logger.debug("Registered blueprints")
 
