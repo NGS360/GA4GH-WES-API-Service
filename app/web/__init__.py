@@ -129,7 +129,7 @@ def run_group_detail(group_id):
     try:
         # Get run group details
         group = omics_service.get_run_group(group_id)
-        
+
         # List runs in this group
         runs_list = []
         next_token = None
@@ -146,14 +146,14 @@ def run_group_detail(group_id):
             next_token = response.get('nextToken')
             if not next_token:
                 break
-                
+
         group_data = {
             'group_id': group_id,
             'name': group.get('name', 'Unnamed Group'),
             'description': group.get('description', ''),
             'created_at': group.get('creationTime')
         }
-        
+
         return render_template('run_group_detail.html', group=group_data, runs=runs_list)
     except Exception as e:
         current_app.logger.error(f"Failed to get run group details: {str(e)}")
