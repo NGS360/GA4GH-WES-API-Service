@@ -1,3 +1,6 @@
+'''
+Template filters for formatting data in Jinja2 templates.
+'''
 from datetime import datetime
 
 def state_to_bootstrap_class(state):
