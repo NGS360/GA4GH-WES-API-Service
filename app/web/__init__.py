@@ -99,3 +99,63 @@ def cancel_run(run_id):
         current_app.logger.error(f"Failed to cancel run: {str(e)}")
         flash(f"Error: {str(e)}", 'error')
     return redirect(url_for('web.runs'))
+
+@web.route('/run-groups')
+def run_groups():
+    try:
+        # List all run groups from AWS HealthOmics
+        groups_list = []
+        next_token = None
+        while True:
+            response = omics_service.list_run_groups(next_token=next_token)
+            for group in response.get('items', []):
+                groups_list.append({
+                    'group_id': group['id'],
+                    'name': group.get('name', 'Unnamed Group'),
+                    'description': group.get('description', ''),
+                    'created_at': group.get('creationTime')
+                })
+            next_token = response.get('nextToken')
+            if not next_token:
+                break
+        return render_template('run_groups.html', groups=groups_list)
+    except Exception as e:
+        current_app.logger.error(f"Failed to list run groups: {str(e)}")
+        flash(f"Error: {str(e)}", 'error')
+        return render_template('run_groups.html', groups=[])
+
+@web.route('/run-groups/<group_id>')
+def run_group_detail(group_id):
+    try:
+        # Get run group details
+        group = omics_service.get_run_group(group_id)
+
+        # List runs in this group
+        runs_list = []
+        next_token = None
+        while True:
+            response = omics_service.list_runs_in_group(group_id, next_token=next_token)
+            for run in response.get('items', []):
+                runs_list.append({
+                    'run_id': run['id'],
+                    'name': run.get('name', 'Unnamed Run'),
+                    'state': omics_service.map_run_state(run['status']),
+                    'start_time': run.get('startTime'),
+                    'end_time': run.get('stopTime')
+                })
+            next_token = response.get('nextToken')
+            if not next_token:
+                break
+
+        group_data = {
+            'group_id': group_id,
+            'name': group.get('name', 'Unnamed Group'),
+            'description': group.get('description', ''),
+            'created_at': group.get('creationTime')
+        }
+
+        return render_template('run_group_detail.html', group=group_data, runs=runs_list)
+    except Exception as e:
+        current_app.logger.error(f"Failed to get run group details: {str(e)}")
+        flash(f"Error: {str(e)}", 'error')
+        return redirect(url_for('web.run_groups'))
