@@ -63,3 +63,36 @@ class HealthOmicsService:
             'FAILED': 'FAILED'
         }
         return status_map.get(omics_status, 'UNKNOWN')
+        
+    def list_run_groups(self, next_token=None, max_results=100):
+        """List run groups"""
+        try:
+            params = {'maxResults': max_results}
+            if next_token:
+                params['startingToken'] = next_token
+            response = self.client.list_run_groups(**params)
+            return response
+        except ClientError as error:
+            raise RuntimeError(f"Failed to list run groups: {str(error)}") from error
+
+    def get_run_group(self, group_id):
+        """Get run group details"""
+        try:
+            response = self.client.get_run_group(id=group_id)
+            return response
+        except ClientError as error:
+            raise RuntimeError(f"Failed to get run group {group_id}: {str(error)}") from error
+
+    def list_runs_in_group(self, group_id, next_token=None, max_results=100):
+        """List runs in a specific run group"""
+        try:
+            params = {
+                'runGroupId': group_id,
+                'maxResults': max_results
+            }
+            if next_token:
+                params['startingToken'] = next_token
+            response = self.client.list_runs(**params)
+            return response
+        except ClientError as error:
+            raise RuntimeError(f"Failed to list runs in group {group_id}: {str(error)}") from error

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Run Groups</h2>
+<div class="table-responsive">
+    <table id="run-groups-table" class="table table-striped">
+        <thead>
+            <tr>
+                <th>Group ID</th>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Created At</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for group in groups %}
+            <tr>
+                <td>{{ group.group_id }}</td>
+                <td>{{ group.name }}</td>
+                <td>{{ group.description }}</td>
+                <td>{{ group.created_at|datetime }}</td>
+                <td>
+                    <a href="{{ url_for('web.run_group_detail', group_id=group.group_id) }}" class="btn btn-sm btn-info">View Runs</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    $('#run-groups-table').DataTable({
+        pageLength: 25,
+        order: [[3, 'desc']], // Sort by Created At descending by default
+        columns: [
+            null,                  // Group ID
+            null,                  // Name
+            null,                  // Description
+            null,                  // Created At
+            { orderable: false }   // Actions
+        ]
+    });
+});
+</script>
+{% endblock %}
