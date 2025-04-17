@@ -115,10 +115,14 @@ class WorkflowRuns(Resource):
                 output_uri=workflow_params.get('outputUri'),
                 tags=tags
             )
-
+            
+            # Get the run details from AWS Omics
+            run_details = omics_service.get_run(run_id)
+            
             # Create local record
             new_run = WorkflowRunModel(
                 run_id=run_id,
+                name=run_details.get('name', f"run-{run_id}"),
                 state='QUEUED',
                 workflow_type=api.payload['workflow_type'],
                 workflow_type_version=api.payload['workflow_type_version'],
@@ -126,7 +130,15 @@ class WorkflowRuns(Resource):
                 workflow_params=workflow_params,
                 workflow_engine='aws-omics',
                 tags=tags,
-                start_time=datetime.utcnow()
+                # AWS Omics specific fields
+                arn=run_details.get('arn'),
+                workflow_id=run_details.get('workflowId'),
+                priority=run_details.get('priority'),
+                storage_capacity=run_details.get('storageCapacity'),
+                creation_time=datetime.fromisoformat(run_details.get('creationTime').replace('Z', '+00:00')) if run_details.get('creationTime') else datetime.utcnow(),
+                start_time=datetime.fromisoformat(run_details.get('startTime').replace('Z', '+00:00')) if run_details.get('startTime') else None,
+                stop_time=datetime.fromisoformat(run_details.get('stopTime').replace('Z', '+00:00')) if run_details.get('stopTime') else None,
+                storage_type=run_details.get('storageType')
             )
             DB.session.add(new_run)
             DB.session.commit()
@@ -145,15 +157,29 @@ class WorkflowRun(Resource):
 
             state = omics_service.map_run_state(run['status'])
             start_time = run.get('startTime')
-            end_time = run.get('stopTime')
+            stop_time = run.get('stopTime')
+            
+            # Update the database record with the latest information from AWS Omics
+            db_run = WorkflowRunModel.query.get(run_id)
+            if db_run:
+                db_run.state = state
+                db_run.arn = run.get('arn')
+                db_run.workflow_id = run.get('workflowId')
+                db_run.priority = run.get('priority')
+                db_run.storage_capacity = run.get('storageCapacity')
+                db_run.creation_time = datetime.fromisoformat(run.get('creationTime').replace('Z', '+00:00')) if run.get('creationTime') else db_run.creation_time
+                db_run.start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00')) if start_time else db_run.start_time
+                db_run.stop_time = datetime.fromisoformat(stop_time.replace('Z', '+00:00')) if stop_time else db_run.stop_time
+                db_run.storage_type = run.get('storageType')
+                DB.session.commit()
 
             return {
                 'run_id': run_id,
                 'state': state,
                 'run_log': {
                     'name': run.get('name', 'workflow'),
-                    'start_time': start_time.isoformat() if start_time else None,
-                    'end_time': end_time.isoformat() if end_time else None,
+                    'start_time': start_time if start_time else None,
+                    'end_time': stop_time if stop_time else None,
                     'stdout': run.get('outputUri'),
                     'stderr': run.get('logStream')
                 },
@@ -170,9 +196,19 @@ class WorkflowRunStatus(Resource):
         """Get run status"""
         try:
             run = omics_service.get_run(run_id)
+            state = omics_service.map_run_state(run['status'])
+            
+            # Update the database record with the latest status
+            db_run = WorkflowRunModel.query.get(run_id)
+            if db_run:
+                db_run.state = state
+                if run.get('stopTime') and not db_run.stop_time:
+                    db_run.stop_time = datetime.fromisoformat(run.get('stopTime').replace('Z', '+00:00'))
+                DB.session.commit()
+                
             return {
                 'run_id': run_id,
-                'state': omics_service.map_run_state(run['status'])
+                'state': state
             }
         except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to get run status {run_id}: {str(e)}")
@@ -184,6 +220,13 @@ class WorkflowRunCancel(Resource):
         """Cancel a run"""
         try:
             omics_service.cancel_run(run_id)
+            
+            # Update the database record to reflect cancellation
+            db_run = WorkflowRunModel.query.get(run_id)
+            if db_run:
+                db_run.state = 'CANCELED'
+                DB.session.commit()
+                
             return {'run_id': run_id}
         except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to cancel run {run_id}: {str(e)}")

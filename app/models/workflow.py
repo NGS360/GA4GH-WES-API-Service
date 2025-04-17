@@ -17,8 +17,16 @@ class WorkflowRun(DB.Model):
     workflow_engine_version = DB.Column(DB.String(20))
     workflow_url = DB.Column(DB.String(500), nullable=False)
     tags = DB.Column(DB.JSON)
+    
+    # AWS Omics specific fields
+    arn = DB.Column(DB.String(255))
+    workflow_id = DB.Column(DB.String(36))
+    priority = DB.Column(DB.Integer)
+    storage_capacity = DB.Column(DB.Integer)
+    creation_time = DB.Column(DB.DateTime)
     start_time = DB.Column(DB.DateTime)
-    end_time = DB.Column(DB.DateTime)
+    stop_time = DB.Column(DB.DateTime)
+    storage_type = DB.Column(DB.String(50))
 
 class TaskLog(DB.Model):
     """Task log model"""
