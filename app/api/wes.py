@@ -209,7 +209,7 @@ class WorkflowRunStatus(Resource):
         try:
             run = omics_service.get_run(run_id)
             state = omics_service.map_run_state(run['status'])
-            
+
             # Update the database record with the latest status
             db_run = WorkflowRunModel.query.get(run_id)
             if db_run:
@@ -219,7 +219,7 @@ class WorkflowRunStatus(Resource):
                         run.get('stopTime').replace('Z', '+00:00')
                     )
                 DB.session.commit()
-                
+
             return {
                 'run_id': run_id,
                 'state': state
@@ -234,13 +234,13 @@ class WorkflowRunCancel(Resource):
         """Cancel a run"""
         try:
             omics_service.cancel_run(run_id)
-            
+
             # Update the database record to reflect cancellation
             db_run = WorkflowRunModel.query.get(run_id)
             if db_run:
                 db_run.state = 'CANCELED'
                 DB.session.commit()
-                
+
             return {'run_id': run_id}
         except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to cancel run {run_id}: {str(e)}")

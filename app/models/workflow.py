@@ -17,7 +17,7 @@ class WorkflowRun(DB.Model):
     workflow_engine_version = DB.Column(DB.String(20))
     workflow_url = DB.Column(DB.String(500), nullable=False)
     tags = DB.Column(DB.JSON)
-    
+
     # AWS Omics specific fields
     arn = DB.Column(DB.String(255))
     workflow_id = DB.Column(DB.String(36))
