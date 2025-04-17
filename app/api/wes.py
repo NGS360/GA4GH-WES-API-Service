@@ -115,10 +115,10 @@ class WorkflowRuns(Resource):
                 output_uri=workflow_params.get('outputUri'),
                 tags=tags
             )
-            
+
             # Get the run details from AWS Omics
             run_details = omics_service.get_run(run_id)
-            
+
             # Create local record
             new_run = WorkflowRunModel(
                 run_id=run_id,
@@ -135,9 +135,15 @@ class WorkflowRuns(Resource):
                 workflow_id=run_details.get('workflowId'),
                 priority=run_details.get('priority'),
                 storage_capacity=run_details.get('storageCapacity'),
-                creation_time=datetime.fromisoformat(run_details.get('creationTime').replace('Z', '+00:00')) if run_details.get('creationTime') else datetime.utcnow(),
-                start_time=datetime.fromisoformat(run_details.get('startTime').replace('Z', '+00:00')) if run_details.get('startTime') else None,
-                stop_time=datetime.fromisoformat(run_details.get('stopTime').replace('Z', '+00:00')) if run_details.get('stopTime') else None,
+                creation_time=datetime.fromisoformat(
+                    run_details.get('creationTime').replace('Z', '+00:00')
+                ) if run_details.get('creationTime') else datetime.utcnow(),
+                start_time=datetime.fromisoformat(
+                    run_details.get('startTime').replace('Z', '+00:00')
+                ) if run_details.get('startTime') else None,
+                stop_time=datetime.fromisoformat(
+                    run_details.get('stopTime').replace('Z', '+00:00')
+                ) if run_details.get('stopTime') else None,
                 storage_type=run_details.get('storageType')
             )
             DB.session.add(new_run)
@@ -158,7 +164,7 @@ class WorkflowRun(Resource):
             state = omics_service.map_run_state(run['status'])
             start_time = run.get('startTime')
             stop_time = run.get('stopTime')
-            
+
             # Update the database record with the latest information from AWS Omics
             db_run = WorkflowRunModel.query.get(run_id)
             if db_run:
@@ -167,9 +173,15 @@ class WorkflowRun(Resource):
                 db_run.workflow_id = run.get('workflowId')
                 db_run.priority = run.get('priority')
                 db_run.storage_capacity = run.get('storageCapacity')
-                db_run.creation_time = datetime.fromisoformat(run.get('creationTime').replace('Z', '+00:00')) if run.get('creationTime') else db_run.creation_time
-                db_run.start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00')) if start_time else db_run.start_time
-                db_run.stop_time = datetime.fromisoformat(stop_time.replace('Z', '+00:00')) if stop_time else db_run.stop_time
+                db_run.creation_time = datetime.fromisoformat(
+                    run.get('creationTime').replace('Z', '+00:00')
+                ) if run.get('creationTime') else db_run.creation_time
+                db_run.start_time = datetime.fromisoformat(
+                    start_time.replace('Z', '+00:00')
+                ) if start_time else db_run.start_time
+                db_run.stop_time = datetime.fromisoformat(
+                    stop_time.replace('Z', '+00:00')
+                ) if stop_time else db_run.stop_time
                 db_run.storage_type = run.get('storageType')
                 DB.session.commit()
 
@@ -203,7 +215,9 @@ class WorkflowRunStatus(Resource):
             if db_run:
                 db_run.state = state
                 if run.get('stopTime') and not db_run.stop_time:
-                    db_run.stop_time = datetime.fromisoformat(run.get('stopTime').replace('Z', '+00:00'))
+                    db_run.stop_time = datetime.fromisoformat(
+                        run.get('stopTime').replace('Z', '+00:00')
+                    )
                 DB.session.commit()
                 
             return {
