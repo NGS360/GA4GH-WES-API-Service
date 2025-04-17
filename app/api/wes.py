@@ -84,16 +84,45 @@ class WorkflowRuns(Resource):
     def get(self): # pylint: disable=inconsistent-return-statements
         """List workflow runs"""
         try:
+            # Get runs from the database
+            from app.models.workflow import WorkflowRun
+            db_runs = WorkflowRun.query.all()
+            db_run_ids = {run.run_id for run in db_runs}
+            
+            # Get runs from AWS Omics
             response = omics_service.list_runs()
+            omics_runs = response.get('items', [])
+            omics_run_ids = {run['id'] for run in omics_runs}
+            
+            # Combine runs from both sources
             runs = []
-            for run in response.get('items', []):
+            
+            # Add all database runs
+            for run in db_runs:
                 runs.append({
-                    'run_id': run['id'],
-                    'state': omics_service.map_run_state(run['status'])
+                    'run_id': run.run_id,
+                    'state': run.state,
+                    'source': 'database'
                 })
+            
+            # Add Omics runs that aren't in the database
+            for run in omics_runs:
+                if run['id'] not in db_run_ids:
+                    runs.append({
+                        'run_id': run['id'],
+                        'state': omics_service.map_run_state(run['status']),
+                        'source': 'omics'
+                    })
+            
+            # Sort runs by run_id for consistency
+            runs.sort(key=lambda x: x['run_id'])
+            
             return {
                 'runs': runs,
-                'next_page_token': response.get('nextToken', '')
+                'next_page_token': response.get('nextToken', ''),
+                'db_run_count': len(db_run_ids),
+                'omics_run_count': len(omics_run_ids),
+                'total_unique_run_count': len(db_run_ids.union(omics_run_ids))
             }
         except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to list runs: {str(e)}")
