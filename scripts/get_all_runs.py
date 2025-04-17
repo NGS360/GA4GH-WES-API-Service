@@ -126,7 +126,8 @@ def sync_runs(runs_from_file=None):
         run_id = run.get('id')
         
         # Check if the run exists in the database
-        db_run = WorkflowRun.query.get(run_id)
+        # Using Session.get() instead of Query.get() to avoid SQLAlchemy 2.0 deprecation warning
+        db_run = DB.session.get(WorkflowRun, run_id)
         
         if db_run:
             # Update existing run
