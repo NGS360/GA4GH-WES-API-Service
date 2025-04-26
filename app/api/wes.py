@@ -85,8 +85,7 @@ class WorkflowRuns(Resource):
         """List workflow runs"""
         try:
             # Get runs from the database
-            from app.models.workflow import WorkflowRun
-            db_runs = WorkflowRun.query.all()
+            db_runs = WorkflowRunModel.query.all()
             db_run_ids = {run.run_id for run in db_runs}
 
             # Get runs from AWS Omics
@@ -113,7 +112,7 @@ class WorkflowRuns(Resource):
                         'state': omics_service.map_run_state(run['status']),
                         'source': 'omics'
                     })
-            
+
             # Sort runs by run_id for consistency
             runs.sort(key=lambda x: x['run_id'])
 
