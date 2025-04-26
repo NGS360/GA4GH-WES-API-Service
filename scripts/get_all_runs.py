@@ -15,6 +15,10 @@ import argparse
 import datetime
 import ast
 from datetime import datetime as dt
+from dotenv import load_dotenv
+
+# This has to be imported before the app is created or else the environment variables won't be loaded
+load_dotenv()
 
 # Add the parent directory to the path so we can import from the app
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -84,10 +88,24 @@ def load_runs_from_file(file_path):
         print(f"Error loading runs from file {file_path}: {str(e)}")
         return []
 
+def get_runs_from_omics():
+    next_token = None
+    runs_to_process = []
+    while True:
+        # Get runs from AWS Omics
+        if next_token:
+            response = omics_service.list_runs(next_token=next_token)
+        else:
+            response = omics_service.list_runs()
+        runs_to_process.extend(response.get('items', []))
+        next_token = response.get('nextToken')
+        if not next_token:
+            break
+    return runs_to_process
+
 def sync_runs(runs_from_file=None):
     """Sync AWS Omics runs with the local database"""
     total_runs = 0
-    next_token = None
     updated_runs = 0
     new_runs = 0
 
@@ -104,31 +122,18 @@ def sync_runs(runs_from_file=None):
     else:
         # Otherwise fetch runs from AWS Omics
         print("No file provided. Fetching runs from AWS Omics...")
-        runs_to_process = []
-        while True:
-            # Get runs from AWS Omics
-            if next_token:
-                response = omics_service.list_runs(next_token=next_token)
-            else:
-                response = omics_service.list_runs()
-            
-            runs_to_process.extend(response.get('items', []))
-            
-            next_token = response.get('nextToken')
-            if not next_token:
-                break
-        
+        runs_to_process = get_runs_from_omics()
         print(f"Fetched {len(runs_to_process)} runs from AWS Omics")
 
     # Process all runs
     for run in runs_to_process:
         total_runs += 1
         run_id = run.get('id')
-        
+
         # Check if the run exists in the database
         # Using Session.get() instead of Query.get() to avoid SQLAlchemy 2.0 deprecation warning
         db_run = DB.session.get(WorkflowRun, run_id)
-        
+
         if db_run:
             # Update existing run
             db_run.state = omics_service.map_run_state(run.get('status'))
@@ -177,7 +182,7 @@ def sync_runs(runs_from_file=None):
                     run_details = omics_service.get_run(run_id)
                 except Exception as e:
                     print(f"Error getting details for run {run_id}: {str(e)}")
-            
+
             try:
                 # Create new run record
                 new_run = WorkflowRun(
@@ -229,7 +234,7 @@ def sync_runs(runs_from_file=None):
                     else:
                         # If it's already a datetime object
                         created_date = created
-                        
+
                     if created_date < cutoff:
                         runs_to_delete.append(run_id)
                 except (ValueError, TypeError) as e:
@@ -239,7 +244,7 @@ def sync_runs(runs_from_file=None):
     DB.session.commit()
 
     print(f"Sync complete. Total runs: {total_runs}, Updated: {updated_runs}, New: {new_runs}")
-    
+
     # Delete old runs if needed
     if runs_to_delete:
         delete_runs = input("Do you want to delete these runs from AWS Omics? (y/n): ")
@@ -255,9 +260,9 @@ def sync_runs(runs_from_file=None):
 
 if __name__ == "__main__":
     args = parse_arguments()
-    
+
     runs_from_file = None
     if args.file:
         runs_from_file = load_runs_from_file(args.file)
-    
+
     sync_runs(runs_from_file)
