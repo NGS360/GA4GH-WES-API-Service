@@ -88,15 +88,15 @@ class WorkflowRuns(Resource):
             from app.models.workflow import WorkflowRun
             db_runs = WorkflowRun.query.all()
             db_run_ids = {run.run_id for run in db_runs}
-            
+
             # Get runs from AWS Omics
             response = omics_service.list_runs()
             omics_runs = response.get('items', [])
             omics_run_ids = {run['id'] for run in omics_runs}
-            
+
             # Combine runs from both sources
             runs = []
-            
+
             # Add all database runs
             for run in db_runs:
                 runs.append({
@@ -104,7 +104,7 @@ class WorkflowRuns(Resource):
                     'state': run.state,
                     'source': 'database'
                 })
-            
+
             # Add Omics runs that aren't in the database
             for run in omics_runs:
                 if run['id'] not in db_run_ids:
@@ -116,7 +116,7 @@ class WorkflowRuns(Resource):
             
             # Sort runs by run_id for consistency
             runs.sort(key=lambda x: x['run_id'])
-            
+
             return {
                 'runs': runs,
                 'next_page_token': response.get('nextToken', ''),
