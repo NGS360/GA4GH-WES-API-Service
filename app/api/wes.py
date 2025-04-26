@@ -6,10 +6,11 @@ from flask import current_app, request
 from flask_restx import Namespace, Resource, fields
 from app.models.workflow import WorkflowRun as WorkflowRunModel
 from app.extensions import DB
+from app.services.wes_factory import WesFactory
 from app.services.aws_omics import HealthOmicsService
 
-# Initialize AWS HealthOmics service
-omics_service = HealthOmicsService()
+# Initialize WES service
+wes_service = WesFactory.create_provider()
 
 # Create namespace
 api = Namespace('ga4gh/wes/v1', description='Workflow Execution Service API')
@@ -84,12 +85,12 @@ class WorkflowRuns(Resource):
     def get(self): # pylint: disable=inconsistent-return-statements
         """List workflow runs"""
         try:
-            response = omics_service.list_runs()
+            response = wes_service.list_runs()
             runs = []
             for run in response.get('items', []):
                 runs.append({
                     'run_id': run['id'],
-                    'state': omics_service.map_run_state(run['status'])
+                    'state': wes_service.map_run_state(run['status'])
                 })
             return {
                 'runs': runs,
@@ -107,8 +108,8 @@ class WorkflowRuns(Resource):
             workflow_params = api.payload.get('workflow_params', {})
             tags = api.payload.get('tags', {})
 
-            # Start AWS HealthOmics workflow run
-            run_id = omics_service.start_run(
+            # Start workflow run
+            run_id = wes_service.start_run(
                 workflow_id=api.payload['workflow_url'],
                 role_arn=os.environ['AWS_OMICS_ROLE_ARN'],
                 parameters=workflow_params,
@@ -141,9 +142,9 @@ class WorkflowRun(Resource):
     def get(self, run_id): # pylint: disable=inconsistent-return-statements
         """Get detailed run log"""
         try:
-            run = omics_service.get_run(run_id)
+            run = wes_service.get_run(run_id)
 
-            state = omics_service.map_run_state(run['status'])
+            state = wes_service.map_run_state(run['status'])
             start_time = run.get('startTime')
             end_time = run.get('stopTime')
 
@@ -169,10 +170,10 @@ class WorkflowRunStatus(Resource):
     def get(self, run_id): # pylint: disable=inconsistent-return-statements
         """Get run status"""
         try:
-            run = omics_service.get_run(run_id)
+            run = wes_service.get_run(run_id)
             return {
                 'run_id': run_id,
-                'state': omics_service.map_run_state(run['status'])
+                'state': wes_service.map_run_state(run['status'])
             }
         except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to get run status {run_id}: {str(e)}")
@@ -183,7 +184,7 @@ class WorkflowRunCancel(Resource):
     def post(self, run_id): # pylint: disable=inconsistent-return-statements
         """Cancel a run"""
         try:
-            omics_service.cancel_run(run_id)
+            wes_service.cancel_run(run_id)
             return {'run_id': run_id}
         except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to cancel run {run_id}: {str(e)}")
@@ -197,7 +198,7 @@ class WorkflowTasks(Resource):
         """List tasks for a workflow run"""
         try:
             # Get AWS HealthOmics run details
-            run = omics_service.get_run(run_id)
+            run = wes_service.get_run(run_id)
 
             # Get pagination parameters
             page_size = request.args.get('page_size', 100, type=int)
@@ -250,8 +251,8 @@ class WorkflowTask(Resource):
     def get(self, run_id, task_id): # pylint: disable=inconsistent-return-statements
         """Get task details"""
         try:
-            # Get AWS HealthOmics run details
-            run = omics_service.get_run(run_id)
+            # Get run details
+            run = wes_service.get_run(run_id)
 
             # Find the specific task
             task = None

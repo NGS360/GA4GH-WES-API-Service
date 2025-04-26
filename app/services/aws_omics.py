@@ -3,7 +3,9 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 
-class HealthOmicsService:
+from app.services.wes_provider import WesProvider
+
+class HealthOmicsService(WesProvider):
     """AWS HealthOmics Service wrapper"""
     def __init__(self):
         self.client = boto3.client('omics')
