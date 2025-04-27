@@ -19,6 +19,13 @@ class WorkflowRun(DB.Model):
     tags = DB.Column(DB.JSON)
     start_time = DB.Column(DB.DateTime)
     end_time = DB.Column(DB.DateTime)
+    
+    # New fields for tracking execution status
+    submitted_at = DB.Column(DB.DateTime)
+    processed_at = DB.Column(DB.DateTime)
+    processed = DB.Column(DB.Boolean, default=False)
+    external_id = DB.Column(DB.String(100))  # ID from external system (e.g., AWS HealthOmics)
+    error_message = DB.Column(DB.Text)
 
 class TaskLog(DB.Model):
     """Task log model"""

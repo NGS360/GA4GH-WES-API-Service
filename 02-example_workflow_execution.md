@@ -7,6 +7,7 @@ The current system:
 - Implements the GA4GH WES API
 - Has a web UI for viewing and managing workflow runs
 - Does not show an example workflow execution with a test script
+- Currently, the API directly uses WesFactory to create a WesService to run workflows
 
 The expected future state:
 
@@ -14,171 +15,273 @@ The expected future state:
   a. Workflow submission
   b. Workflow status checking until completion or failure
 - Example execution is agnostic of healthomics or another service
+- The REST API logs workflow requests in a database
+- A separate service monitors the database and runs the workflows
 
 ## 2. Implementation Plan
 
-### 2.1 Create Test Directory Structure
+### 2.1 Update Workflow Run Model
 
-Create a new `tests` directory in the project root with the following structure:
-
-```
-tests/
-├── __init__.py
-├── integration/               # Integration tests
-│   ├── __init__.py
-│   └── test_workflow_execution.py  # Our example workflow test
-└── workflows/                 # Test workflow definitions
-    └── hello_world.cwl        # Simple "Hello World" workflow
-```
-
-### 2.2 Create Service-Agnostic API Client
-
-Create an abstract API client that can work with any WES implementation:
+Enhance the WorkflowRun model to include additional fields for tracking execution status:
 
 ```python
-# tests/wes_client.py
-import requests
-import time
-import os
+class WorkflowRun(DB.Model):
+    """Workflow run model"""
+    __tablename__ = 'workflow_runs'
 
-class WesClient:
-    """
-    A service-agnostic client for interacting with WES API implementations.
-    """
-    def __init__(self, base_url=None):
-        """
-        Initialize the WES client with a base URL.
-        If not provided, uses the environment variable WES_API_URL.
-        """
-        self.base_url = base_url or os.environ.get('WES_API_URL', 'http://localhost:5000/api/ga4gh/wes/v1')
-        
-    def get_service_info(self):
-        """Get information about the WES service"""
-        response = requests.get(f"{self.base_url}/service-info")
-        response.raise_for_status()
-        return response.json()
+    run_id = DB.Column(DB.String(36), primary_key=True)
+    name = DB.Column(DB.String(200), nullable=False)
+    state = DB.Column(DB.String(20), nullable=False)
+    workflow_params = DB.Column(DB.JSON)
+    workflow_type = DB.Column(DB.String(50), nullable=False)
+    workflow_type_version = DB.Column(DB.String(20), nullable=False)
+    workflow_engine = DB.Column(DB.String(50))
+    workflow_engine_version = DB.Column(DB.String(20))
+    workflow_url = DB.Column(DB.String(500), nullable=False)
+    tags = DB.Column(DB.JSON)
+    start_time = DB.Column(DB.DateTime)
+    end_time = DB.Column(DB.DateTime)
     
-    def list_runs(self):
-        """List all workflow runs"""
-        response = requests.get(f"{self.base_url}/runs")
-        response.raise_for_status()
-        return response.json()
+    # New fields
+    submitted_at = DB.Column(DB.DateTime)
+    processed_at = DB.Column(DB.DateTime)
+    processed = DB.Column(DB.Boolean, default=False)
+    external_id = DB.Column(DB.String(100))  # ID from external system (e.g., AWS HealthOmics)
+    error_message = DB.Column(DB.Text)
+```
+
+### 2.2 Modify API to Log Requests Only
+
+Update the WES API to only log workflow requests to the database without directly executing them:
+
+```python
+@api.route('/runs')
+class WorkflowRuns(Resource):
+    @api.doc('list_runs')
+    def get(self):
+        """List workflow runs"""
+        try:
+            # Query the database instead of calling the service directly
+            runs_query = WorkflowRunModel.query.all()
+            runs = []
+            for run in runs_query:
+                runs.append({
+                    'run_id': run.run_id,
+                    'state': run.state
+                })
+            return {
+                'runs': runs,
+                'next_page_token': ''  # Implement pagination as needed
+            }
+        except Exception as e:
+            current_app.logger.error(f"Failed to list runs: {str(e)}")
+            api.abort(500, f"Failed to list runs: {str(e)}")
+
+    @api.doc('run_workflow')
+    @api.expect(run_request)
+    def post(self):
+        """Run a workflow"""
+        try:
+            workflow_params = api.payload.get('workflow_params', {})
+            tags = api.payload.get('tags', {})
+
+            # Generate a unique run ID
+            import uuid
+            run_id = str(uuid.uuid4())
+
+            # Create local record without starting the actual workflow
+            new_run = WorkflowRunModel(
+                run_id=run_id,
+                name=api.payload.get('workflow_url', '').split('/')[-1],
+                state='QUEUED',
+                workflow_type=api.payload['workflow_type'],
+                workflow_type_version=api.payload['workflow_type_version'],
+                workflow_url=api.payload['workflow_url'],
+                workflow_params=workflow_params,
+                workflow_engine=api.payload.get('workflow_engine', 'aws-omics'),
+                workflow_engine_version=api.payload.get('workflow_engine_version'),
+                tags=tags,
+                submitted_at=datetime.utcnow(),
+                processed=False
+            )
+            DB.session.add(new_run)
+            DB.session.commit()
+
+            return {'run_id': run_id}
+        except Exception as e:
+            current_app.logger.error(f"Failed to queue workflow: {str(e)}")
+            api.abort(500, f"Failed to queue workflow: {str(e)}")
+```
+
+### 2.3 Create Workflow Execution Service
+
+Create a separate service that monitors the database for new workflow requests and executes them:
+
+```python
+# app/services/workflow_executor.py
+
+import time
+import logging
+from datetime import datetime
+from app.models.workflow import WorkflowRun
+from app.extensions import DB
+from app.services.wes_factory import WesFactory
+
+class WorkflowExecutor:
+    """Service to monitor and execute workflow requests from the database"""
     
-    def run_workflow(self, workflow_params, workflow_type, workflow_type_version, 
-                    workflow_url, tags=None, workflow_engine=None, 
-                    workflow_engine_version=None, workflow_engine_parameters=None,
-                    workflow_attachment=None):
-        """Submit a new workflow run"""
-        data = {
-            'workflow_params': workflow_params,
-            'workflow_type': workflow_type,
-            'workflow_type_version': workflow_type_version,
-            'workflow_url': workflow_url
-        }
-        
-        if tags:
-            data['tags'] = tags
-        if workflow_engine:
-            data['workflow_engine'] = workflow_engine
-        if workflow_engine_version:
-            data['workflow_engine_version'] = workflow_engine_version
-        if workflow_engine_parameters:
-            data['workflow_engine_parameters'] = workflow_engine_parameters
-            
-        files = {}
-        if workflow_attachment:
-            for i, attachment in enumerate(workflow_attachment):
-                files[f'workflow_attachment[{i}]'] = attachment
-                
-        if files:
-            response = requests.post(f"{self.base_url}/runs", data=data, files=files)
-        else:
-            response = requests.post(f"{self.base_url}/runs", json=data)
-            
-        response.raise_for_status()
-        return response.json()
-    
-    def get_run_status(self, run_id):
-        """Get the status of a workflow run"""
-        response = requests.get(f"{self.base_url}/runs/{run_id}/status")
-        response.raise_for_status()
-        return response.json()
-    
-    def get_run_log(self, run_id):
-        """Get detailed information about a workflow run"""
-        response = requests.get(f"{self.base_url}/runs/{run_id}")
-        response.raise_for_status()
-        return response.json()
-    
-    def cancel_run(self, run_id):
-        """Cancel a workflow run"""
-        response = requests.post(f"{self.base_url}/runs/{run_id}/cancel")
-        response.raise_for_status()
-        return response.json()
-    
-    def wait_for_run_completion(self, run_id, timeout=300, poll_interval=5):
-        """
-        Wait for a workflow run to complete, with timeout.
+    def __init__(self, poll_interval=10):
+        """Initialize the workflow executor
         
         Args:
-            run_id: The ID of the workflow run
-            timeout: Maximum time to wait in seconds
-            poll_interval: Time between status checks in seconds
-            
-        Returns:
-            The final run status
+            poll_interval: Time in seconds between database polls
         """
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            status = self.get_run_status(run_id)
-            state = status.get('state')
+        self.poll_interval = poll_interval
+        self.logger = logging.getLogger(__name__)
+        
+    def start(self):
+        """Start the workflow executor service"""
+        self.logger.info("Starting workflow executor service")
+        
+        while True:
+            try:
+                self._process_pending_workflows()
+                self._update_running_workflows()
+            except Exception as e:
+                self.logger.error(f"Error in workflow executor: {str(e)}")
             
-            # Check if the run has completed (successfully or not)
-            if state in ['COMPLETE', 'EXECUTOR_ERROR', 'SYSTEM_ERROR', 'CANCELED']:
-                return status
+            time.sleep(self.poll_interval)
+    
+    def _process_pending_workflows(self):
+        """Process pending workflow requests"""
+        # Find workflows that haven't been processed yet
+        pending_workflows = WorkflowRun.query.filter_by(processed=False).all()
+        
+        for workflow in pending_workflows:
+            try:
+                # Create appropriate WES provider based on workflow engine
+                wes_service = WesFactory.create_provider(workflow.workflow_engine)
                 
-            # Wait before checking again
-            time.sleep(poll_interval)
+                # Start the workflow
+                external_id = wes_service.start_run(
+                    workflow_id=workflow.workflow_url,
+                    parameters=workflow.workflow_params,
+                    output_uri=workflow.workflow_params.get('outputUri'),
+                    tags=workflow.tags
+                )
+                
+                # Update the workflow record
+                workflow.processed = True
+                workflow.processed_at = datetime.utcnow()
+                workflow.external_id = external_id
+                DB.session.commit()
+                
+                self.logger.info(f"Started workflow {workflow.run_id} with external ID {external_id}")
+            except Exception as e:
+                self.logger.error(f"Failed to start workflow {workflow.run_id}: {str(e)}")
+                workflow.state = 'SYSTEM_ERROR'
+                workflow.error_message = str(e)
+                workflow.processed = True
+                workflow.processed_at = datetime.utcnow()
+                DB.session.commit()
+    
+    def _update_running_workflows(self):
+        """Update status of running workflows"""
+        # Find workflows that are in progress
+        running_states = ['QUEUED', 'INITIALIZING', 'RUNNING']
+        running_workflows = WorkflowRun.query.filter(
+            WorkflowRun.state.in_(running_states),
+            WorkflowRun.processed == True
+        ).all()
+        
+        for workflow in running_workflows:
+            try:
+                # Create appropriate WES provider
+                wes_service = WesFactory.create_provider(workflow.workflow_engine)
+                
+                # Get current status
+                run_details = wes_service.get_run(workflow.external_id)
+                current_state = wes_service.map_run_state(run_details['status'])
+                
+                # Update if state has changed
+                if current_state != workflow.state:
+                    workflow.state = current_state
+                    
+                    # If workflow is complete, update end time
+                    if current_state in ['COMPLETE', 'EXECUTOR_ERROR', 'SYSTEM_ERROR', 'CANCELED']:
+                        workflow.end_time = datetime.utcnow()
+                    
+                    DB.session.commit()
+                    self.logger.info(f"Updated workflow {workflow.run_id} state to {current_state}")
+            except Exception as e:
+                self.logger.error(f"Failed to update workflow {workflow.run_id}: {str(e)}")
+```
+
+### 2.4 Create Command-Line Script for Executor Service
+
+Create a command-line script to run the workflow executor service:
+
+```python
+# scripts/run_workflow_executor.py
+
+#!/usr/bin/env python3
+import os
+import sys
+import logging
+from flask import Flask
+from app import create_app
+from app.services.workflow_executor import WorkflowExecutor
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+# Create Flask app with application context
+app = create_app()
+
+if __name__ == '__main__':
+    with app.app_context():
+        # Get poll interval from environment or use default
+        poll_interval = int(os.environ.get('WORKFLOW_POLL_INTERVAL', '10'))
+        
+        # Create and start the workflow executor
+        executor = WorkflowExecutor(poll_interval=poll_interval)
+        executor.start()
+```
+
+### 2.5 Update API Status Endpoints
+
+Update the API status endpoints to read from the database instead of directly calling the service:
+
+```python
+@api.route('/runs/<string:run_id>/status')
+class WorkflowRunStatus(Resource):
+    def get(self, run_id):
+        """Get run status"""
+        try:
+            # Query the database for the workflow
+            workflow = WorkflowRunModel.query.get(run_id)
             
-        raise TimeoutError(f"Workflow run {run_id} did not complete within {timeout} seconds")
+            if not workflow:
+                api.abort(404, f"Workflow run {run_id} not found")
+                
+            return {
+                'run_id': run_id,
+                'state': workflow.state
+            }
+        except Exception as e:
+            current_app.logger.error(f"Failed to get run status {run_id}: {str(e)}")
+            api.abort(500, f"Failed to get run status {run_id}: {str(e)}")
 ```
 
-### 2.3 Create a Simple Test Workflow
+### 2.6 Create a Test Client for the New Architecture
 
-Create a simple "Hello World" workflow in CWL format:
-
-```yaml
-# tests/workflows/hello_world.cwl
-
-cwlVersion: v1.0
-class: Workflow
-inputs: []
-outputs:
-  output_file:
-    type: File
-    outputSource: say_hello/output_file
-
-steps:
-  say_hello:
-    run:
-      class: CommandLineTool
-      baseCommand: [echo, "Hello, World!"]
-      stdout: hello.txt
-      inputs: []
-      outputs:
-        output_file:
-          type: stdout
-    in: []
-    out: [output_file]
-
-requirements:
-  DockerRequirement:
-    dockerPull: ubuntu:latest
-```
-
-### 2.4 Implement Integration Test
-
-Create a unittest-based integration test that demonstrates workflow execution:
+Create a unittest-based test client that demonstrates the workflow execution lifecycle:
 
 ```python
 # tests/integration/test_workflow_execution.py
@@ -189,12 +292,16 @@ import unittest
 import time
 from pathlib import Path
 from tests.wes_client import WesClient
+from tests.test_base import BaseTestCase
 
-class TestWorkflowExecution(unittest.TestCase):
+class TestWorkflowExecution(BaseTestCase):
     """Test the workflow execution lifecycle"""
     
     def setUp(self):
         """Set up test fixtures"""
+        # Call parent setUp to set up Flask app and database
+        super().setUp()
+        
         # Create WES client
         base_url = os.environ.get('WES_API_URL', 'http://localhost:5000/api/ga4gh/wes/v1')
         self.wes_client = WesClient(base_url)
@@ -212,7 +319,7 @@ class TestWorkflowExecution(unittest.TestCase):
         print(f"Service info: {json.dumps(service_info, indent=2)}")
         
         # Verify service supports CWL
-        self.assertIn('CWL', service_info.get('workflow_type_versions', {}),
+        self.assertIn('CWL', service_info.get('workflow_type_versions', {}), 
                      "Service does not support CWL")
         
         # Step 2: Submit workflow
@@ -249,7 +356,7 @@ class TestWorkflowExecution(unittest.TestCase):
             print(f"Run log: {json.dumps(run_log, indent=2)}")
             
             # Step 5: Verify the run completed successfully
-            self.assertEqual(final_status['state'], 'COMPLETE',
+            self.assertEqual(final_status['state'], 'COMPLETE', 
                            f"Workflow failed with state: {final_status['state']}")
             
         except TimeoutError as e:
@@ -261,198 +368,33 @@ if __name__ == '__main__':
     unittest.main()
 ```
 
-### 2.5 Make API Service-Agnostic
+## 3. Running the Example
 
-To make the API service-agnostic, we need to abstract the service provider implementation. This involves:
+To run the example workflow execution:
 
-1. Creating a service provider interface
-2. Implementing the interface for AWS HealthOmics
-3. Adding configuration-based selection of the service provider
-
-#### Service Provider Interface
-
-```python
-# app/services/wes_provider.py
-
-from abc import ABC, abstractmethod
-
-class WesProvider(ABC):
-    """Abstract base class for WES providers"""
-    
-    @abstractmethod
-    def start_run(self, workflow_id, role_arn, parameters=None, output_uri=None, tags=None):
-        """Start a workflow run"""
-        pass
-    
-    @abstractmethod
-    def get_run(self, run_id):
-        """Get run details"""
-        pass
-    
-    @abstractmethod
-    def list_runs(self, next_token=None, max_results=100):
-        """List workflow runs"""
-        pass
-    
-    @abstractmethod
-    def cancel_run(self, run_id):
-        """Cancel a workflow run"""
-        pass
-    
-    @abstractmethod
-    def map_run_state(self, provider_status):
-        """Map provider-specific status to WES state"""
-        pass
-```
-
-#### Update AWS HealthOmics Service
-
-Update the existing AWS HealthOmics service to implement the WesProvider interface:
-
-```python
-# app/services/aws_omics.py
-
-from app.services.wes_provider import WesProvider
-
-class HealthOmicsService(WesProvider):
-    """AWS HealthOmics Service implementation of WesProvider"""
-    # Existing implementation with WesProvider interface
-```
-
-#### Factory for Service Selection
-
-Create a factory to select the appropriate service provider:
-
-```python
-# app/services/wes_factory.py
-
-from app.services.aws_omics import HealthOmicsService
-# Import other providers as they are implemented
-
-class WesFactory:
-    """Factory for creating WES provider instances"""
-    
-    @staticmethod
-    def create_provider(provider_type=None):
-        """
-        Create a WES provider instance based on configuration.
-        
-        Args:
-            provider_type: The type of provider to create.
-                           If None, uses the configured default.
-        
-        Returns:
-            A WesProvider instance
-        """
-        if provider_type is None:
-            # Get from configuration
-            from flask import current_app
-            provider_type = current_app.config.get('WES_PROVIDER', 'aws-omics')
-            
-        if provider_type == 'aws-omics':
-            return HealthOmicsService()
-        # Add other providers as they are implemented
-        else:
-            raise ValueError(f"Unknown WES provider type: {provider_type}")
-```
-
-#### Update API Implementation
-
-Update the API implementation to use the factory:
-
-```python
-# app/api/wes.py
-
-from app.services.wes_factory import WesFactory
-
-# Initialize WES service
-wes_service = WesFactory.create_provider()
-
-# Use wes_service instead of omics_service throughout the file
-```
-
-### 2.6 Configure Test Environment
-
-For unittest-based testing, we can create a base test case class that handles the test environment setup:
-
-```python
-# tests/test_base.py
-
-import os
-import unittest
-import tempfile
-from flask import Flask
-from app import create_app
-from app.extensions import DB
-
-class BaseTestCase(unittest.TestCase):
-    """Base test case for all tests"""
-    
-    def setUp(self):
-        """Set up test environment"""
-        # Create a temporary file to use as a test database
-        self.db_fd, self.db_path = tempfile.mkstemp()
-        
-        self.app = create_app({
-            'TESTING': True,
-            'DATABASE_URL': f'sqlite:///{self.db_path}',
-            'WES_PROVIDER': 'aws-omics',  # Can be overridden by environment variable
-        })
-        
-        # Create the database and load test data
-        with self.app.app_context():
-            DB.create_all()
-            
-        self.client = self.app.test_client()
-    
-    def tearDown(self):
-        """Clean up after test"""
-        # Close and remove the temporary database
-        os.close(self.db_fd)
-        os.unlink(self.db_path)
-```
-
-## 3. Running the Integration Test
-
-To run the integration test:
-
-1. Install test dependencies:
+1. Start the Flask application:
    ```bash
-   pip install -r requirements-dev.txt
+   python application.py
    ```
 
-2. Set up the environment variables:
+2. In a separate terminal, start the workflow executor service:
    ```bash
-   export WES_API_URL=http://localhost:5000/api/ga4gh/wes/v1
-   export AWS_OMICS_ROLE_ARN=your-role-arn
+   python scripts/run_workflow_executor.py
    ```
 
-3. Run the test:
-   ```bash
-   python -m unittest tests/integration/test_workflow_execution.py
-   ```
-
-   Or run it directly:
+3. Run the integration test:
    ```bash
    python tests/integration/test_workflow_execution.py
    ```
 
-4. Run all tests:
-   ```bash
-    Run all tests using the run_tests.py script:
+## 4. Database Migration
 
-    ./tests/run_tests.py
-    ```
+Create a migration to add the new fields to the WorkflowRun model:
 
-    Use the unittest module:
-    ```bash
-    python -m unittest discover tests
-    ```
+```bash
+flask db migrate -m "Add workflow execution tracking fields"
+flask db upgrade
+```
 
-## 4. Future Enhancements
+## 5. Future Enhancements
 
-1. Add support for more workflow types (CWL, Nextflow)
-2. Implement additional WES providers (e.g., Cromwell, Toil)
-3. Add more complex workflow examples
-4. Create a mock WES provider for testing without external dependencies
-5. Add performance testing for workflow execution
