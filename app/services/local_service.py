@@ -1,6 +1,6 @@
 from app.services.wes_provider import WesProvider
 
-class MockProvider(WesProvider):
+class LocalService(WesProvider):
     """Abstract base class for WES providers"""
 
     def start_run(self, workflow_id, role_arn, parameters=None, output_uri=None, tags=None):
