@@ -13,7 +13,7 @@ class DefaultConfig: # pylint: disable=too-few-public-methods
     APP_AUTHOR = os.environ.get("APP_AUTHOR", "Ryan Golhar <ngsbioinformatics@gmail.com")
     DEBUG = os.environ.get("FLASK_DEBUG", False)
 
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI') or \
         'sqlite:///' + os.path.join(basedir, 'app.db'
     )
 
