@@ -24,7 +24,6 @@ Create a new `tests` directory in the project root with the following structure:
 ```
 tests/
 ├── __init__.py
-├── conftest.py                # Pytest configuration and fixtures
 ├── integration/               # Integration tests
 │   ├── __init__.py
 │   └── test_workflow_execution.py  # Our example workflow test
@@ -179,82 +178,87 @@ requirements:
 
 ### 2.4 Implement Integration Test
 
-Create a pytest-based integration test that demonstrates workflow execution:
+Create a unittest-based integration test that demonstrates workflow execution:
 
 ```python
 # tests/integration/test_workflow_execution.py
 
 import os
 import json
-import pytest
+import unittest
 import time
 from pathlib import Path
 from tests.wes_client import WesClient
 
-@pytest.fixture
-def wes_client():
-    """Create a WES client for testing"""
-    # Use environment variable or default to localhost
-    base_url = os.environ.get('WES_API_URL', 'http://localhost:5000/api/ga4gh/wes/v1')
-    return WesClient(base_url)
+class TestWorkflowExecution(unittest.TestCase):
+    """Test the workflow execution lifecycle"""
+    
+    def setUp(self):
+        """Set up test fixtures"""
+        # Create WES client
+        base_url = os.environ.get('WES_API_URL', 'http://localhost:5000/api/ga4gh/wes/v1')
+        self.wes_client = WesClient(base_url)
+        
+        # Get path to hello world workflow
+        workflow_path = Path(__file__).parent.parent / 'workflows' / 'hello_world.cwl'
+        self.assertTrue(workflow_path.exists(), f"Workflow file not found at {workflow_path}")
+        self.hello_world_workflow = str(workflow_path)
+    
+    def test_workflow_execution(self):
+        """Test the full workflow execution lifecycle"""
+        
+        # Step 1: Check service info
+        service_info = self.wes_client.get_service_info()
+        print(f"Service info: {json.dumps(service_info, indent=2)}")
+        
+        # Verify service supports CWL
+        self.assertIn('CWL', service_info.get('workflow_type_versions', {}),
+                     "Service does not support CWL")
+        
+        # Step 2: Submit workflow
+        with open(self.hello_world_workflow, 'r') as f:
+            workflow_content = f.read()
+        
+        workflow_params = {
+            "outputUri": "s3://my-test-bucket/outputs/"
+        }
+        
+        # Convert to JSON string as required by the API
+        workflow_params_str = json.dumps(workflow_params)
+        
+        # Submit the workflow
+        response = self.wes_client.run_workflow(
+            workflow_params=workflow_params_str,
+            workflow_type="CWL",
+            workflow_type_version="1.0",
+            workflow_url="hello_world.cwl",
+            workflow_attachment=[("hello_world.cwl", workflow_content, "application/text")]
+        )
+        
+        self.assertIn('run_id', response, "No run_id in response")
+        run_id = response['run_id']
+        print(f"Submitted workflow with run_id: {run_id}")
+        
+        # Step 3: Check status until completion
+        try:
+            final_status = self.wes_client.wait_for_run_completion(run_id, timeout=300)
+            print(f"Final status: {json.dumps(final_status, indent=2)}")
+            
+            # Step 4: Get detailed run log
+            run_log = self.wes_client.get_run_log(run_id)
+            print(f"Run log: {json.dumps(run_log, indent=2)}")
+            
+            # Step 5: Verify the run completed successfully
+            self.assertEqual(final_status['state'], 'COMPLETE',
+                           f"Workflow failed with state: {final_status['state']}")
+            
+        except TimeoutError as e:
+            # Cancel the run if it times out
+            self.wes_client.cancel_run(run_id)
+            raise e
 
-@pytest.fixture
-def hello_world_workflow():
-    """Get the path to the hello world workflow"""
-    workflow_path = Path(__file__).parent.parent / 'workflows' / 'hello_world.cwl'
-    assert workflow_path.exists(), f"Workflow file not found at {workflow_path}"
-    return str(workflow_path)
-
-def test_workflow_execution(wes_client, hello_world_workflow):
-    """Test the full workflow execution lifecycle"""
-    
-    # Step 1: Check service info
-    service_info = wes_client.get_service_info()
-    print(f"Service info: {json.dumps(service_info, indent=2)}")
-    
-    # Verify service supports CWL
-    assert 'CWL' in service_info.get('workflow_type_versions', {}), "Service does not support CWL"
-    
-    # Step 2: Submit workflow
-    with open(hello_world_workflow, 'r') as f:
-        workflow_content = f.read()
-    
-    workflow_params = {
-        "outputUri": "s3://my-test-bucket/outputs/"
-    }
-    
-    # Convert to JSON string as required by the API
-    workflow_params_str = json.dumps(workflow_params)
-    
-    # Submit the workflow
-    response = wes_client.run_workflow(
-        workflow_params=workflow_params_str,
-        workflow_type="CWL",
-        workflow_type_version="1.0",
-        workflow_url="hello_world.cwl",
-        workflow_attachment=[("hello_world.cwl", workflow_content, "application/text")]
-    )
-    
-    assert 'run_id' in response, "No run_id in response"
-    run_id = response['run_id']
-    print(f"Submitted workflow with run_id: {run_id}")
-    
-    # Step 3: Check status until completion
-    try:
-        final_status = wes_client.wait_for_run_completion(run_id, timeout=300)
-        print(f"Final status: {json.dumps(final_status, indent=2)}")
-        
-        # Step 4: Get detailed run log
-        run_log = wes_client.get_run_log(run_id)
-        print(f"Run log: {json.dumps(run_log, indent=2)}")
-        
-        # Step 5: Verify the run completed successfully
-        assert final_status['state'] == 'COMPLETE', f"Workflow failed with state: {final_status['state']}"
-        
-    except TimeoutError as e:
-        # Cancel the run if it times out
-        wes_client.cancel_run(run_id)
-        raise e
+if __name__ == '__main__':
+    unittest.main()
 ```
 
 ### 2.5 Make API Service-Agnostic
@@ -369,44 +373,43 @@ wes_service = WesFactory.create_provider()
 
 ### 2.6 Configure Test Environment
 
-Create a pytest configuration file:
+For unittest-based testing, we can create a base test case class that handles the test environment setup:
 
 ```python
-# tests/conftest.py
+# tests/test_base.py
 
 import os
-import pytest
+import unittest
 import tempfile
 from flask import Flask
 from app import create_app
 from app.extensions import DB
 
-@pytest.fixture
-def app():
-    """Create and configure a Flask app for testing"""
-    # Create a temporary file to use as a test database
-    db_fd, db_path = tempfile.mkstemp()
+class BaseTestCase(unittest.TestCase):
+    """Base test case for all tests"""
     
-    app = create_app({
-        'TESTING': True,
-        'DATABASE_URL': f'sqlite:///{db_path}',
-        'WES_PROVIDER': 'aws-omics',  # Can be overridden by environment variable
-    })
+    def setUp(self):
+        """Set up test environment"""
+        # Create a temporary file to use as a test database
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        
+        self.app = create_app({
+            'TESTING': True,
+            'DATABASE_URL': f'sqlite:///{self.db_path}',
+            'WES_PROVIDER': 'aws-omics',  # Can be overridden by environment variable
+        })
+        
+        # Create the database and load test data
+        with self.app.app_context():
+            DB.create_all()
+            
+        self.client = self.app.test_client()
     
-    # Create the database and load test data
-    with app.app_context():
-        DB.create_all()
-    
-    yield app
-    
-    # Close and remove the temporary database
-    os.close(db_fd)
-    os.unlink(db_path)
-
-@pytest.fixture
-def client(app):
-    """A test client for the app"""
-    return app.test_client()
+    def tearDown(self):
+        """Clean up after test"""
+        # Close and remove the temporary database
+        os.close(self.db_fd)
+        os.unlink(self.db_path)
 ```
 
 ## 3. Running the Integration Test
@@ -426,8 +429,25 @@ To run the integration test:
 
 3. Run the test:
    ```bash
-   pytest tests/integration/test_workflow_execution.py -v
+   python -m unittest tests/integration/test_workflow_execution.py
    ```
+
+   Or run it directly:
+   ```bash
+   python tests/integration/test_workflow_execution.py
+   ```
+
+4. Run all tests:
+   ```bash
+    Run all tests using the run_tests.py script:
+
+    ./tests/run_tests.py
+    ```
+
+    Use the unittest module:
+    ```bash
+    python -m unittest discover tests
+    ```
 
 ## 4. Future Enhancements
 
