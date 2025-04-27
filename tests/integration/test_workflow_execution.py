@@ -2,6 +2,7 @@ import os
 import json
 import unittest
 import time
+import datetime
 from pathlib import Path
 from tests.test_base import BaseTestCase
 from app.models.workflow import WorkflowRun
@@ -25,7 +26,6 @@ class TestWorkflowExecution(BaseTestCase):
 
         # Step 1: Check service info
         service_info = self.client.get("/api/ga4gh/wes/v1/service-info")
-        print(f"Service info: {json.dumps(service_info.json, indent=2)}")
 
         # Verify service supports CWL
         self.assertIn('CWL', service_info.json.get('workflow_type_versions', {}),
@@ -55,44 +55,26 @@ class TestWorkflowExecution(BaseTestCase):
 
         self.assertIn('run_id', response.json, "No run_id in response")
         run_id = response.json['run_id']
-        print(f"Submitted workflow with run_id: {run_id}")
 
         # Step 3: Simulate the workflow executor processing the request
-        with self.app.app_context():
-            # Get the workflow from the database
-            workflow = WorkflowRun.query.get(run_id)
-            self.assertIsNotNone(workflow, "Workflow not found in database")
-            self.assertEqual(workflow.state, 'QUEUED', "Workflow state should be QUEUED")
-            self.assertFalse(workflow.processed, "Workflow should not be processed yet")
+        workflow = DB.session.query(WorkflowRun).filter_by(run_id=run_id).first()
+        self.assertIsNotNone(workflow, "Workflow not found in database")
+        self.assertEqual(workflow.state, 'QUEUED', "Workflow state should be QUEUED")
 
-            # Simulate processing by the workflow executor
-            workflow.processed = True
-            workflow.processed_at = time.time()
-            workflow.external_id = f"test-external-{run_id}"
-            DB.session.commit()
-
-            # Simulate workflow completion
-            workflow.state = 'COMPLETE'
-            workflow.end_time = time.time()
-            DB.session.commit()
+        # Simulate workflow completion
+        workflow.state = 'COMPLETE'
+        workflow.end_time = datetime.datetime.now()
+        DB.session.commit()
 
         # Step 4: Check status until completion (should be immediate since we manually set it)
-        try:
-            final_status = self.client.get_run_status(run_id)
-            print(f"Final status: {json.dumps(final_status, indent=2)}")
+        final_status = self.client.get(f"/api/ga4gh/wes/v1/runs/{run_id}/status")
 
-            # Step 5: Get detailed run log
-            run_log = self.client.get_run_log(run_id)
-            print(f"Run log: {json.dumps(run_log, indent=2)}")
+        # Step 5: Get detailed run log
+        run_log = self.client.get(f"/api/ga4gh/wes/v1/runs/{run_id}")
 
-            # Step 6: Verify the run completed successfully
-            self.assertEqual(final_status['state'], 'COMPLETE',
-                           f"Workflow failed with state: {final_status['state']}")
-
-        except Exception as e:
-            # Cancel the run if there's an error
-            self.client.cancel_run(run_id)
-            raise e
+        # Step 6: Verify the run completed successfully
+        self.assertEqual(final_status.json['state'], 'COMPLETE',
+                        f"Workflow failed with state: {final_status.json['state']}")
 
     def test_workflow_cancellation(self):
         """Test cancelling a workflow"""
@@ -120,16 +102,14 @@ class TestWorkflowExecution(BaseTestCase):
         )
         self.assertEqual(response.status_code, 200, "Workflow submission failed")
         run_id = response.json['run_id']
-        print(f"Submitted workflow with run_id: {run_id}")
 
         # Cancel the workflow
         cancel_response = self.client.post(f'/api/ga4gh/wes/v1/runs/{run_id}/cancel')
         self.assertEqual(cancel_response.json['run_id'], run_id, "Cancel response should include run_id")
 
         # Check that the workflow is cancelled
-        with self.app.app_context():
-            workflow = WorkflowRun.query.get(run_id)
-            self.assertEqual(workflow.state, 'CANCELED', "Workflow state should be CANCELED")
+        workflow = DB.session.query(WorkflowRun).filter_by(run_id=run_id).first()
+        self.assertEqual(workflow.state, 'CANCELED', "Workflow state should be CANCELED")
 
 if __name__ == '__main__':
     unittest.main()

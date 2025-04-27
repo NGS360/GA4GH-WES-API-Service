@@ -1,6 +1,6 @@
 ''' GA4GH WES API Implementation '''
 #pylint: disable=missing-module-docstring, missing-class-docstring
-from datetime import datetime
+import datetime
 import uuid
 from flask_restx import Namespace, Resource, fields
 from app.models.workflow import WorkflowRun as WorkflowRunModel, TaskLog
@@ -83,7 +83,7 @@ class WorkflowRuns(Resource):
             workflow_engine=api.payload.get('workflow_engine'),
             workflow_engine_version=api.payload.get('workflow_engine_version'),
             tags=api.payload.get('tags'),
-            start_time=datetime.utcnow()
+            start_time=datetime.datetime.now(datetime.UTC)
         )
         DB.session.add(new_run)
         DB.session.commit()
@@ -93,8 +93,10 @@ class WorkflowRuns(Resource):
 class WorkflowRun(Resource):
     def get(self, run_id):
         """Get detailed run log"""
-        run = WorkflowRunModel.query.get_or_404(run_id)
-        tasks = TaskLog.query.filter_by(run_id=run_id).all()
+        run = DB.session.query(WorkflowRunModel).filter_by(run_id=run_id).first()
+        if not run:
+            return {'error': 'Run not found'}, 404
+        tasks = DB.session.query(TaskLog).filter_by(run_id=run_id).all()
 
         return {
             'run_id': run.run_id,
@@ -120,7 +122,7 @@ class WorkflowRun(Resource):
 class WorkflowRunStatus(Resource):
     def get(self, run_id):
         """Get run status"""
-        run = WorkflowRunModel.query.get_or_404(run_id)
+        run = DB.session.query(WorkflowRunModel).filter_by(run_id=run_id).first()
         return {
             'run_id': run.run_id,
             'state': run.state
@@ -130,7 +132,7 @@ class WorkflowRunStatus(Resource):
 class WorkflowRunCancel(Resource):
     def post(self, run_id):
         """Cancel a run"""
-        run = WorkflowRunModel.query.get_or_404(run_id)
+        run = DB.session.query(WorkflowRunModel).filter_by(run_id=run_id).first()
         run.state = 'CANCELED'
         DB.session.commit()
         return {'run_id': run_id}
