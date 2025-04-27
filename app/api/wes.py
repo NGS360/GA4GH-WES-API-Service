@@ -87,7 +87,6 @@ class WorkflowRuns(Resource):
         )
         DB.session.add(new_run)
         DB.session.commit()
-
         return {'run_id': run_id}
 
 @api.route('/runs/<string:run_id>')
