@@ -1,6 +1,9 @@
 """Application Config profiles"""
 import os
+from dotenv import load_dotenv
+
 basedir = os.path.abspath(os.path.dirname(__file__))
+load_dotenv()
 
 class DefaultConfig: # pylint: disable=too-few-public-methods
     """Default Config profile"""

@@ -3,12 +3,10 @@ Main application entry point
 '''
 import os
 from flask import current_app
-from dotenv import load_dotenv
 from sqlalchemy.sql import text
 from app import create_app
 from app.extensions import DB
 
-load_dotenv()
 application = create_app()
 
 @application.route('/healthcheck')
