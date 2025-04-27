@@ -1,11 +1,12 @@
 import os
+from app.services.local_service import LocalService
 from app.services.arvados import ArvadosService
 from app.services.aws_omics import HealthOmicsService
 from app.services.sevenbridges import SevenBridgesService
 # Import other providers as they are implemented
 
 SUPPORTED_SERVICES = {
-    'Local': 'LocalService',
+    'Local': LocalService,
     'Arvados': ArvadosService,
     'Omics': HealthOmicsService,
     'SevenBridges': SevenBridgesService
