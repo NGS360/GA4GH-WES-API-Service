@@ -4,7 +4,7 @@ class WesProvider(ABC):
     """Abstract base class for WES providers"""
 
     @abstractmethod
-    def start_run(self, workflow_id, role_arn, parameters=None, output_uri=None, tags=None):
+    def start_run(self, workflow_id, parameters=None, output_uri=None, tags=None):
         """Start a workflow run"""
         pass
 

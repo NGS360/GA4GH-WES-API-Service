@@ -7,7 +7,6 @@ from flask_restx import Namespace, Resource, fields
 from app.models.workflow import WorkflowRun as WorkflowRunModel
 from app.extensions import DB
 from app.services.wes_factory import WesFactory
-from app.services.aws_omics import HealthOmicsService
 
 # Initialize WES service
 wes_service = WesFactory.create_provider()
@@ -111,7 +110,6 @@ class WorkflowRuns(Resource):
             # Start workflow run
             run_id = wes_service.start_run(
                 workflow_id=api.payload['workflow_url'],
-                role_arn=os.environ['AWS_OMICS_ROLE_ARN'],
                 parameters=workflow_params,
                 output_uri=workflow_params.get('outputUri'),
                 tags=tags

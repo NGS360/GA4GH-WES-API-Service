@@ -10,12 +10,11 @@ class ArvadosService(WesProvider):
     def __init__(self):
         self.client = boto3.client('omics')
 
-    def start_run(self, workflow_id, role_arn, parameters=None, output_uri=None, tags=None):
+    def start_run(self, workflow_id, parameters=None, output_uri=None, tags=None):
         """Start a workflow run"""
         try:
             request = {
                 'workflowId': workflow_id,
-                'roleArn': role_arn,
                 'parameters': parameters or {},
                 'outputUri': output_uri,
                 'tags': tags or {}
