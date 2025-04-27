@@ -1,6 +1,8 @@
 # GA4GH WES API Service
 
-A Flask-based implementation of the GA4GH WES API Service using AWS HealthOmics.
+GA4GH WES is designed like 1 service = 1 backend (for cleanness and portability).
+
+This Flask-based implementation of the GA4GH WES API Service uses AWS HealthOmics.
 
 ## Features
 
