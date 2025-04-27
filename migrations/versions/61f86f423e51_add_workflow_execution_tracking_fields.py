@@ -1,6 +1,6 @@
 """Add workflow execution tracking fields
 
-Revision ID: add_workflow_execution_tracking_fields
+Revision ID: 61f86f423e51
 Revises: 65510080a98b
 Create Date: 2025-04-26 20:47:00.000000
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'add_workflow_execution_tracking_fields'
+revision = '61f86f423e51'
 down_revision = '65510080a98b'
 branch_labels = None
 depends_on = None
