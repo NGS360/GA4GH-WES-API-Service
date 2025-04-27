@@ -5,8 +5,8 @@ from botocore.exceptions import ClientError
 
 from app.services.wes_provider import WesProvider
 
-class HealthOmicsService(WesProvider):
-    """AWS HealthOmics Service wrapper"""
+class SevenBridgesService(WesProvider):
+    """SevenBridges Service wrapper"""
     def __init__(self):
         self.client = boto3.client('omics')
 
