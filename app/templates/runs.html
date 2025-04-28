@@ -3,7 +3,7 @@
 {% block content %}
 <h2>Workflow Runs</h2>
 <div class="table-responsive">
-    <table id="runs-table" class="table table-striped">
+    <table class="table table-striped">
         <thead>
             <tr>
                 <th>Run ID</th>
@@ -19,7 +19,7 @@
             <tr>
                 <td>{{ run.run_id }}</td>
                 <td><span class="badge bg-{{ run.state|state_to_bootstrap }}">{{ run.state }}</span></td>
-                <td>{{ run.name }}</td>
+                <td>{{ run.tags.name if run.tags and 'name' in run.tags else '' }}</td>
                 <td>{{ run.start_time|datetime }}</td>
                 <td>{{ run.end_time|datetime }}</td>
                 <td>
@@ -35,23 +35,52 @@
         </tbody>
     </table>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-$(document).ready(function() {
-    $('#runs-table').DataTable({
-        pageLength: 25,
-        order: [[3, 'desc']], // Sort by Start Time descending by default
-        columns: [
-            null,                  // Run ID
-            { orderable: false },  // Status
-            null,                  // Name
-            null,                  // Start Time
-            null,                  // End Time
-            { orderable: false }   // Actions
-        ]
-    });
-});
-</script>
+<!-- Pagination Controls -->
+<nav aria-label="Workflow runs pagination">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            Showing runs {{ start_run }}-{{ end_run }} of {{ total_runs }}
+            <br>
+            <small class="text-muted">Page {{ current_page }} of {{ total_pages }}</small>
+        </div>
+        <ul class="pagination">
+            {% if prev_page_token is not none %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('web.runs', page_size=page_size, page_token=prev_page_token) }}">Previous</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <span class="page-link">Previous</span>
+            </li>
+            {% endif %}
+            
+            {% if next_page_token %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('web.runs', page_size=page_size, page_token=next_page_token) }}">Next</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled">
+                <span class="page-link">Next</span>
+            </li>
+            {% endif %}
+        </ul>
+        <div>
+            <form class="d-flex" action="{{ url_for('web.runs') }}" method="GET">
+                <div class="input-group">
+                    <label class="input-group-text" for="page-size">Page Size:</label>
+                    <select class="form-select" id="page-size" name="page_size" onchange="this.form.submit()">
+                        <option value="10" {% if page_size == 10 %}selected{% endif %}>10</option>
+                        <option value="25" {% if page_size == 25 %}selected{% endif %}>25</option>
+                        <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
+                        <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
+                    </select>
+                </div>
+                {% if current_page_token %}
+                <input type="hidden" name="page_token" value="{{ current_page_token }}">
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</nav>
 {% endblock %}
