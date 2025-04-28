@@ -19,7 +19,7 @@
             <tr>
                 <td>{{ run.run_id }}</td>
                 <td><span class="badge bg-{{ run.state|state_to_bootstrap }}">{{ run.state }}</span></td>
-                <td>{{ run.name }}</td>
+                <td>{{ run.tags.name if run.tags and 'name' in run.tags else '' }}</td>
                 <td>{{ run.start_time|datetime }}</td>
                 <td>{{ run.end_time|datetime }}</td>
                 <td>
