@@ -66,17 +66,18 @@ class WorkflowRuns(Resource):
         # Parse pagination parameters
         page_size = request.args.get('page_size', type=int, default=50)
         page_token = request.args.get('page_token', type=str, default='0')
-        
+
         try:
             # Convert page_token to offset
             offset = int(page_token)
         except ValueError:
             # Handle invalid page_token
             return {'msg': 'Invalid page_token', 'status_code': 400}, 400
-        
+
         # Query with pagination
-        runs = WorkflowRunModel.query.order_by(WorkflowRunModel.start_time.desc()).limit(page_size + 1).offset(offset).all()
-        
+        runs = WorkflowRunModel.query.order_by(
+            WorkflowRunModel.start_time.desc()).limit(page_size + 1).offset(offset).all()
+
         # Check if there are more results
         has_next_page = len(runs) > page_size
         if has_next_page:
