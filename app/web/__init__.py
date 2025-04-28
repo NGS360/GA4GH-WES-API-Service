@@ -13,21 +13,21 @@ def index():
 @web.route('/runs')
 def runs():
     # List all the runs from the REST API
-    runs = WorkflowRuns().get()
-    return render_template('runs.html', runs=runs)
+    runs_list = WorkflowRuns().get()
+    return render_template('runs.html', runs=runs_list)
 
 @web.route('/runs/<run_id>')
 def run_detail(run_id):
     run_data = WorkflowRun().get(run_id)
     return render_template('run_detail.html', run=run_data, tasks=None)
 
-@web.route('/runs/new', methods=['GET', 'POST'])
+@web.route('/runs/new', methods=['GET'])
 def new_run():
     if request.method == 'POST':
-        workflow_params = json.loads(request.form.get('workflow_params', '{}'))
-        run_id = WorkflowRuns().post(workflow_params)
-        flash(f'Workflow run started with ID: {run_id}', 'success')
-        return redirect(url_for('web.run_detail', run_id=run_id))
+        #workflow_params = json.loads(request.form.get('workflow_params', '{}'))
+        #run_id = WorkflowRuns().post(workflow_params)
+        flash(f'Submit the run using the POST endpoint', 'error')
+        #return redirect(url_for('web.run_detail', run_id=run_id))
     return render_template('new_run.html')
 
 @web.route('/runs/<run_id>/cancel', methods=['POST'])
