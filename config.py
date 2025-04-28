@@ -1,6 +1,9 @@
 """Application Config profiles"""
 import os
+from dotenv import load_dotenv
+
 basedir = os.path.abspath(os.path.dirname(__file__))
+load_dotenv()
 
 class DefaultConfig: # pylint: disable=too-few-public-methods
     """Default Config profile"""
@@ -15,7 +18,7 @@ class DefaultConfig: # pylint: disable=too-few-public-methods
 
     SECRET_KEY = os.environ.get("SECRET_KEY", "changeme")
 
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI') or \
         'sqlite:///' + os.path.join(basedir, 'app.db'
     )
 

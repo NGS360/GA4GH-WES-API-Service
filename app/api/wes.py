@@ -2,14 +2,15 @@
 #pylint: disable=missing-module-docstring, missing-class-docstring
 from datetime import datetime
 import os
+import uuid
 from flask import current_app, request
 from flask_restx import Namespace, Resource, fields
 from app.models.workflow import WorkflowRun as WorkflowRunModel
 from app.extensions import DB
-from app.services.aws_omics import HealthOmicsService
+from app.services.wes_factory import WesFactory
 
-# Initialize AWS HealthOmics service
-omics_service = HealthOmicsService()
+# Initialize WES service for read-only operations
+wes_service = WesFactory.create_provider()
 
 # Create namespace
 api = Namespace('ga4gh/wes/v1', description='Workflow Execution Service API')
@@ -84,16 +85,17 @@ class WorkflowRuns(Resource):
     def get(self): # pylint: disable=inconsistent-return-statements
         """List workflow runs"""
         try:
-            response = omics_service.list_runs()
+            # Query the database instead of calling the service directly
+            runs_query = WorkflowRunModel.query.all()
             runs = []
-            for run in response.get('items', []):
+            for run in runs_query:
                 runs.append({
-                    'run_id': run['id'],
-                    'state': omics_service.map_run_state(run['status'])
+                    'run_id': run.run_id,
+                    'state': run.state
                 })
             return {
                 'runs': runs,
-                'next_page_token': response.get('nextToken', '')
+                'next_page_token': ''  # Implement pagination as needed
             }
         except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to list runs: {str(e)}")
@@ -107,25 +109,23 @@ class WorkflowRuns(Resource):
             workflow_params = api.payload.get('workflow_params', {})
             tags = api.payload.get('tags', {})
 
-            # Start AWS HealthOmics workflow run
-            run_id = omics_service.start_run(
-                workflow_id=api.payload['workflow_url'],
-                role_arn=os.environ['AWS_OMICS_ROLE_ARN'],
-                parameters=workflow_params,
-                output_uri=workflow_params.get('outputUri'),
-                tags=tags
-            )
+            # Generate a unique run ID
+            run_id = str(uuid.uuid4())
 
-            # Create local record
+            # Create local record without starting the actual workflow
             new_run = WorkflowRunModel(
                 run_id=run_id,
+                name=api.payload.get('workflow_url', '').split('/')[-1],
                 state='QUEUED',
                 workflow_type=api.payload['workflow_type'],
                 workflow_type_version=api.payload['workflow_type_version'],
                 workflow_url=api.payload['workflow_url'],
                 workflow_params=workflow_params,
-                workflow_engine='aws-omics',
+                workflow_engine=api.payload.get('workflow_engine', 'aws-omics'),
+                workflow_engine_version=api.payload.get('workflow_engine_version'),
                 tags=tags,
+                submitted_at=datetime.utcnow(),
+                processed=False,
                 start_time=datetime.utcnow()
             )
             DB.session.add(new_run)
@@ -133,32 +133,64 @@ class WorkflowRuns(Resource):
 
             return {'run_id': run_id}
         except Exception as e: # pylint: disable=broad-exception-caught
-            current_app.logger.error(f"Failed to start run: {str(e)}")
-            api.abort(500, f"Failed to start run: {str(e)}")
+            current_app.logger.error(f"Failed to queue workflow: {str(e)}")
+            api.abort(500, f"Failed to queue workflow: {str(e)}")
 
 @api.route('/runs/<string:run_id>')
 class WorkflowRun(Resource):
     def get(self, run_id): # pylint: disable=inconsistent-return-statements
         """Get detailed run log"""
         try:
-            run = omics_service.get_run(run_id)
-
-            state = omics_service.map_run_state(run['status'])
-            start_time = run.get('startTime')
-            end_time = run.get('stopTime')
-
+            # First check the database
+            workflow = WorkflowRunModel.query.get(run_id)
+            
+            if not workflow:
+                api.abort(404, f"Workflow run {run_id} not found")
+            
+            # If the workflow has been processed, get details from the service
+            if workflow.processed and workflow.external_id:
+                try:
+                    run = wes_service.get_run(workflow.external_id)
+                    
+                    # Update state if needed
+                    current_state = wes_service.map_run_state(run['status'])
+                    if current_state != workflow.state:
+                        workflow.state = current_state
+                        DB.session.commit()
+                    
+                    start_time = run.get('startTime')
+                    end_time = run.get('stopTime')
+                    
+                    return {
+                        'run_id': run_id,
+                        'state': current_state,
+                        'run_log': {
+                            'name': run.get('name', 'workflow'),
+                            'start_time': start_time.isoformat() if start_time else None,
+                            'end_time': end_time.isoformat() if end_time else None,
+                            'stdout': run.get('outputUri'),
+                            'stderr': run.get('logStream')
+                        },
+                        'task_logs': [],  # AWS HealthOmics doesn't provide detailed task logs
+                        'outputs': run.get('output', {})
+                    }
+                except Exception as e:
+                    current_app.logger.warning(f"Failed to get external run details: {str(e)}")
+                    # Fall back to database info
+            
+            # Return information from the database
             return {
                 'run_id': run_id,
-                'state': state,
+                'state': workflow.state,
                 'run_log': {
-                    'name': run.get('name', 'workflow'),
-                    'start_time': start_time.isoformat() if start_time else None,
-                    'end_time': end_time.isoformat() if end_time else None,
-                    'stdout': run.get('outputUri'),
-                    'stderr': run.get('logStream')
+                    'name': workflow.name,
+                    'start_time': workflow.start_time.isoformat() if workflow.start_time else None,
+                    'end_time': workflow.end_time.isoformat() if workflow.end_time else None,
+                    'stdout': None,
+                    'stderr': None
                 },
-                'task_logs': [],  # AWS HealthOmics doesn't provide detailed task logs
-                'outputs': run.get('output', {})
+                'task_logs': [],
+                'outputs': {}
             }
         except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to get run {run_id}: {str(e)}")
@@ -169,10 +201,34 @@ class WorkflowRunStatus(Resource):
     def get(self, run_id): # pylint: disable=inconsistent-return-statements
         """Get run status"""
         try:
-            run = omics_service.get_run(run_id)
+            # Query the database for the workflow
+            workflow = WorkflowRunModel.query.get(run_id)
+            
+            if not workflow:
+                api.abort(404, f"Workflow run {run_id} not found")
+            
+            # If processed and has external ID, try to get latest status
+            if workflow.processed and workflow.external_id:
+                try:
+                    run = wes_service.get_run(workflow.external_id)
+                    current_state = wes_service.map_run_state(run['status'])
+                    
+                    # Update state if needed
+                    if current_state != workflow.state:
+                        workflow.state = current_state
+                        DB.session.commit()
+                    
+                    return {
+                        'run_id': run_id,
+                        'state': current_state
+                    }
+                except Exception as e:
+                    current_app.logger.warning(f"Failed to get external run status: {str(e)}")
+                    # Fall back to database state
+            
             return {
                 'run_id': run_id,
-                'state': omics_service.map_run_state(run['status'])
+                'state': workflow.state
             }
         except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to get run status {run_id}: {str(e)}")
@@ -183,7 +239,29 @@ class WorkflowRunCancel(Resource):
     def post(self, run_id): # pylint: disable=inconsistent-return-statements
         """Cancel a run"""
         try:
-            omics_service.cancel_run(run_id)
+            # Query the database for the workflow
+            workflow = WorkflowRunModel.query.get(run_id)
+            
+            if not workflow:
+                api.abort(404, f"Workflow run {run_id} not found")
+            
+            # If not processed yet, just mark as canceled in the database
+            if not workflow.processed:
+                workflow.state = 'CANCELED'
+                workflow.end_time = datetime.utcnow()
+                DB.session.commit()
+                return {'run_id': run_id}
+            
+            # If processed and has external ID, cancel in the external system
+            if workflow.external_id:
+                try:
+                    wes_service.cancel_run(workflow.external_id)
+                    workflow.state = 'CANCELING'
+                    DB.session.commit()
+                except Exception as e:
+                    current_app.logger.error(f"Failed to cancel external run: {str(e)}")
+                    api.abort(500, f"Failed to cancel run: {str(e)}")
+            
             return {'run_id': run_id}
         except Exception as e: # pylint: disable=broad-exception-caught
             current_app.logger.error(f"Failed to cancel run {run_id}: {str(e)}")
@@ -197,7 +275,7 @@ class WorkflowTasks(Resource):
         """List tasks for a workflow run"""
         try:
             # Get AWS HealthOmics run details
-            run = omics_service.get_run(run_id)
+            run = wes_service.get_run(run_id)
 
             # Get pagination parameters
             page_size = request.args.get('page_size', 100, type=int)
@@ -250,8 +328,8 @@ class WorkflowTask(Resource):
     def get(self, run_id, task_id): # pylint: disable=inconsistent-return-statements
         """Get task details"""
         try:
-            # Get AWS HealthOmics run details
-            run = omics_service.get_run(run_id)
+            # Get run details
+            run = wes_service.get_run(run_id)
 
             # Find the specific task
             task = None
