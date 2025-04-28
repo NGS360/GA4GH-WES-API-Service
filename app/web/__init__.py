@@ -18,16 +18,7 @@ def runs():
 
     # List runs from the REST API with pagination
     workflow_runs = WorkflowRuns()
-    runs_response = workflow_runs.get()
-
-    # Check if the API supports pagination parameters
-    # This is a workaround in case we're using an older version of the API
-    try:
-        # Try to call the get method with pagination parameters
-        runs_response = workflow_runs.get(page_size=page_size, page_token=page_token)
-    except TypeError:
-        # If the API doesn't support pagination parameters, use the default implementation
-        current_app.logger.warning("API doesn't support pagination parameters, using default implementation")
+    runs_response = workflow_runs.get(page_size=page_size, page_token=page_token)
 
     # Extract runs, next_page_token, and total_runs
     runs_list = runs_response.get('runs', [])
