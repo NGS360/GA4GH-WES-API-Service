@@ -1,6 +1,7 @@
 '''
 Main application entry point
 '''
+import os
 from flask import current_app
 from dotenv import load_dotenv
 from sqlalchemy.sql import text
@@ -28,4 +29,5 @@ def healthcheck():
 
 # Run the application
 if __name__ == "__main__":
-    application.run()
+    ip_host = os.environ.get('IP_HOST', "localhost")
+    application.run(host=ip_host)

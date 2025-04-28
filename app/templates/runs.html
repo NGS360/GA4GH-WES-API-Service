@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Workflow Runs</h2>
+<div class="table-responsive">
+    <table id="runs-table" class="table table-striped">
+        <thead>
+            <tr>
+                <th>Run ID</th>
+                <th>Status</th>
+                <th>Name</th>
+                <th>Start Time</th>
+                <th>End Time</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in runs %}
+            <tr>
+                <td>{{ run.run_id }}</td>
+                <td><span class="badge bg-{{ run.state|state_to_bootstrap }}">{{ run.state }}</span></td>
+                <td>{{ run.name }}</td>
+                <td>{{ run.start_time|datetime }}</td>
+                <td>{{ run.end_time|datetime }}</td>
+                <td>
+                    <a href="{{ url_for('web.run_detail', run_id=run.run_id) }}" class="btn btn-sm btn-info">Details</a>
+                    {% if run.state in ['QUEUED', 'RUNNING'] %}
+                    <form method="POST" action="{{ url_for('web.cancel_run', run_id=run.run_id) }}" style="display: inline;">
+                        <button type="submit" class="btn btn-sm btn-danger">Cancel</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function() {
+    $('#runs-table').DataTable({
+        pageLength: 25,
+        order: [[3, 'desc']], // Sort by Start Time descending by default
+        columns: [
+            null,                  // Run ID
+            { orderable: false },  // Status
+            null,                  // Name
+            null,                  // Start Time
+            null,                  // End Time
+            { orderable: false }   // Actions
+        ]
+    });
+});
+</script>
+{% endblock %}
