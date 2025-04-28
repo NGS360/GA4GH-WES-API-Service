@@ -68,7 +68,7 @@ def run_detail(run_id):
     run_data = WorkflowRun().get(run_id)
     return render_template('run_detail.html', run=run_data, tasks=None)
 
-@web.route('/runs/new', methods=['GET'])
+@web.route('/runs/new', methods=['GET', 'POST'])
 def new_run():
     if request.method == 'POST':
         #workflow_params = json.loads(request.form.get('workflow_params', '{}'))
