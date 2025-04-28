@@ -13,7 +13,7 @@ def index():
 @web.route('/runs')
 def runs():
     # Get pagination parameters from query string
-    page_size = request.args.get('page_size', default=50, type=int)
+    page_size = request.args.get('page_size', default=10, type=int)
     page_token = request.args.get('page_token', default='0', type=str)
     
     # List runs from the REST API with pagination
