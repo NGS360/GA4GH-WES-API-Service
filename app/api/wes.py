@@ -61,11 +61,13 @@ class WorkflowRuns(Resource):
         'page_size': 'OPTIONAL: The preferred number of workflow runs to return in a page.',
         'page_token': 'OPTIONAL: Token to use to indicate where to start getting results.'
     })
-    def get(self):
+    def get(self, page_size=None, page_token=None):
         """List workflow runs"""
-        # Parse pagination parameters
-        page_size = request.args.get('page_size', type=int, default=50)
-        page_token = request.args.get('page_token', type=str, default='0')
+        # Parse pagination parameters from request args if not provided directly
+        if page_size is None:
+            page_size = request.args.get('page_size', type=int, default=50)
+        if page_token is None:
+            page_token = request.args.get('page_token', type=str, default='0')
 
         try:
             # Convert page_token to offset
