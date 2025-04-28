@@ -8,7 +8,6 @@ class WorkflowRun(DB.Model):
     __tablename__ = 'workflow_runs'
 
     run_id = DB.Column(DB.String(36), primary_key=True)
-    name = DB.Column(DB.String(200), nullable=False)
     state = DB.Column(DB.String(20), nullable=False)
     workflow_params = DB.Column(DB.JSON)
     workflow_type = DB.Column(DB.String(50), nullable=False)

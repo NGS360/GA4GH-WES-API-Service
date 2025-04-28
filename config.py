@@ -15,13 +15,9 @@ class DefaultConfig: # pylint: disable=too-few-public-methods
 
     SECRET_KEY = os.environ.get("SECRET_KEY", "changeme")
 
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI') or \
         'sqlite:///' + os.path.join(basedir, 'app.db'
     )
-
-    # AWS Configuration
-    AWS_REGION = os.environ.get('AWS_REGION')
-    AWS_OMICS_ROLE_ARN = os.environ.get('AWS_OMICS_ROLE_ARN')
 
 class TestConfig(DefaultConfig): # pylint: disable=too-few-public-methods
     """Unit Test Config profile"""
