@@ -88,6 +88,9 @@ class WorkflowRuns(Resource):
         # Generate next_page_token
         next_page_token = str(offset + page_size) if has_next_page else ''
 
+        # Get total count of runs
+        total_runs = WorkflowRunModel.query.count()
+
         # Format response using RunSummary format
         return {
             'runs': [{
@@ -97,7 +100,8 @@ class WorkflowRuns(Resource):
                 'end_time': run.end_time.isoformat() if run.end_time else None,
                 'tags': run.tags or {}
             } for run in runs],
-            'next_page_token': next_page_token
+            'next_page_token': next_page_token,
+            'total_runs': total_runs
         }
 
     @api.doc('run_workflow')

@@ -40,7 +40,9 @@
 <nav aria-label="Workflow runs pagination">
     <div class="d-flex justify-content-between align-items-center">
         <div>
-            Showing {{ runs|length }} runs
+            Showing runs {{ start_run }}-{{ end_run }} of {{ total_runs }}
+            <br>
+            <small class="text-muted">Page {{ current_page }} of {{ total_pages }}</small>
         </div>
         <ul class="pagination">
             {% if prev_page_token is not none %}

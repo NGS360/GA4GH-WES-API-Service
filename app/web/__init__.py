@@ -15,11 +15,11 @@ def runs():
     # Get pagination parameters from query string
     page_size = request.args.get('page_size', default=10, type=int)
     page_token = request.args.get('page_token', default='0', type=str)
-    
+
     # List runs from the REST API with pagination
     workflow_runs = WorkflowRuns()
     runs_response = workflow_runs.get()
-    
+
     # Check if the API supports pagination parameters
     # This is a workaround in case we're using an older version of the API
     try:
@@ -28,11 +28,12 @@ def runs():
     except TypeError:
         # If the API doesn't support pagination parameters, use the default implementation
         current_app.logger.warning("API doesn't support pagination parameters, using default implementation")
-    
-    # Extract runs and next_page_token
+
+    # Extract runs, next_page_token, and total_runs
     runs_list = runs_response.get('runs', [])
     next_page_token = runs_response.get('next_page_token', '')
-    
+    total_runs = runs_response.get('total_runs', 0)
+
     # Calculate previous page token (if applicable)
     prev_page_token = None
     if page_token != '0':
@@ -43,13 +44,33 @@ def runs():
         except ValueError:
             # Invalid page token, ignore
             pass
-    
+
+    # Calculate current page number, total pages, and run range
+    try:
+        current_offset = int(page_token)
+        current_page = (current_offset // page_size) + 1
+        total_pages = (total_runs + page_size - 1) // page_size  # Ceiling division
+
+        # Calculate the range of runs being displayed
+        start_run = current_offset + 1
+        end_run = min(current_offset + page_size, total_runs)
+    except ValueError:
+        current_page = 1
+        total_pages = (total_runs + page_size - 1) // page_size
+        start_run = 1
+        end_run = min(page_size, total_runs)
+
     return render_template('runs.html',
                           runs=runs_list,
                           next_page_token=next_page_token,
                           prev_page_token=prev_page_token,
                           page_size=page_size,
-                          current_page_token=page_token)
+                          current_page_token=page_token,
+                          total_runs=total_runs,
+                          current_page=current_page,
+                          total_pages=total_pages,
+                          start_run=start_run,
+                          end_run=end_run)
 
 @web.route('/runs/<run_id>')
 def run_detail(run_id):
