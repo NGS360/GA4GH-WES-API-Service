@@ -1,8 +1,9 @@
 # GA4GH WES API Service
 
-GA4GH WES is designed like 1 service = 1 backend (for cleanness and portability).
+GA4GH WES is designed to be 1 service = 1 backend (for cleanness and portability).
 
-This Flask-based implementation of the GA4GH WES API Service uses AWS HealthOmics.
+This Flask-based implementation of the GA4GH WES API Service only logs run requests to a database.
+The seperate daemon monitors requests in the database and is responsible for execution on a given platform.
 
 ## Features
 
@@ -64,8 +65,6 @@ The application supports different configuration profiles:
 Key configuration options:
 - `DATABASE_URL`: Database connection URL
 - `SECRET_KEY`: Secret Key used by application to secure session information
-- `AWS_REGION`: AWS Region
-- `AWS_OMICS_ROLE_ARN`: AWS Omics Role
 
 ## Running the Application
 
