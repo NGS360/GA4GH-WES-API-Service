@@ -2,6 +2,7 @@
 #pylint: disable=missing-module-docstring, missing-class-docstring
 import datetime
 import uuid
+from flask import request
 from flask_restx import Namespace, Resource, fields
 from app.models.workflow import WorkflowRun as WorkflowRunModel, TaskLog
 from app.extensions import DB
@@ -56,16 +57,45 @@ class ServiceInfo(Resource):
 
 @api.route('/runs')
 class WorkflowRuns(Resource):
-    @api.doc('list_runs')
+    @api.doc('list_runs', params={
+        'page_size': 'OPTIONAL: The preferred number of workflow runs to return in a page.',
+        'page_token': 'OPTIONAL: Token to use to indicate where to start getting results.'
+    })
     def get(self):
         """List workflow runs"""
-        runs = WorkflowRunModel.query.all()
+        # Parse pagination parameters
+        page_size = request.args.get('page_size', type=int, default=50)
+        page_token = request.args.get('page_token', type=str, default='0')
+
+        try:
+            # Convert page_token to offset
+            offset = int(page_token)
+        except ValueError:
+            # Handle invalid page_token
+            return {'msg': 'Invalid page_token', 'status_code': 400}, 400
+
+        # Query with pagination
+        runs = WorkflowRunModel.query.order_by(
+            WorkflowRunModel.start_time.desc()).limit(page_size + 1).offset(offset).all()
+
+        # Check if there are more results
+        has_next_page = len(runs) > page_size
+        if has_next_page:
+            runs = runs[:-1]  # Remove the extra item we fetched
+
+        # Generate next_page_token
+        next_page_token = str(offset + page_size) if has_next_page else ''
+
+        # Format response using RunSummary format
         return {
             'runs': [{
                 'run_id': run.run_id,
-                'state': run.state
+                'state': run.state,
+                'start_time': run.start_time.isoformat() if run.start_time else None,
+                'end_time': run.end_time.isoformat() if run.end_time else None,
+                'tags': run.tags or {}
             } for run in runs],
-            'next_page_token': ''
+            'next_page_token': next_page_token
         }
 
     @api.doc('run_workflow')
