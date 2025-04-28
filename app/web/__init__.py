@@ -26,7 +26,7 @@ def new_run():
     if request.method == 'POST':
         #workflow_params = json.loads(request.form.get('workflow_params', '{}'))
         #run_id = WorkflowRuns().post(workflow_params)
-        flash(f'Submit the run using the POST endpoint', 'error')
+        flash('Submit the run using the POST endpoint', 'error')
         #return redirect(url_for('web.run_detail', run_id=run_id))
     return render_template('new_run.html')
 
