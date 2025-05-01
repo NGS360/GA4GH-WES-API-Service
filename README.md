@@ -3,7 +3,7 @@
 GA4GH WES is designed to be 1 service = 1 backend (for cleanness and portability).
 
 This Flask-based implementation of the GA4GH WES API Service only logs run requests to a database.
-The seperate daemon monitors requests in the database and is responsible for execution on a given platform.
+The seperate daemon monitors requests in the database and is responsible for execution on a given platform.  The daemon updates the database with status information as the workflow progresses to completion or failure.
 
 ## Features
 
