@@ -58,7 +58,7 @@ class TestGetRunsPagination(BaseTestCase):
 
     def test_default_pagination(self):
         """Test default pagination (no parameters)"""
-        response = self.client.get("/api/ga4gh/wes/v1/runs")
+        response = self.client.get("/ga4gh/wes/v1/runs")
         self.assertEqual(response.status_code, 200, "API request failed")
         
         data = json.loads(response.data)
@@ -79,7 +79,7 @@ class TestGetRunsPagination(BaseTestCase):
 
     def test_custom_page_size(self):
         """Test custom page size"""
-        response = self.client.get("/api/ga4gh/wes/v1/runs?page_size=10")
+        response = self.client.get("/ga4gh/wes/v1/runs?page_size=10")
         self.assertEqual(response.status_code, 200, "API request failed")
         
         data = json.loads(response.data)
@@ -96,7 +96,7 @@ class TestGetRunsPagination(BaseTestCase):
         page_token = '0'
         
         # Test first page
-        response = self.client.get(f"/api/ga4gh/wes/v1/runs?page_size={page_size}&page_token={page_token}")
+        response = self.client.get(f"/ga4gh/wes/v1/runs?page_size={page_size}&page_token={page_token}")
         self.assertEqual(response.status_code, 200, "API request failed")
         
         data = json.loads(response.data)
@@ -105,7 +105,7 @@ class TestGetRunsPagination(BaseTestCase):
         
         # Test second page
         page_token = data['next_page_token']
-        response = self.client.get(f"/api/ga4gh/wes/v1/runs?page_size={page_size}&page_token={page_token}")
+        response = self.client.get(f"/ga4gh/wes/v1/runs?page_size={page_size}&page_token={page_token}")
         self.assertEqual(response.status_code, 200, "API request failed")
         
         data = json.loads(response.data)
@@ -113,7 +113,7 @@ class TestGetRunsPagination(BaseTestCase):
         self.assertEqual(data['next_page_token'], '10', "Expected next_page_token='10'")
         
         # Verify runs on second page are different from first page
-        first_page_response = self.client.get(f"/api/ga4gh/wes/v1/runs?page_size={page_size}&page_token=0")
+        first_page_response = self.client.get(f"/ga4gh/wes/v1/runs?page_size={page_size}&page_token=0")
         first_page_data = json.loads(first_page_response.data)
         
         first_page_run_ids = [run['run_id'] for run in first_page_data['runs']]
@@ -125,7 +125,7 @@ class TestGetRunsPagination(BaseTestCase):
 
     def test_invalid_page_token(self):
         """Test invalid page_token"""
-        response = self.client.get("/api/ga4gh/wes/v1/runs?page_token=invalid")
+        response = self.client.get("/ga4gh/wes/v1/runs?page_token=invalid")
         self.assertEqual(response.status_code, 400, "Expected 400 status code for invalid page_token")
         
         data = json.loads(response.data)
@@ -139,7 +139,7 @@ class TestGetRunsPagination(BaseTestCase):
         DB.session.query(WorkflowRun).delete()
         DB.session.commit()
         
-        response = self.client.get("/api/ga4gh/wes/v1/runs")
+        response = self.client.get("/ga4gh/wes/v1/runs")
         self.assertEqual(response.status_code, 200, "API request failed")
         
         data = json.loads(response.data)
