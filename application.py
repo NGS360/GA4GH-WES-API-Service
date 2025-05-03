@@ -2,13 +2,21 @@
 Main application entry point
 '''
 import os
-from flask import current_app
+
+# pylint: disable=wrong-import-position
+# Environment variables are loaded from .env file first,
+# before DefaultConfig is loaded or else DefaultConfig will not see
+# the environment variables set in .env file.
 from dotenv import load_dotenv
+load_dotenv()
+# pylint: enable=wrong-import-position
+
+from flask import current_app
 from sqlalchemy.sql import text
+
 from app import create_app
 from app.extensions import DB
 
-load_dotenv()
 application = create_app()
 
 @application.route('/healthcheck')
@@ -29,5 +37,9 @@ def healthcheck():
 
 # Run the application
 if __name__ == "__main__":
-    ip_host = os.environ.get('IP_HOST', "localhost")
-    application.run(host=ip_host)
+    # host should be 0.0.0.0 when running in a Docker container
+    # but not when run in ElasticBeanStalk
+    host = os.environ.get('FLASK_RUN_HOST', '127.0.0.1')
+    port = os.environ.get('FLASK_RUN_PORT', '5000')
+    application.logger.info('Starting %s on %s:%s', application.config['APP_NAME'], host, port)
+    application.run(host=host, port=int(port))
