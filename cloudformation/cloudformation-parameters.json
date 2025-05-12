@@ -1,0 +1,26 @@
+[
+  {
+    "ParameterKey": "ec2sshkey",
+    "ParameterValue": "ngs360-admin"
+  },
+  {
+    "ParameterKey": "ec2securitygroup",
+    "ParameterValue": "sg-77f1e90f"
+  },
+  {
+    "ParameterKey": "vpc",
+    "ParameterValue": "vpc-7647ae11"
+  },
+  {
+    "ParameterKey": "subnets",
+    "ParameterValue": "subnet-0083ca76, subnet-ff5cabc1"
+  },
+  {
+    "ParameterKey": "notificationendpoint",
+    "ParameterValue": "mg-ngs360-admin@bms.com"
+  },
+  {
+    "ParameterKey": "sslcertificatearn",
+    "ParameterValue": "arn:aws:acm:us-east-1:483421617021:certificate/d12fed40-b42e-4f9d-8149-c9837df543a4"
+  }
+]
