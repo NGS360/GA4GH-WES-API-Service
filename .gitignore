@@ -2,3 +2,12 @@
 *venv
 app.db
 **/__pycache__
+
+# Cloudformation Files
+cloudformation/cloudformation-parameters.json
+cloudformation/cloudformation-tags.txt
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
