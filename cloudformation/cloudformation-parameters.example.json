@@ -1,0 +1,26 @@
+[
+  {
+    "ParameterKey": "ec2_ssh_key",
+    "ParameterValue": "mysshkey"
+  },
+  {
+    "ParameterKey": "ec2_security_group",
+    "ParameterValue": "sg-abcd1234"
+  },
+  {
+    "ParameterKey": "vpc",
+    "ParameterValue": "vpc-abcd1234"
+  },
+  {
+    "ParameterKey": "subnets",
+    "ParameterValue": "subnet-abcd1234, subnet-abcd1234"
+  },
+  {
+    "ParameterKey": "notification_endpoint",
+    "ParameterValue": "mg-ngs360-admin@company.com"
+  },
+  {
+    "ParameterKey": "sslcertificatearn",
+    "ParameterValue": "aws:acm:us-east-1:123456789:certificate/ssl-certificate-id"
+  }
+]

@@ -1,0 +1,212 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: NGS360 GA4GH WES API Server
+
+Parameters:
+  ec2sshkey:
+    Type: String
+    Description: AWS SSH key for EC2 instances
+  ec2securitygroup:
+    Type: String
+    Description: AWS security group for EC2 instances
+  vpc:
+    Type: String
+    Description: AWS VPC ID for the environment
+  subnets:
+    Type: CommaDelimitedList
+    Description: Comma-separated list of subnet IDs for the environment
+  notificationendpoint:
+    Type: String
+    Description: Email address for notifications
+  sslcertificatearn:
+    Type: String
+    Description: ARN of the SSL certificate for HTTPS
+
+Resources:
+  Application:
+    Type: AWS::ElasticBeanstalk::Application
+    Properties:
+      Description: AWS Elastic Beanstalk Deployment for NGS360 GA4GH WES API Server
+
+  ElasticBeanstalkServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument: |
+        {
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": { "Service": [ "elasticbeanstalk.amazonaws.com" ]},
+            "Action": [ "sts:AssumeRole" ]
+          }]
+        }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkEnhancedHealth
+        - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkService
+
+  AppRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+
+  ElasticBeanstalkInstanceRole:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref AppRole
+
+  ConfigurationTemplate:
+    Type: AWS::ElasticBeanstalk::ConfigurationTemplate
+    Properties:
+      ApplicationName: !Ref Application
+      SolutionStackName: "64bit Amazon Linux 2023 v4.5.0 running Python 3.13"
+      OptionSettings:
+
+        # EC2 instance configuration
+
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: IamInstanceProfile
+          Value: !Ref ElasticBeanstalkInstanceRole
+
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: EC2KeyName
+          Value: !Ref ec2sshkey
+
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: SecurityGroups
+          Value: !Ref ec2securitygroup
+
+        - Namespace: aws:ec2:instances
+          OptionName: InstanceTypes
+          Value: t2.medium, t3.medium
+
+        # Networking configuration
+
+        - Namespace: aws:ec2:vpc
+          OptionName: VPCId
+          Value: !Ref vpc
+
+        - Namespace: aws:ec2:vpc
+          OptionName: Subnets
+          Value:
+            "Fn::Join":
+              - ","
+              - {"Ref": "subnets"}
+
+        - Namespace: aws:ec2:vpc
+          OptionName: ELBSubnets
+          Value:
+            "Fn::Join":
+              - ","
+              - {"Ref": "subnets"}
+
+        - Namespace: aws:ec2:vpc
+          OptionName: ELBScheme
+          Value: internal
+
+        # Configure a health check path for your application.
+
+        - Namespace: aws:elasticbeanstalk:application
+          OptionName: Application Healthcheck URL
+          Value: /api/docs
+
+        #- Namespace: aws:elasticbeanstalk:container:python:staticfiles
+        #  OptionName: "/static/"
+        #  Value: "app/static/"
+
+        # Elastic BeanStalk Environment
+
+        - Namespace: aws:elasticbeanstalk:environment:proxy
+          OptionName: ProxyServer
+          Value: apache
+
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: EnvironmentType
+          Value: LoadBalanced
+
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: LoadBalancerType
+          Value: application
+
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: ServiceRole
+          Value: !Ref ElasticBeanstalkServiceRole
+
+        # Health & Load Balancer
+
+        - Namespace: aws:elb:loadbalancer
+          OptionName: CrossZone
+          Value: true
+
+        - Namespace: aws:elasticbeanstalk:environment:process:default
+          OptionName: HealthCheckPath
+          Value: /api/docs
+
+        - Namespace: aws:elasticbeanstalk:environment:process:default
+          OptionName: StickinessEnabled
+          Value: true
+
+        # Health Monitoring
+
+        - Namespace: aws:elasticbeanstalk:healthreporting:system
+          OptionName: SystemType
+          Value: enhanced
+
+        # Notifications
+
+        - Namespace: aws:elasticbeanstalk:sns:topics
+          OptionName: Notification Endpoint
+          Value: !Ref notificationendpoint
+
+        # Managed Updates
+
+        - Namespace: aws:elasticbeanstalk:managedactions
+          OptionName: ManagedActionsEnabled
+          Value: true
+        - Namespace: aws:elasticbeanstalk:managedactions
+          OptionName: PreferredStartTime
+          Value: "Sun:09:00"
+
+        - Namespace: aws:elasticbeanstalk:managedactions:platformupdate
+          OptionName: UpdateLevel
+          Value: patch
+
+        - Namespace: aws:elasticbeanstalk:managedactions:platformupdate
+          OptionName: InstanceRefreshEnabled
+          Value: true
+
+  ### Environments ####
+
+  dev:
+    Type: AWS::ElasticBeanstalk::Environment
+    Properties:
+      ApplicationName: !Ref Application
+      CNAMEPrefix: ngs360-ga4ghwes-dev
+      Description: Dev environment for NGS 360 API Server
+      TemplateName: !Ref ConfigurationTemplate
+      OptionSettings:
+        - Namespace: aws:elbv2:listener:443
+          OptionName: ListenerEnabled
+          Value: true
+        - Namespace: aws:elbv2:listener:443
+          OptionName: Protocol
+          Value: HTTPS
+        - Namespace: aws:elbv2:listener:443
+          OptionName: SSLCertificateArns
+          Value: !Ref sslcertificatearn
+      Tier:
+        Name: WebServer
+        Type: Standard
