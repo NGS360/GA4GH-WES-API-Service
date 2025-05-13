@@ -6,3 +6,4 @@ flask_restx
 boto3
 flask-bootstrap4
 pymysql
+cryptography
