@@ -66,7 +66,7 @@ def runs():
 @web.route('/runs/<run_id>')
 def run_detail(run_id):
     run_data = WorkflowRun().get(run_id)
-    return render_template('run_detail.html', run=run_data, tasks=None)
+    return render_template('run_detail.html', run=run_data, tasks=[])
 
 @web.route('/runs/new', methods=['GET', 'POST'])
 def new_run():
