@@ -121,7 +121,7 @@ Resources:
 
         - Namespace: aws:elasticbeanstalk:application
           OptionName: Application Healthcheck URL
-          Value: /api/docs
+          Value: /healthcheck
 
         #- Namespace: aws:elasticbeanstalk:container:python:staticfiles
         #  OptionName: "/static/"
@@ -153,7 +153,7 @@ Resources:
 
         - Namespace: aws:elasticbeanstalk:environment:process:default
           OptionName: HealthCheckPath
-          Value: /api/docs
+          Value: /healthcheck
 
         - Namespace: aws:elasticbeanstalk:environment:process:default
           OptionName: StickinessEnabled
