@@ -26,7 +26,7 @@ class BaseTestCase(unittest.TestCase):
         # Create test runs
         states = ['QUEUED', 'INITIALIZING', 'RUNNING', 'COMPLETE', 'EXECUTOR_ERROR', 'SYSTEM_ERROR', 'CANCELED']
         workflow_types = ['CWL', 'WDL']
-
+        runs = []
         for i in range(count):
             # Calculate dates with some variation
             start_time = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=i % 30, hours=i % 24)
@@ -56,9 +56,11 @@ class BaseTestCase(unittest.TestCase):
             )
 
             DB.session.add(new_run)
+            runs.append(new_run)
 
         # Commit all runs
         DB.session.commit()
+        return runs
 
     def tearDown(self):
         """Clean up after test"""
