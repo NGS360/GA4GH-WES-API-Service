@@ -1,4 +1,4 @@
-''' WebUI for AWS Omics Service '''
+''' WebUI for GA4GH WES '''
 # pylint: disable=missing-function-docstring, broad-exception-caught
 import json
 from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app
