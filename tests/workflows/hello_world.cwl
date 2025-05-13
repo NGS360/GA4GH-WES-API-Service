@@ -1,10 +1,11 @@
 cwlVersion: v1.0
 class: Workflow
+
+requirements:
+  DockerRequirement:
+    dockerPull: ubuntu:latest
+
 inputs: []
-outputs:
-  output_file:
-    type: File
-    outputSource: say_hello/output_file
 
 steps:
   say_hello:
@@ -19,6 +20,7 @@ steps:
     in: []
     out: [output_file]
 
-requirements:
-  DockerRequirement:
-    dockerPull: ubuntu:latest
+outputs:
+  output_file:
+    type: File
+    outputSource: say_hello/output_file
