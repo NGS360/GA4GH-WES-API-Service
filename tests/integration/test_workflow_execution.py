@@ -25,7 +25,7 @@ class TestWorkflowExecution(BaseTestCase):
         """Test the full workflow execution lifecycle"""
 
         # Step 1: Check service info
-        service_info = self.client.get("/ga4gh/wes/v1/service-info")
+        service_info = self.client.get("/api/ga4gh/wes/v1/service-info")
 
         # Verify service supports CWL
         self.assertIn('CWL', service_info.json.get('workflow_type_versions', {}),
@@ -43,7 +43,7 @@ class TestWorkflowExecution(BaseTestCase):
         workflow_params_str = json.dumps(workflow_params)
 
         # Submit the workflow
-        response = self.client.post("/ga4gh/wes/v1/runs",
+        response = self.client.post("/api/ga4gh/wes/v1/runs",
             json={
                 'workflow_params': workflow_params_str,
                 'workflow_type': "CWL",
@@ -67,10 +67,10 @@ class TestWorkflowExecution(BaseTestCase):
         DB.session.commit()
 
         # Step 4: Check status until completion (should be immediate since we manually set it)
-        final_status = self.client.get(f"/ga4gh/wes/v1/runs/{run_id}/status")
+        final_status = self.client.get(f"/api/ga4gh/wes/v1/runs/{run_id}/status")
 
         # Step 5: Get detailed run log
-        run_log = self.client.get(f"/ga4gh/wes/v1/runs/{run_id}")
+        run_log = self.client.get(f"/api/ga4gh/wes/v1/runs/{run_id}")
 
         # Step 6: Verify the run completed successfully
         self.assertEqual(final_status.json['state'], 'COMPLETE',
@@ -91,7 +91,7 @@ class TestWorkflowExecution(BaseTestCase):
 
         # Submit the workflow
         response = self.client.post(
-            '/ga4gh/wes/v1/runs',
+            '/api/ga4gh/wes/v1/runs',
             json={
                 "workflow_params": workflow_params_str,
                 "workflow_type": "CWL",
@@ -104,7 +104,7 @@ class TestWorkflowExecution(BaseTestCase):
         run_id = response.json['run_id']
 
         # Cancel the workflow
-        cancel_response = self.client.post(f'/ga4gh/wes/v1/runs/{run_id}/cancel')
+        cancel_response = self.client.post(f'/api/ga4gh/wes/v1/runs/{run_id}/cancel')
         self.assertEqual(cancel_response.json['run_id'], run_id, "Cancel response should include run_id")
 
         # Check that the workflow is cancelled
