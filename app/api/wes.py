@@ -108,6 +108,8 @@ class WorkflowRuns(Resource):
     @api.expect(run_request)
     def post(self):
         """Run a workflow"""
+        if api.payload.get('workflow_engine') is None:
+            return {'error': 'Workflow engine not specified'}, 400
         run_id = str(uuid.uuid4())
         new_run = WorkflowRunModel(
             run_id=run_id,
@@ -119,7 +121,7 @@ class WorkflowRuns(Resource):
             workflow_engine=api.payload.get('workflow_engine'),
             workflow_engine_version=api.payload.get('workflow_engine_version'),
             tags=api.payload.get('tags'),
-            start_time=datetime.datetime.now(datetime.UTC)
+            start_time=datetime.datetime.now(datetime.timezone.utc)
         )
         DB.session.add(new_run)
         DB.session.commit()
