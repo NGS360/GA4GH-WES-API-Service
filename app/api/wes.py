@@ -139,6 +139,7 @@ class WorkflowRun(Resource):
         return {
             'run_id': run.run_id,
             'state': run.state,
+            'submitted_at': run.submitted_at.isoformat() if run.submitted_at else None,
             'run_log': {
                 'name': 'workflow',
                 'start_time': run.start_time.isoformat() if run.start_time else None,
