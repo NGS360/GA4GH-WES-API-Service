@@ -31,6 +31,7 @@ class TestGetRunsPagination(BaseTestCase):
         for run in data['runs']:
             self.assertIn('run_id', run, "Run missing 'run_id'")
             self.assertIn('state', run, "Run missing 'state'")
+            self.assertIn('submitted_at', run, "Run missing 'submitted_at'")
             self.assertIn('start_time', run, "Run missing 'start_time'")
             self.assertIn('end_time', run, "Run missing 'end_time'")
             self.assertIn('tags', run, "Run missing 'tags'")

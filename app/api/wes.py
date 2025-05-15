@@ -77,7 +77,7 @@ class WorkflowRuns(Resource):
 
         # Query with pagination
         runs = WorkflowRunModel.query.order_by(
-            WorkflowRunModel.start_time.desc()).limit(page_size + 1).offset(offset).all()
+            WorkflowRunModel.submitted_at.desc()).limit(page_size + 1).offset(offset).all()
 
         # Check if there are more results
         has_next_page = len(runs) > page_size
@@ -95,6 +95,7 @@ class WorkflowRuns(Resource):
             'runs': [{
                 'run_id': run.run_id,
                 'state': run.state,
+                'submitted_at': run.submitted_at.isoformat() if run.submitted_at else None,
                 'start_time': run.start_time.isoformat() if run.start_time else None,
                 'end_time': run.end_time.isoformat() if run.end_time else None,
                 'tags': run.tags or {}
