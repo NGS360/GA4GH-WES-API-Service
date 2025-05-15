@@ -131,6 +131,7 @@ if __name__ == "__main__":
             'workflow_params': workflow_params_str,
             'workflow_type': "CWL",
             'workflow_type_version': "1.0",
+            'workflow_engine': "cwltool",
             'workflow_url': "hello_world.cwl",
             'workflow_attachment': [("hello_world.cwl", workflow_content, "application/text")]
         }
