@@ -5,21 +5,82 @@
 <div class="card">
     <div class="card-body">
         <h5 class="card-title">Run ID: {{ run.run_id }}</h5>
-        <h6 class="card-subtitle mb-2 text-muted">Status: {{ run.state }}</h6>
+        <h6 class="card-subtitle mb-2 text-muted">
+            Status: 
+            {% if run.state == 'COMPLETE' %}
+            <span class="badge bg-success">{{ run.state }}</span>
+            {% elif run.state == 'RUNNING' or run.state == 'INITIALIZING' %}
+            <span class="badge bg-primary">{{ run.state }}</span>
+            {% elif run.state == 'QUEUED' %}
+            <span class="badge bg-info">{{ run.state }}</span>
+            {% elif run.state == 'CANCELED' or run.state == 'CANCELING' %}
+            <span class="badge bg-warning">{{ run.state }}</span>
+            {% elif run.state == 'EXECUTOR_ERROR' or run.state == 'SYSTEM_ERROR' %}
+            <span class="badge bg-danger">{{ run.state }}</span>
+            {% else %}
+            <span class="badge bg-secondary">{{ run.state }}</span>
+            {% endif %}
+        </h6>
         
         <div class="mt-4">
-            <h5>Run Log</h5>
+            <h5>Run Information</h5>
             <div class="table-responsive">
                 <table class="table">
-                    <tr><th>Name</th><td>{{ run.run_log.name }}</td></tr>
+                    <tr><th>Workflow Type</th><td>{{ run.request.workflow_type }}</td></tr>
+                    <tr><th>Workflow URL</th><td>{{ run.request.workflow_url }}</td></tr>
+                    {% if run.request.service_provider %}
+                    <tr>
+                        <th>Service Provider</th>
+                        <td>
+                            {% if run.request.service_provider == 'aws_omics' %}
+                            <span class="badge bg-info">AWS HealthOmics</span>
+                            {% elif run.request.service_provider == 'arvados' %}
+                            <span class="badge bg-primary">Arvados</span>
+                            {% elif run.request.service_provider == 'sevenbridges' %}
+                            <span class="badge bg-success">SevenBridges/Velsera</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ run.request.service_provider }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% if run.provider_run_id %}
+                    <tr><th>Provider Run ID</th><td>{{ run.provider_run_id }}</td></tr>
+                    {% endif %}
+                    {% if run.provider_status %}
+                    <tr><th>Provider Status</th><td>{{ run.provider_status }}</td></tr>
+                    {% endif %}
                     <tr><th>Start Time</th><td>{{ run.run_log.start_time|default('N/A') }}</td></tr>
                     <tr><th>End Time</th><td>{{ run.run_log.end_time|default('N/A') }}</td></tr>
+                    {% if run.run_log.stdout %}
                     <tr><th>Stdout</th><td><a href="{{ run.run_log.stdout }}">View</a></td></tr>
+                    {% endif %}
+                    {% if run.run_log.stderr %}
                     <tr><th>Stderr</th><td><a href="{{ run.run_log.stderr }}">View</a></td></tr>
+                    {% endif %}
                 </table>
             </div>
         </div>
 
+        {% if run.outputs %}
+        <div class="mt-4">
+            <h5>Outputs</h5>
+            <div class="bg-light p-3 rounded">
+                <pre>{{ run.outputs|tojson(indent=2) }}</pre>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if run.request.workflow_params %}
+        <div class="mt-4">
+            <h5>Workflow Parameters</h5>
+            <div class="bg-light p-3 rounded">
+                <pre>{{ run.request.workflow_params|tojson(indent=2) }}</pre>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if tasks %}
         <div class="mt-4">
             <h5>Tasks</h5>
             <div class="table-responsive">
@@ -45,14 +106,24 @@
                             <td>{{ task.end_time|default('N/A') }}</td>
                             <td>{{ task.exit_code|default('N/A') }}</td>
                             <td>
-                                <a href="{{ task.stdout }}">stdout</a> |
-                                <a href="{{ task.stderr }}">stderr</a>
+                                {% if task.stdout %}<a href="{{ task.stdout }}">stdout</a>{% endif %}
+                                {% if task.stderr %}| <a href="{{ task.stderr }}">stderr</a>{% endif %}
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+        </div>
+        {% endif %}
+        
+        <div class="mt-4">
+            <a href="{{ url_for('web.runs') }}" class="btn btn-secondary">Back to Runs</a>
+            {% if run.state not in ['COMPLETE', 'EXECUTOR_ERROR', 'SYSTEM_ERROR', 'CANCELED'] %}
+            <form method="POST" action="{{ url_for('web.cancel_run', run_id=run.run_id) }}" class="d-inline">
+                <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to cancel this run?')">Cancel Run</button>
+            </form>
+            {% endif %}
         </div>
     </div>
 </div>

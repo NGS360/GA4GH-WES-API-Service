@@ -18,6 +18,12 @@ class WorkflowRun(DB.Model):
     tags = DB.Column(DB.JSON)
     start_time = DB.Column(DB.DateTime)
     end_time = DB.Column(DB.DateTime)
+    
+    # Service provider information
+    service_provider = DB.Column(DB.String(50))  # 'aws_omics', 'arvados', 'sevenbridges', etc.
+    provider_run_id = DB.Column(DB.String(100))  # ID of the run in the provider's system
+    provider_status = DB.Column(DB.String(50))   # Status from the provider
+    provider_metadata = DB.Column(DB.JSON)       # Additional provider-specific metadata
 
 class TaskLog(DB.Model):
     """Task log model"""

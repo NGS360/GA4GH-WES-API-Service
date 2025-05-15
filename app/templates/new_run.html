@@ -22,8 +22,20 @@
     </div>
     
     <div class="mb-3">
+        <label for="service_provider" class="form-label">Service Provider</label>
+        <select class="form-select" id="service_provider" name="service_provider" required>
+            <option value="aws_omics">AWS HealthOmics</option>
+            <option value="arvados">Arvados</option>
+            <option value="sevenbridges">SevenBridges/Velsera</option>
+        </select>
+    </div>
+    
+    <div class="mb-3">
         <label for="workflow_params" class="form-label">Workflow Parameters (JSON)</label>
         <textarea class="form-control" id="workflow_params" name="workflow_params" rows="5">{}</textarea>
+        <small class="form-text text-muted">
+            Include provider-specific parameters in a "provider_params" object within your JSON.
+        </small>
     </div>
     
     <button type="submit" class="btn btn-primary">Submit Workflow</button>
