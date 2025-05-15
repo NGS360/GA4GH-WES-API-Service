@@ -2,7 +2,11 @@
 #pylint: disable=missing-module-docstring, missing-class-docstring
 import datetime
 import uuid
-from flask import request
+import os
+import json
+import logging
+import requests
+from flask import request, current_app
 from flask_restx import Namespace, Resource, fields
 from app.models.workflow import WorkflowRun as WorkflowRunModel, TaskLog
 from app.extensions import DB
@@ -33,6 +37,38 @@ run_log = api.model('RunLog', {
     'task_logs': fields.List(fields.Raw()),
     'outputs': fields.Raw()
 })
+
+def notify_daemon(run_id):
+    """
+    Notify the daemon about a new workflow
+    
+    Args:
+        run_id: The ID of the workflow to process
+    
+    Returns:
+        bool: True if notification was successful, False otherwise
+    """
+    # Get daemon notification server details from environment variables
+    host = os.environ.get('DAEMON_NOTIFICATION_HOST', 'localhost')
+    port = os.environ.get('DAEMON_NOTIFICATION_PORT', '5001')
+    
+    url = f"http://{host}:{port}"
+    payload = {"run_id": run_id}
+    
+    try:
+        response = requests.post(url, json=payload, timeout=2)
+        if response.status_code == 200:
+            current_app.logger.info(f"Successfully notified daemon about workflow {run_id}")
+            return True
+        else:
+            current_app.logger.warning(
+                f"Failed to notify daemon about workflow {run_id}: "
+                f"Status code {response.status_code}, Response: {response.text}"
+            )
+            return False
+    except requests.RequestException as e:
+        current_app.logger.warning(f"Error notifying daemon about workflow {run_id}: {e}")
+        return False
 
 @api.route('/service-info')
 class ServiceInfo(Resource):
@@ -123,6 +159,15 @@ class WorkflowRuns(Resource):
         )
         DB.session.add(new_run)
         DB.session.commit()
+        
+        # Notify the daemon about the new workflow
+        # We do this in a non-blocking way so the API can return quickly
+        try:
+            notify_daemon(run_id)
+        except Exception as e:
+            current_app.logger.error(f"Error notifying daemon: {e}")
+            # Continue even if notification fails - the daemon will pick up the workflow during polling
+        
         return {'run_id': run_id}
 
 @api.route('/runs/<string:run_id>')

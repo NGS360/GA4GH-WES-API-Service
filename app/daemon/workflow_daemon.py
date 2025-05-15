@@ -15,6 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.models.workflow import WorkflowRun, TaskLog
 from app.daemon.providers.provider_factory import ProviderFactory
+from app.daemon.notification_server import NotificationServer
 
 
 class WorkflowDaemon:
@@ -35,9 +36,20 @@ class WorkflowDaemon:
         self.Session = scoped_session(sessionmaker(bind=self.engine))
         
         # Configuration from environment variables
-        self.poll_interval = int(os.environ.get('DAEMON_POLL_INTERVAL', '60'))
+        self.poll_interval = int(os.environ.get('DAEMON_POLL_INTERVAL', '300'))  # Default to 5 minutes since we'll use notifications
         self.status_check_interval = int(os.environ.get('DAEMON_STATUS_CHECK_INTERVAL', '300'))
         self.max_concurrent_workflows = int(os.environ.get('DAEMON_MAX_CONCURRENT_WORKFLOWS', '10'))
+        
+        # Notification server configuration
+        self.notification_host = os.environ.get('DAEMON_NOTIFICATION_HOST', 'localhost')
+        self.notification_port = int(os.environ.get('DAEMON_NOTIFICATION_PORT', '5001'))
+        
+        # Initialize notification server
+        self.notification_server = NotificationServer(
+            host=self.notification_host,
+            port=self.notification_port,
+            callback=self.process_workflow_by_id
+        )
         
         # Track when we last checked each workflow's status
         self.last_status_check: Dict[str, float] = {}
@@ -48,16 +60,24 @@ class WorkflowDaemon:
         self.logger.info(f"Initialized workflow daemon with poll interval {self.poll_interval}s")
         self.logger.info(f"Status check interval: {self.status_check_interval}s")
         self.logger.info(f"Max concurrent workflows: {self.max_concurrent_workflows}")
+        self.logger.info(f"Notification server will listen on {self.notification_host}:{self.notification_port}")
     
     def run(self):
         """Run the daemon"""
         self.logger.info("Starting workflow daemon")
         self.running = True
         
+        # Start notification server
+        try:
+            self.notification_server.start()
+        except Exception as e:
+            self.logger.error(f"Failed to start notification server: {e}")
+            self.logger.error("Daemon will continue with polling only")
+        
         try:
             while self.running:
                 try:
-                    # Poll for new workflows
+                    # Poll for new workflows (as a fallback mechanism)
                     self.poll_for_workflows()
                     
                     # Check status of running workflows
@@ -72,6 +92,13 @@ class WorkflowDaemon:
         except KeyboardInterrupt:
             self.logger.info("Received keyboard interrupt, shutting down")
             self.running = False
+        finally:
+            # Stop notification server
+            if self.notification_server:
+                try:
+                    self.notification_server.stop()
+                except Exception as e:
+                    self.logger.error(f"Error stopping notification server: {e}")
         
         self.logger.info("Workflow daemon stopped")
     
@@ -80,8 +107,56 @@ class WorkflowDaemon:
         self.logger.info("Stopping workflow daemon")
         self.running = False
     
+    def process_workflow_by_id(self, run_id: str):
+        """
+        Process a specific workflow by ID (called by notification server)
+        
+        Args:
+            run_id: The ID of the workflow to process
+        """
+        self.logger.info(f"Received notification to process workflow {run_id}")
+        
+        session = self.Session()
+        try:
+            # Get the workflow
+            workflow = session.query(WorkflowRun).filter_by(run_id=run_id, state='QUEUED').first()
+            
+            if not workflow:
+                self.logger.warning(f"Workflow {run_id} not found or not in QUEUED state")
+                return
+            
+            # Count running workflows
+            running_count = session.query(WorkflowRun).filter(
+                WorkflowRun.state.in_(['INITIALIZING', 'RUNNING', 'PAUSED'])
+            ).count()
+            
+            # Check if we can process more workflows
+            if running_count >= self.max_concurrent_workflows:
+                self.logger.warning(
+                    f"Already running {running_count} workflows, max is {self.max_concurrent_workflows}. "
+                    f"Workflow {run_id} will be processed later."
+                )
+                return
+            
+            # Process the workflow
+            try:
+                self.process_workflow(session, workflow)
+            except Exception as e:
+                self.handle_error(session, workflow, e)
+            
+            session.commit()
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error processing workflow {run_id}: {e}")
+            session.rollback()
+        except Exception as e:
+            self.logger.error(f"Error processing workflow {run_id}: {e}")
+            self.logger.error(traceback.format_exc())
+            session.rollback()
+        finally:
+            session.close()
+    
     def poll_for_workflows(self):
-        """Poll for new workflows to process"""
+        """Poll for new workflows to process (fallback mechanism)"""
         session = self.Session()
         try:
             # Count running workflows

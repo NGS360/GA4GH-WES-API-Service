@@ -63,6 +63,10 @@ def main():
                         help='How often to check workflow status (in seconds)')
     parser.add_argument('--max-concurrent-workflows', type=int, 
                         help='Maximum number of workflows to process concurrently')
+    parser.add_argument('--notification-host', 
+                        help='Host for the notification server (default: localhost)')
+    parser.add_argument('--notification-port', type=int, 
+                        help='Port for the notification server (default: 5001)')
     args = parser.parse_args()
     
     # Load environment variables from .env file
@@ -98,10 +102,24 @@ def main():
         daemon.max_concurrent_workflows = args.max_concurrent_workflows
         os.environ['DAEMON_MAX_CONCURRENT_WORKFLOWS'] = str(args.max_concurrent_workflows)
     
+    if args.notification_host:
+        daemon.notification_server.host = args.notification_host
+        os.environ['DAEMON_NOTIFICATION_HOST'] = args.notification_host
+    
+    if args.notification_port:
+        daemon.notification_server.port = args.notification_port
+        os.environ['DAEMON_NOTIFICATION_PORT'] = str(args.notification_port)
+    
     # Log available providers
     from app.daemon.providers.provider_factory import ProviderFactory
     providers = ProviderFactory.get_available_providers()
     logging.info(f"Available workflow providers: {', '.join(providers.keys())}")
+    
+    # Log notification server info
+    logging.info(f"Notification server will listen on {daemon.notification_server.host}:{daemon.notification_server.port}")
+    logging.info(f"To notify the daemon of a new workflow, send a POST request to:")
+    logging.info(f"  http://{daemon.notification_server.host}:{daemon.notification_server.port}")
+    logging.info(f"  with JSON body: {{\"run_id\": \"your-workflow-id\"}}")
     
     # Run the daemon
     daemon.run()

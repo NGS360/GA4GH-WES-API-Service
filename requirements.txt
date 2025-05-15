@@ -9,3 +9,4 @@ pymysql
 cryptography
 sevenbridges-python
 python-dateutil
+requests

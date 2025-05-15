@@ -7,6 +7,15 @@ This daemon submits workflows from the GA4GH WES API to various workflow executi
 - **SevenBridges/Velsera**: Submit workflows to the SevenBridges/Velsera platform
 - **AWS HealthOmics**: Submit workflows to AWS HealthOmics
 
+## Architecture
+
+The daemon uses a hybrid approach for processing workflows:
+
+1. **Notification-based (Primary)**: The WES API pings the daemon's notification server when a new workflow is submitted
+2. **Polling-based (Fallback)**: The daemon periodically polls the database for new workflows in case notifications fail
+
+This approach ensures that workflows are processed promptly while maintaining reliability.
+
 ## Configuration
 
 The daemon is configured using environment variables:
@@ -14,9 +23,14 @@ The daemon is configured using environment variables:
 ### General Configuration
 
 - `DATABASE_URI`: The URI for the database (required)
-- `DAEMON_POLL_INTERVAL`: How often to poll for new workflows in seconds (default: 60)
+- `DAEMON_POLL_INTERVAL`: How often to poll for new workflows in seconds (default: 300)
 - `DAEMON_STATUS_CHECK_INTERVAL`: How often to check workflow status in seconds (default: 300)
 - `DAEMON_MAX_CONCURRENT_WORKFLOWS`: Maximum number of workflows to process concurrently (default: 10)
+
+### Notification Server Configuration
+
+- `DAEMON_NOTIFICATION_HOST`: Host for the notification server (default: localhost)
+- `DAEMON_NOTIFICATION_PORT`: Port for the notification server (default: 5001)
 
 ### SevenBridges/Velsera Configuration
 
@@ -39,7 +53,8 @@ The daemon is configured using environment variables:
 ```
 usage: workflow_daemon.py [-h] [--log-level {DEBUG,INFO,WARNING,ERROR,CRITICAL}] [--log-file LOG_FILE] [--db-uri DB_URI]
                          [--poll-interval POLL_INTERVAL] [--status-check-interval STATUS_CHECK_INTERVAL]
-                         [--max-concurrent-workflows MAX_CONCURRENT_WORKFLOWS]
+                         [--max-concurrent-workflows MAX_CONCURRENT_WORKFLOWS] [--notification-host NOTIFICATION_HOST]
+                         [--notification-port NOTIFICATION_PORT]
 
 WES Workflow Submission Daemon
 
@@ -55,6 +70,10 @@ optional arguments:
                         How often to check workflow status (in seconds)
   --max-concurrent-workflows MAX_CONCURRENT_WORKFLOWS
                         Maximum number of workflows to process concurrently
+  --notification-host NOTIFICATION_HOST
+                        Host for the notification server (default: localhost)
+  --notification-port NOTIFICATION_PORT
+                        Port for the notification server (default: 5001)
 ```
 
 ### Example Usage
@@ -64,6 +83,10 @@ optional arguments:
 ```bash
 # Database
 export DATABASE_URI=postgresql://user:password@localhost/wes
+
+# Notification Server
+export DAEMON_NOTIFICATION_HOST=localhost
+export DAEMON_NOTIFICATION_PORT=5001
 
 # SevenBridges/Velsera
 export SEVENBRIDGES_API_TOKEN=your-token
@@ -78,7 +101,7 @@ export AWS_HEALTHOMICS_WORKFLOW_ROLE_ARN=arn:aws:iam::123456789012:role/workflow
 export AWS_HEALTHOMICS_OUTPUT_URI=s3://your-bucket/outputs
 
 # Daemon Configuration
-export DAEMON_POLL_INTERVAL=60
+export DAEMON_POLL_INTERVAL=300
 export DAEMON_STATUS_CHECK_INTERVAL=300
 export DAEMON_MAX_CONCURRENT_WORKFLOWS=10
 ```
@@ -87,6 +110,32 @@ export DAEMON_MAX_CONCURRENT_WORKFLOWS=10
 
 ```bash
 python scripts/workflow_daemon.py --log-level INFO
+```
+
+## Notification API
+
+The daemon runs a simple HTTP server that listens for notifications about new workflows. The WES API automatically pings this server when a new workflow is submitted.
+
+### API Endpoint
+
+- **URL**: `http://{DAEMON_NOTIFICATION_HOST}:{DAEMON_NOTIFICATION_PORT}`
+- **Method**: POST
+- **Content-Type**: application/json
+
+### Request Body
+
+```json
+{
+  "run_id": "workflow-run-id"
+}
+```
+
+### Response
+
+```json
+{
+  "status": "success"
+}
 ```
 
 ## Specifying Provider Type
@@ -143,3 +192,11 @@ sudo systemctl start wes-daemon
 ## Error Handling
 
 The daemon logs errors but does not retry failed operations. If a workflow submission fails, the workflow will be marked as `SYSTEM_ERROR` and the error message will be stored in the workflow's tags.
+
+## Network Configuration
+
+If the WES API and daemon are running on different hosts, make sure that:
+
+1. The notification server is bound to an interface that's accessible from the WES API (not just localhost)
+2. Any firewalls allow traffic on the notification port
+3. The `DAEMON_NOTIFICATION_HOST` environment variable in the WES API configuration is set to the correct hostname or IP address
