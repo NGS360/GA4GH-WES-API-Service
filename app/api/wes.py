@@ -10,6 +10,9 @@ from app.extensions import DB
 api = Namespace('ga4gh/wes/v1', description='Workflow Execution Service API')
 
 # Define API models
+# For now, define the supported engines here. This should come from a database or config file in the future.
+supported_engines = ['cwltool', 'Arvados', 'SevenBridges', 'AWSHealthOmics']
+
 state_enum = ['UNKNOWN', 'QUEUED', 'INITIALIZING', 'RUNNING', 'PAUSED',
               'COMPLETE', 'EXECUTOR_ERROR', 'SYSTEM_ERROR', 'CANCELED', 'CANCELING']
 
@@ -110,6 +113,8 @@ class WorkflowRuns(Resource):
         """Run a workflow"""
         if api.payload.get('workflow_engine') is None:
             return {'error': 'Workflow engine not specified'}, 400
+        if api.payload['workflow_engine'] not in supported_engines:
+            return {'error': f"Unsupported workflow engine: {api.payload['workflow_engine']}"}, 400
         run_id = str(uuid.uuid4())
         new_run = WorkflowRunModel(
             run_id=run_id,
