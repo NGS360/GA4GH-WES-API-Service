@@ -38,7 +38,7 @@ def create_test_workflow(provider_type):
             state='QUEUED',
             workflow_type='CWL',
             workflow_type_version='v1.0',
-            workflow_url='hello_world.cwl',  # This should be a valid workflow ID or URL for your provider
+            workflow_url=get_test_workflow_url(provider_type),
             workflow_params={
                 'input': 'Hello, World!'
             },
@@ -54,6 +54,29 @@ def create_test_workflow(provider_type):
         
         print(f"Created test workflow with run_id {workflow.run_id}")
         return workflow.run_id
+
+
+def get_test_workflow_url(provider_type):
+    """
+    Get a test workflow URL for the specified provider
+    
+    Args:
+        provider_type: The provider type
+        
+    Returns:
+        str: A test workflow URL
+    """
+    if provider_type == 'sevenbridges':
+        # Use a public SB app if available, otherwise a URL
+        return os.environ.get('TEST_SB_APP_ID', 'https://example.com/workflow.cwl')
+    elif provider_type == 'healthomics':
+        # Use a test workflow ID if available, otherwise a URL
+        return os.environ.get('TEST_HEALTHOMICS_WORKFLOW_ID', 'https://example.com/workflow.wdl')
+    elif provider_type == 'arvados':
+        # Use a test collection if available, otherwise a URL
+        return os.environ.get('TEST_ARVADOS_WORKFLOW', 'https://example.com/workflow.cwl')
+    else:
+        return 'https://example.com/workflow.cwl'
 
 
 def notify_daemon(run_id, host, port):
@@ -95,7 +118,7 @@ def main():
     parser.add_argument('--run-id',
                         help='Workflow run ID to notify about (if not provided, a new workflow will be created)')
     parser.add_argument('--provider', default='sevenbridges',
-                        choices=['sevenbridges', 'healthomics'],
+                        choices=['sevenbridges', 'healthomics', 'arvados'],
                         help='Provider type for new workflow')
     args = parser.parse_args()
     

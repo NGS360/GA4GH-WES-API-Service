@@ -7,6 +7,7 @@ from typing import Dict, Type
 from .provider_interface import WorkflowProviderInterface
 from .sevenbridges import SevenBridgesProvider
 from .healthomics import HealthOmicsProvider
+from .arvados import ArvadosProvider
 
 
 class ProviderFactory:
@@ -16,6 +17,7 @@ class ProviderFactory:
     _providers: Dict[str, Type[WorkflowProviderInterface]] = {
         'sevenbridges': SevenBridgesProvider,
         'healthomics': HealthOmicsProvider,
+        'arvados': ArvadosProvider,
     }
     
     # Cache of provider instances
@@ -79,4 +81,5 @@ class ProviderFactory:
         return {
             'sevenbridges': 'SevenBridges/Velsera',
             'healthomics': 'AWS HealthOmics',
+            'arvados': 'Arvados',
         }

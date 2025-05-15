@@ -6,7 +6,7 @@ We'll implement a daemon that:
 - Runs as a separate process from the Flask application
 - Receives notifications from the WES API when new workflows are submitted
 - Polls the database for workflows in the "QUEUED" state as a fallback mechanism
-- Submits these workflows to either SevenBridges/Velsera or AWS HealthOmics
+- Submits these workflows to either SevenBridges/Velsera, AWS HealthOmics, or Arvados
 - Periodically polls the service providers to check workflow status
 - Updates the workflow status in the database
 - Logs errors and continues with the next workflow without retrying failed operations
@@ -22,6 +22,7 @@ graph TD
     D -->|Submits workflows| E[Provider Interface]
     E -->|Submits to| F[SevenBridges/Velsera API]
     E -->|Submits to| G[AWS HealthOmics API]
+    E -->|Submits to| H[Arvados API]
     D -->|Updates workflow status| B
 ```
 
@@ -69,11 +70,18 @@ classDiagram
         +cancel_workflow(workflow_id)
     }
     
+    class ArvadosProvider {
+        +submit_workflow(workflow)
+        +get_workflow_status(workflow_id)
+        +cancel_workflow(workflow_id)
+    }
+    
     WorkflowDaemon --> NotificationServer
     WorkflowDaemon --> ProviderFactory
     ProviderFactory --> WorkflowProviderInterface
     SevenBridgesProvider ..|> WorkflowProviderInterface
     HealthOmicsProvider ..|> WorkflowProviderInterface
+    ArvadosProvider ..|> WorkflowProviderInterface
 ```
 
 ### 3.2 Database Interaction
@@ -114,7 +122,12 @@ We'll implement a simple HTTP server that:
    - Implement workflow submission
    - Implement status checking
    - Implement workflow cancellation
-4. Create a `ProviderFactory` to instantiate the appropriate provider
+4. Implement `ArvadosProvider` class
+   - Add authentication using environment variables
+   - Implement workflow submission
+   - Implement status checking
+   - Implement workflow cancellation
+5. Create a `ProviderFactory` to instantiate the appropriate provider
 
 ### 4.2 Implement Notification Server
 
@@ -145,7 +158,7 @@ We'll implement a simple HTTP server that:
 ### 4.5 Database Schema Updates
 
 1. Add fields to the `WorkflowRun` model:
-   - `provider_type`: The type of provider to use (e.g., "sevenbridges", "healthomics")
+   - `provider_type`: The type of provider to use (e.g., "sevenbridges", "healthomics", "arvados")
    - `provider_id`: The ID of the workflow in the provider's system
    - `provider_status`: The status of the workflow in the provider's system
    - `provider_metadata`: Additional provider-specific metadata
@@ -158,6 +171,9 @@ We'll implement a simple HTTP server that:
    - `AWS_ACCESS_KEY_ID`: AWS access key for HealthOmics
    - `AWS_SECRET_ACCESS_KEY`: AWS secret key for HealthOmics
    - `AWS_REGION`: AWS region for HealthOmics
+   - `ARVADOS_API_HOST`: Arvados API host
+   - `ARVADOS_API_TOKEN`: Arvados API token
+   - `ARVADOS_PROJECT_UUID`: Arvados project UUID
 2. Define daemon configuration:
    - `DAEMON_POLL_INTERVAL`: How often to poll for new workflows (in seconds)
    - `DAEMON_STATUS_CHECK_INTERVAL`: How often to check workflow status (in seconds)
@@ -185,6 +201,7 @@ app/
       provider_interface.py  # Abstract base class
       sevenbridges.py        # SevenBridges/Velsera implementation
       healthomics.py         # AWS HealthOmics implementation
+      arvados.py             # Arvados implementation
       provider_factory.py    # Factory for creating providers
 ```
 
@@ -392,6 +409,11 @@ class WorkflowRuns(Resource):
    AWS_SECRET_ACCESS_KEY=your-secret-key
    AWS_REGION=us-east-1
    
+   # Arvados
+   ARVADOS_API_HOST=arvados.example.com
+   ARVADOS_API_TOKEN=your-arvados-token
+   ARVADOS_PROJECT_UUID=your-project-uuid
+   
    # Daemon Configuration
    DAEMON_POLL_INTERVAL=300
    DAEMON_STATUS_CHECK_INTERVAL=300
@@ -430,8 +452,8 @@ class WorkflowRuns(Resource):
 
 ## 9. Future Enhancements
 
-1. Support for additional providers (Arvados)
-2. Improved error handling and retry mechanisms
-3. Performance optimizations for handling large numbers of workflows
-4. Support for workflow versioning and provenance tracking
-5. Enhanced notification system with authentication and encryption
+1. Improved error handling and retry mechanisms
+2. Performance optimizations for handling large numbers of workflows
+3. Support for workflow versioning and provenance tracking
+4. Enhanced notification system with authentication and encryption
+5. Support for additional workflow execution providers

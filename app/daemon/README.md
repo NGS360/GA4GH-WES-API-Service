@@ -6,6 +6,7 @@ This daemon submits workflows from the GA4GH WES API to various workflow executi
 
 - **SevenBridges/Velsera**: Submit workflows to the SevenBridges/Velsera platform
 - **AWS HealthOmics**: Submit workflows to AWS HealthOmics
+- **Arvados**: Submit workflows to Arvados
 
 ## Architecture
 
@@ -45,6 +46,12 @@ The daemon is configured using environment variables:
 - `AWS_REGION`: AWS region (default: us-east-1)
 - `AWS_HEALTHOMICS_WORKFLOW_ROLE_ARN`: IAM role ARN for workflow execution (optional)
 - `AWS_HEALTHOMICS_OUTPUT_URI`: S3 URI for workflow outputs (optional)
+
+### Arvados Configuration
+
+- `ARVADOS_API_HOST`: Arvados API host (required for Arvados provider)
+- `ARVADOS_API_TOKEN`: Arvados API token (required for Arvados provider)
+- `ARVADOS_PROJECT_UUID`: Arvados project UUID (required for Arvados provider)
 
 ## Running the Daemon
 
@@ -100,6 +107,11 @@ export AWS_REGION=us-east-1
 export AWS_HEALTHOMICS_WORKFLOW_ROLE_ARN=arn:aws:iam::123456789012:role/workflow-role
 export AWS_HEALTHOMICS_OUTPUT_URI=s3://your-bucket/outputs
 
+# Arvados
+export ARVADOS_API_HOST=arvados.example.com
+export ARVADOS_API_TOKEN=your-arvados-token
+export ARVADOS_PROJECT_UUID=your-project-uuid
+
 # Daemon Configuration
 export DAEMON_POLL_INTERVAL=300
 export DAEMON_STATUS_CHECK_INTERVAL=300
@@ -149,12 +161,31 @@ To specify which provider should execute a workflow, add a `provider_type` tag w
   "workflow_type_version": "v1.0",
   "workflow_url": "workflow.cwl",
   "tags": {
-    "provider_type": "sevenbridges"  // or "healthomics"
+    "provider_type": "sevenbridges"  // or "healthomics" or "arvados"
   }
 }
 ```
 
 If no provider type is specified, the daemon will use the default provider (SevenBridges/Velsera).
+
+## Provider-Specific Workflow URL Formats
+
+Each provider has specific requirements for the `workflow_url` field:
+
+### SevenBridges/Velsera
+
+- **App ID**: `admin/sbg-public-data/rna-seq-alignment-1-0-2`
+- **URL**: `https://example.com/workflow.cwl`
+
+### AWS HealthOmics
+
+- **Workflow ID**: `wfl.1234567890abcdef`
+- **URL**: `https://example.com/workflow.wdl`
+
+### Arvados
+
+- **Collection UUID with path**: `arvados:collection-uuid/path/to/workflow.cwl`
+- **URL**: `https://example.com/workflow.cwl`
 
 ## Running as a Service
 
