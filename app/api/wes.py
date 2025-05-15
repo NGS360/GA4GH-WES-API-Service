@@ -11,7 +11,12 @@ api = Namespace('ga4gh/wes/v1', description='Workflow Execution Service API')
 
 # Define API models
 # For now, define the supported engines here. This should come from a database or config file in the future.
-supported_engines = ['cwltool', 'Arvados', 'SevenBridges', 'AWSHealthOmics']
+supported_engines = {
+    'cwltool': '3.1.20230906242',
+    'Arvados': '3.0.0',
+    'SevenBridges': '1.0.0',
+    'AWSHealthOmics': '1.0.0'
+}
 
 state_enum = ['UNKNOWN', 'QUEUED', 'INITIALIZING', 'RUNNING', 'PAUSED',
               'COMPLETE', 'EXECUTOR_ERROR', 'SYSTEM_ERROR', 'CANCELED', 'CANCELING']
@@ -42,15 +47,11 @@ class ServiceInfo(Resource):
         """Get service info"""
         return {
             'workflow_type_versions': {
-                'CWL': {'workflow_type_version': ['v1.0']},
-                'WDL': {'workflow_type_version': ['1.0']}
+                'CWL': {'workflow_type_version': ['v1.0', 'v1.1', 'v1.2']},
             },
             'supported_wes_versions': ['1.0.0'],
             'supported_filesystem_protocols': ['file', 'http', 'https'],
-            'workflow_engine_versions': {
-                'cwltool': '3.1.20230906242',
-                'cromwell': '84'
-            },
+            'workflow_engine_versions': supported_engines,
             'default_workflow_engine_parameters': [],
             'system_state_counts': {},
             'auth_instructions_url': 'https://example.com/auth',
