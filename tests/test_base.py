@@ -1,6 +1,9 @@
 import unittest
+import datetime
+import uuid
 from app import create_app
 from app.extensions import DB
+from app.models.workflow import WorkflowRun
 from config import TestConfig
 
 class BaseTestCase(unittest.TestCase):
@@ -17,6 +20,47 @@ class BaseTestCase(unittest.TestCase):
         DB.create_all()
 
         self.client = self.app.test_client()
+
+    def create_test_runs(self, count=50):
+        """Create test workflow runs in the database"""
+        # Create test runs
+        states = ['QUEUED', 'INITIALIZING', 'RUNNING', 'COMPLETE', 'EXECUTOR_ERROR', 'SYSTEM_ERROR', 'CANCELED']
+        workflow_types = ['CWL', 'WDL']
+        runs = []
+        for i in range(count):
+            # Calculate dates with some variation
+            start_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=i % 30, hours=i % 24)
+
+            # Some runs are completed, some are still running
+            end_time = None
+            state = states[i % len(states)]
+            if state in ['COMPLETE', 'EXECUTOR_ERROR', 'SYSTEM_ERROR', 'CANCELED']:
+                end_time = start_time + datetime.timedelta(hours=2, minutes=(i % 60))
+
+            # Create run with unique ID
+            run_id = str(uuid.uuid4())
+            workflow_type = workflow_types[i % len(workflow_types)]
+
+            new_run = WorkflowRun(
+                run_id=run_id,
+                state=state,
+                workflow_type=workflow_type,
+                workflow_type_version='1.0',
+                workflow_url=f'https://example.com/workflows/workflow_{i}.{workflow_type.lower()}',
+                workflow_params={'input': f'test_input_{i}'},
+                workflow_engine='test_engine',
+                workflow_engine_version='1.0',
+                tags={'test': 'true', 'index': i},
+                start_time=start_time,
+                end_time=end_time
+            )
+
+            DB.session.add(new_run)
+            runs.append(new_run)
+
+        # Commit all runs
+        DB.session.commit()
+        return runs
 
     def tearDown(self):
         """Clean up after test"""

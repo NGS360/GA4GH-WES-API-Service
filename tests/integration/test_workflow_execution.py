@@ -48,6 +48,7 @@ class TestWorkflowExecution(BaseTestCase):
                 'workflow_params': workflow_params_str,
                 'workflow_type': "CWL",
                 'workflow_type_version': "1.0",
+                'workflow_engine': "cwltool",
                 'workflow_url': "hello_world.cwl",
                 'workflow_attachment': [("hello_world.cwl", workflow_content, "application/text")]
             }
@@ -56,12 +57,16 @@ class TestWorkflowExecution(BaseTestCase):
         self.assertIn('run_id', response.json, "No run_id in response")
         run_id = response.json['run_id']
 
-        # Step 3: Simulate the workflow executor processing the request
         workflow = DB.session.query(WorkflowRun).filter_by(run_id=run_id).first()
+        # Check the workflow was created in the database
         self.assertIsNotNone(workflow, "Workflow not found in database")
         self.assertEqual(workflow.state, 'QUEUED', "Workflow state should be QUEUED")
+        self.assertAlmostEqual(workflow.submitted_at, datetime.datetime.now(),
+            delta=datetime.timedelta(seconds=1),
+            msg="Workflow submitted time should be close to now"
+        )
 
-        # Simulate workflow completion
+        # Step 3: Simulate the workflow executor processing the request
         workflow.state = 'COMPLETE'
         workflow.end_time = datetime.datetime.now()
         DB.session.commit()
@@ -96,6 +101,7 @@ class TestWorkflowExecution(BaseTestCase):
                 "workflow_params": workflow_params_str,
                 "workflow_type": "CWL",
                 "workflow_type_version": "1.0",
+                'workflow_engine': "cwltool",
                 "workflow_url": "hello_world.cwl",
                 "workflow_attachment": [("hello_world.cwl", workflow_content, "application/text")]
             }

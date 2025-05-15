@@ -33,7 +33,7 @@ jobs:
 
     - name: Lint with Pylint
       run: |
-        pylint *.py app/ # tests/
+        pylint --rcfile=.pylintrc *.py app/ # tests/
 
     #- name: Lint with flake8
     #  run: |

@@ -1,7 +1,5 @@
 import unittest
 import json
-import datetime
-import uuid
 from tests.test_base import BaseTestCase
 from app.models.workflow import WorkflowRun
 from app.extensions import DB
@@ -13,48 +11,8 @@ class TestGetRunsPagination(BaseTestCase):
         """Set up test fixtures"""
         # Call parent setUp to set up Flask app, database and client
         super().setUp()
-        
         # Create test workflow runs
         self.create_test_runs(50)
-
-    def create_test_runs(self, count=50):
-        """Create test workflow runs in the database"""
-        # Create test runs
-        states = ['QUEUED', 'INITIALIZING', 'RUNNING', 'COMPLETE', 'EXECUTOR_ERROR', 'SYSTEM_ERROR', 'CANCELED']
-        workflow_types = ['CWL', 'WDL']
-        
-        for i in range(count):
-            # Calculate dates with some variation
-            start_time = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=i % 30, hours=i % 24)
-            
-            # Some runs are completed, some are still running
-            end_time = None
-            state = states[i % len(states)]
-            if state in ['COMPLETE', 'EXECUTOR_ERROR', 'SYSTEM_ERROR', 'CANCELED']:
-                end_time = start_time + datetime.timedelta(hours=2, minutes=(i % 60))
-            
-            # Create run with unique ID
-            run_id = str(uuid.uuid4())
-            workflow_type = workflow_types[i % len(workflow_types)]
-            
-            new_run = WorkflowRun(
-                run_id=run_id,
-                state=state,
-                workflow_type=workflow_type,
-                workflow_type_version='1.0',
-                workflow_url=f'https://example.com/workflows/workflow_{i}.{workflow_type.lower()}',
-                workflow_params={'input': f'test_input_{i}'},
-                workflow_engine='test_engine',
-                workflow_engine_version='1.0',
-                tags={'test': 'true', 'index': i},
-                start_time=start_time,
-                end_time=end_time
-            )
-            
-            DB.session.add(new_run)
-        
-        # Commit all runs
-        DB.session.commit()
 
     def test_default_pagination(self):
         """Test default pagination (no parameters)"""
@@ -73,6 +31,7 @@ class TestGetRunsPagination(BaseTestCase):
         for run in data['runs']:
             self.assertIn('run_id', run, "Run missing 'run_id'")
             self.assertIn('state', run, "Run missing 'state'")
+            self.assertIn('submitted_at', run, "Run missing 'submitted_at'")
             self.assertIn('start_time', run, "Run missing 'start_time'")
             self.assertIn('end_time', run, "Run missing 'end_time'")
             self.assertIn('tags', run, "Run missing 'tags'")

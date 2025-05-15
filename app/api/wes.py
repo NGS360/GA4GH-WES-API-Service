@@ -1,6 +1,5 @@
 ''' GA4GH WES API Implementation '''
 #pylint: disable=missing-module-docstring, missing-class-docstring
-import datetime
 import uuid
 import os
 import json
@@ -15,6 +14,14 @@ from app.extensions import DB
 api = Namespace('ga4gh/wes/v1', description='Workflow Execution Service API')
 
 # Define API models
+# For now, define the supported engines here. This should come from a database or config file in the future.
+supported_engines = {
+    'cwltool': '3.1.20230906242',
+    'Arvados': '3.0.0',
+    'SevenBridges': '1.0.0',
+    'AWSHealthOmics': '1.0.0'
+}
+
 state_enum = ['UNKNOWN', 'QUEUED', 'INITIALIZING', 'RUNNING', 'PAUSED',
               'COMPLETE', 'EXECUTOR_ERROR', 'SYSTEM_ERROR', 'CANCELED', 'CANCELING']
 
@@ -76,15 +83,11 @@ class ServiceInfo(Resource):
         """Get service info"""
         return {
             'workflow_type_versions': {
-                'CWL': {'workflow_type_version': ['v1.0']},
-                'WDL': {'workflow_type_version': ['1.0']}
+                'CWL': {'workflow_type_version': ['v1.0', 'v1.1', 'v1.2']},
             },
             'supported_wes_versions': ['1.0.0'],
             'supported_filesystem_protocols': ['file', 'http', 'https'],
-            'workflow_engine_versions': {
-                'cwltool': '3.1.20230906242',
-                'cromwell': '84'
-            },
+            'workflow_engine_versions': supported_engines,
             'default_workflow_engine_parameters': [],
             'system_state_counts': {},
             'auth_instructions_url': 'https://example.com/auth',
@@ -114,7 +117,7 @@ class WorkflowRuns(Resource):
 
         # Query with pagination
         runs = WorkflowRunModel.query.order_by(
-            WorkflowRunModel.start_time.desc()).limit(page_size + 1).offset(offset).all()
+            WorkflowRunModel.submitted_at.desc()).limit(page_size + 1).offset(offset).all()
 
         # Check if there are more results
         has_next_page = len(runs) > page_size
@@ -132,6 +135,7 @@ class WorkflowRuns(Resource):
             'runs': [{
                 'run_id': run.run_id,
                 'state': run.state,
+                'submitted_at': run.submitted_at.isoformat() if run.submitted_at else None,
                 'start_time': run.start_time.isoformat() if run.start_time else None,
                 'end_time': run.end_time.isoformat() if run.end_time else None,
                 'tags': run.tags or {}
@@ -144,6 +148,10 @@ class WorkflowRuns(Resource):
     @api.expect(run_request)
     def post(self):
         """Run a workflow"""
+        if api.payload.get('workflow_engine') is None:
+            return {'error': 'Workflow engine not specified'}, 400
+        if api.payload['workflow_engine'] not in supported_engines:
+            return {'error': f"Unsupported workflow engine: {api.payload['workflow_engine']}"}, 400
         run_id = str(uuid.uuid4())
         new_run = WorkflowRunModel(
             run_id=run_id,
@@ -155,7 +163,7 @@ class WorkflowRuns(Resource):
             workflow_engine=api.payload.get('workflow_engine'),
             workflow_engine_version=api.payload.get('workflow_engine_version'),
             tags=api.payload.get('tags'),
-            start_time=datetime.datetime.now(datetime.UTC)
+            #start_time=datetime.datetime.now(datetime.timezone.utc)
         )
         DB.session.add(new_run)
         DB.session.commit()
@@ -182,6 +190,7 @@ class WorkflowRun(Resource):
         return {
             'run_id': run.run_id,
             'state': run.state,
+            'submitted_at': run.submitted_at.isoformat() if run.submitted_at else None,
             'run_log': {
                 'name': 'workflow',
                 'start_time': run.start_time.isoformat() if run.start_time else None,

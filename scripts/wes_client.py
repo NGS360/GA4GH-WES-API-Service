@@ -135,8 +135,11 @@ if __name__ == "__main__":
             'workflow_attachment': [("hello_world.cwl", workflow_content, "application/text")]
         }
     )
-    print("Workflow submitted:", response.status_code)
+    if response.status_code != 200:
+        print("Workflow submission failed: ", response.text)
+        exit(1)
     run_id = response.json()['run_id']
+    print(f"Workflow submitted: {run_id}")
 
     #response = client.run_workflow(
     #    workflow_params=workflow_params_str,
