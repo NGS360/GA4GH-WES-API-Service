@@ -29,7 +29,7 @@ class BaseTestCase(unittest.TestCase):
         runs = []
         for i in range(count):
             # Calculate dates with some variation
-            start_time = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=i % 30, hours=i % 24)
+            start_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=i % 30, hours=i % 24)
 
             # Some runs are completed, some are still running
             end_time = None
