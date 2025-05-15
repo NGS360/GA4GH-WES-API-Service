@@ -3,6 +3,7 @@
 import json
 from flask import Blueprint, render_template, redirect, url_for, request, flash, current_app
 from app.api.wes import WorkflowRun, WorkflowRuns, WorkflowRunCancel
+from app.services.provider_factory import ServiceProviderFactory
 
 web = Blueprint('web', __name__)
 
@@ -71,11 +72,46 @@ def run_detail(run_id):
 @web.route('/runs/new', methods=['GET', 'POST'])
 def new_run():
     if request.method == 'POST':
-        #workflow_params = json.loads(request.form.get('workflow_params', '{}'))
-        #run_id = WorkflowRuns().post(workflow_params)
-        flash('Submit the run using the POST endpoint', 'error')
-        #return redirect(url_for('web.run_detail', run_id=run_id))
-    return render_template('new_run.html')
+        try:
+            # Get form data
+            workflow_url = request.form.get('workflow_url')
+            workflow_type = request.form.get('workflow_type')
+            workflow_type_version = request.form.get('workflow_type_version')
+            service_provider = request.form.get('service_provider')
+            
+            # Parse workflow parameters
+            try:
+                workflow_params = json.loads(request.form.get('workflow_params', '{}'))
+            except json.JSONDecodeError:
+                flash('Invalid JSON in workflow parameters', 'error')
+                return render_template('new_run.html')
+            
+            # Create payload for API
+            payload = {
+                'workflow_url': workflow_url,
+                'workflow_type': workflow_type,
+                'workflow_type_version': workflow_type_version,
+                'workflow_params': workflow_params,
+                'service_provider': service_provider
+            }
+            
+            # Submit the workflow
+            api = WorkflowRuns()
+            api.api.payload = payload
+            result = api.post()
+            
+            if 'run_id' in result:
+                flash(f'Workflow submitted successfully with ID: {result["run_id"]}', 'success')
+                return redirect(url_for('web.run_detail', run_id=result['run_id']))
+            else:
+                flash('Error submitting workflow', 'error')
+        except Exception as e:
+            flash(f'Error: {str(e)}', 'error')
+    
+    # Get available providers for the dropdown
+    available_providers = ServiceProviderFactory.get_available_providers()
+    
+    return render_template('new_run.html', providers=available_providers)
 
 @web.route('/runs/<run_id>/cancel', methods=['POST'])
 def cancel_run(run_id):
