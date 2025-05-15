@@ -19,6 +19,8 @@ class WorkflowRun(DB.Model):
     start_time = DB.Column(DB.DateTime)
     end_time = DB.Column(DB.DateTime)
 
+    submitted_at = DB.Column(DB.DateTime, default=DB.func.now())
+
 class TaskLog(DB.Model):
     """Task log model"""
     __tablename__ = 'task_logs'

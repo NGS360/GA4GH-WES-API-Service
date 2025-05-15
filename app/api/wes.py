@@ -1,6 +1,5 @@
 ''' GA4GH WES API Implementation '''
 #pylint: disable=missing-module-docstring, missing-class-docstring
-import datetime
 import uuid
 from flask import request
 from flask_restx import Namespace, Resource, fields
@@ -121,7 +120,7 @@ class WorkflowRuns(Resource):
             workflow_engine=api.payload.get('workflow_engine'),
             workflow_engine_version=api.payload.get('workflow_engine_version'),
             tags=api.payload.get('tags'),
-            start_time=datetime.datetime.now(datetime.timezone.utc)
+            #start_time=datetime.datetime.now(datetime.timezone.utc)
         )
         DB.session.add(new_run)
         DB.session.commit()
