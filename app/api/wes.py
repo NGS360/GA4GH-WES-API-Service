@@ -2,8 +2,6 @@
 #pylint: disable=missing-module-docstring, missing-class-docstring
 import uuid
 import os
-import json
-import logging
 import requests
 from flask import request, current_app
 from flask_restx import Namespace, Resource, fields
@@ -58,21 +56,21 @@ def notify_daemon(run_id):
     # Get daemon notification server details from environment variables
     host = os.environ.get('DAEMON_NOTIFICATION_HOST', 'localhost')
     port = os.environ.get('DAEMON_NOTIFICATION_PORT', '5001')
-    
+
     url = f"http://{host}:{port}"
     payload = {"run_id": run_id}
-    
+
     try:
         response = requests.post(url, json=payload, timeout=2)
         if response.status_code == 200:
             current_app.logger.info(f"Successfully notified daemon about workflow {run_id}")
             return True
-        else:
-            current_app.logger.warning(
-                f"Failed to notify daemon about workflow {run_id}: "
-                f"Status code {response.status_code}, Response: {response.text}"
-            )
-            return False
+
+        current_app.logger.warning(
+            f"Failed to notify daemon about workflow {run_id}: "
+            f"Status code {response.status_code}, Response: {response.text}"
+        )
+        return False
     except requests.RequestException as e:
         current_app.logger.warning(f"Error notifying daemon about workflow {run_id}: {e}")
         return False
@@ -167,15 +165,11 @@ class WorkflowRuns(Resource):
         )
         DB.session.add(new_run)
         DB.session.commit()
-        
+
         # Notify the daemon about the new workflow
         # We do this in a non-blocking way so the API can return quickly
-        try:
-            notify_daemon(run_id)
-        except Exception as e:
-            current_app.logger.error(f"Error notifying daemon: {e}")
-            # Continue even if notification fails - the daemon will pick up the workflow during polling
-        
+        notify_daemon(run_id)
+
         return {'run_id': run_id}
 
 @api.route('/runs/<string:run_id>')
