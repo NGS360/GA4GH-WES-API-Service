@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+import argparse
+import logging
 import requests
 import time
 import os
@@ -12,9 +14,8 @@ class WesClient:
     def __init__(self, base_url=None):
         """
         Initialize the WES client with a base URL.
-        If not provided, uses the environment variable WES_API_URL.
         """
-        self.base_url = base_url or os.environ.get('WES_API_URL', 'http://localhost:5000/api/ga4gh/wes/v1')
+        self.base_url = base_url
 
     def get_service_info(self):
         """Get information about the WES service"""
@@ -108,27 +109,35 @@ class WesClient:
 
 if __name__ == "__main__":
     # Example usage
-    client = WesClient()
+    parser = argparse.ArgumentParser(description="WES Client Example")
+    parser.add_argument('--base-url', type=str, help='Base URL of the WES service', default='http://localhost:5000/api/ga4gh/wes/v1')
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO)
+    logging.info("WES Client Example")
+    logging.info("Arguments: %s", args)
+
+    client = WesClient(base_url=args.base_url)
+
+    logging.info("Getting service info...")
     print(client.get_service_info())
+
+    # List all runs
+    logging.info("Listing all runs...")
     print(client.list_runs())
 
     # Submit a workflow
+    logging.info("Submitting workflow...")
     workflow_path = Path(__file__).parent / '..' / 'tests' / 'workflows' / 'hello_world.cwl'
     with open(workflow_path, 'r') as f:
         workflow_content = f.read()
 
     workflow_params = {
-        "input_file": "s3://my-bucket/input.txt",
-        "output_file": "s3://my-bucket/output.txt"
     }
-
-    # Convert to JSON string as required by the API
-    workflow_params_str = json.dumps(workflow_params)
-
+    
     response = requests.post(
         f"{client.base_url}/runs",
         json={
-            'workflow_params': workflow_params_str,
+            'workflow_params': workflow_params,
             'workflow_type': "CWL",
             'workflow_type_version': "1.0",
             'workflow_engine': "cwltool",
