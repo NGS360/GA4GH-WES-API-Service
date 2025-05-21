@@ -90,12 +90,7 @@ The application will start on `http://localhost:5000`
 
 ## Example Usage
 
-The scripts folder has wes_client.py which can be used to submit workflows.  Using the tests/workflows/hello_world.cwl
-as an example to submit execution to the various platforms:
-
-```
-scripts/wes_client.py 
-```
+The scripts folder has wes_client.py which can be used to submit workflows.  The run_workflows.sh script shows how to use this.
 
 
 ## Development
