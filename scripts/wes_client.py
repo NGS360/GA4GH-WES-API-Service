@@ -111,6 +111,10 @@ if __name__ == "__main__":
     # Example usage
     parser = argparse.ArgumentParser(description="WES Client Example")
     parser.add_argument('--base-url', type=str, help='Base URL of the WES service', default='http://localhost:5000/api/ga4gh/wes/v1')
+    parser.add_argument('--engine', choices=["cwltool", "Arvados", "SevenBridges", "Omics"], help='Workflow engine to use', default='cwltool')
+    parser.add_argument('--workflow-url', type=str, help='URL of the workflow to run', required=True)
+    parser.add_argument('--tags', type=str, help='Tags for the workflow run (JSON format)', default='{}')
+    parser.add_argument('--wait', action='store_true', default=False, help='Wait for the workflow to complete')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
     logging.info("WES Client Example")
@@ -127,22 +131,33 @@ if __name__ == "__main__":
 
     # Submit a workflow
     logging.info("Submitting workflow...")
-    workflow_path = Path(__file__).parent / '..' / 'tests' / 'workflows' / 'hello_world.cwl'
-    with open(workflow_path, 'r') as f:
-        workflow_content = f.read()
+    
+    # For cwltool, the workflow file would need tobe read and sent as a file attachment
+    workflow_engine = args.engine
+    workflow_attachment = None
+    
+    if workflow_engine == "cwltool":
+        with open(args.workflow_url, 'r') as f:
+            workflow_content = f.read()
+        workflow_attachment = [(os.path.basename(args.workflow_url), workflow_content, "application/text")]
+
+        workflow_url = os.path.basename(args.workflow_url)
+    else:
+        workflow_url = args.workflow_url
+        tags = args.tags
 
     workflow_params = {
     }
-    
+
     response = requests.post(
         f"{client.base_url}/runs",
         json={
             'workflow_params': workflow_params,
             'workflow_type': "CWL",
             'workflow_type_version': "1.0",
-            'workflow_engine': "cwltool",
-            'workflow_url': "hello_world.cwl",
-            'workflow_attachment': [("hello_world.cwl", workflow_content, "application/text")]
+            'workflow_engine': workflow_engine,
+            'workflow_url': workflow_url,
+            'workflow_attachment': workflow_attachment
         }
     )
     if response.status_code != 200:
@@ -161,16 +176,17 @@ if __name__ == "__main__":
     #print("Workflow submitted:", response)
     #run_id = response['run_id']
 
-    print("Waiting for workflow to complete...")
-    try:
-        final_status = client.wait_for_run_completion(run_id, timeout=600)
-        print("Workflow completed:", final_status)
-    except TimeoutError as e:
-        print(e)
-        # Optionally cancel the run if it times out
-        client.cancel_run(run_id)
-        print("Workflow run canceled.")
-    else:
-        # Get the final log
-        log = client.get_run_log(run_id)
-        print("Final workflow log:", log)
+    if args.wait:
+        print("Waiting for workflow to complete...")
+        try:
+            final_status = client.wait_for_run_completion(run_id, timeout=600)
+            print("Workflow completed:", final_status)
+        except TimeoutError as e:
+            print(e)
+            # Optionally cancel the run if it times out
+            client.cancel_run(run_id)
+            print("Workflow run canceled.")
+        else:
+            # Get the final log
+            log = client.get_run_log(run_id)
+            print("Final workflow log:", log)
