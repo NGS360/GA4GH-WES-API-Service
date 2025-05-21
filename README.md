@@ -63,7 +63,7 @@ The application supports different configuration profiles:
 - `TestConfig`: Configuration for unit tests
 
 Key configuration options:
-- `DATABASE_URL`: Database connection URL
+- `DATABASE_URI`: Database connection URL
 - `SECRET_KEY`: Secret Key used by application to secure session information
 
 ## Running the Application
@@ -87,6 +87,16 @@ The application will start on `http://localhost:5000`
 - `/runs/new`: Create run page
 - `/runs/<run_id>/cancel`: Cancel run
 - `/api/ga4gh/wes/v1`: GA4GH WES REST API
+
+## Example Usage
+
+The scripts folder has wes_client.py which can be used to submit workflows.  Using the tests/workflows/hello_world.cwl
+as an example to submit execution to the various platforms:
+
+```
+scripts/wes_client.py 
+```
+
 
 ## Development
 
