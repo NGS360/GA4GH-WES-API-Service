@@ -111,7 +111,7 @@ if __name__ == "__main__":
     # Example usage
     parser = argparse.ArgumentParser(description="WES Client Example")
     parser.add_argument('--base-url', type=str, help='Base URL of the WES service', default='http://localhost:5000/api/ga4gh/wes/v1')
-    parser.add_argument('--engine', choices=["cwltool", "Arvados", "SevenBridges", "Omics"], help='Workflow engine to use', default='cwltool')
+    parser.add_argument('--engine', choices=["cwltool", "Arvados", "SevenBridges", "AWSHealthOmics"], help='Workflow engine to use', default='cwltool')
     parser.add_argument('--workflow-url', type=str, help='URL of the workflow to run', required=True)
     parser.add_argument('--tags', type=str, help='Tags for the workflow run (JSON format)', default='{}')
     parser.add_argument('--wait', action='store_true', default=False, help='Wait for the workflow to complete')
