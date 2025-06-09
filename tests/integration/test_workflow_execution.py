@@ -54,11 +54,12 @@ class TestWorkflowExecution(BaseTestCase):
             }
         )
 
+        # Check for run_id in response
         self.assertIn('run_id', response.json, "No run_id in response")
         run_id = response.json['run_id']
 
-        workflow = DB.session.query(WorkflowRun).filter_by(run_id=run_id).first()
         # Check the workflow was created in the database
+        workflow = DB.session.query(WorkflowRun).filter_by(run_id=run_id).first()
         self.assertIsNotNone(workflow, "Workflow not found in database")
         self.assertEqual(workflow.state, 'QUEUED', "Workflow state should be QUEUED")
         self.assertAlmostEqual(workflow.submitted_at, datetime.datetime.now(),
