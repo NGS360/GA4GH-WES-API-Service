@@ -5,19 +5,29 @@ requirements:
   DockerRequirement:
     dockerPull: ubuntu:latest
 
-inputs: []
+inputs:
+  name:
+    type: string
+    default: "World"
 
 steps:
   say_hello:
+    in:
+      who: name
     run:
       class: CommandLineTool
-      baseCommand: [echo, "Hello, World!"]
+      requirements:
+        InlineJavascriptRequirement: {}
+      baseCommand: echo
+      arguments:
+        - valueFrom: "Hello, $(inputs.who)!"
       stdout: hello.txt
-      inputs: []
+      inputs:
+        who:
+          type: string
       outputs:
         output_file:
           type: stdout
-    in: []
     out: [output_file]
 
 outputs:

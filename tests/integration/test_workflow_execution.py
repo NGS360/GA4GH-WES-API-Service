@@ -24,6 +24,10 @@ class TestWorkflowExecution(BaseTestCase):
     def test_workflow_execution(self):
         """Test the full workflow execution lifecycle"""
 
+        # Ensure no workflows exist before starting
+        workflows = DB.session.query(WorkflowRun).all()
+        self.assertListEqual(workflows, [], "There should be no workflows in the database")
+
         # Step 1: Check service info
         service_info = self.client.get("/api/ga4gh/wes/v1/service-info")
 
@@ -36,7 +40,7 @@ class TestWorkflowExecution(BaseTestCase):
             workflow_content = f.read()
 
         workflow_params = {
-            "outputUri": "s3://my-test-bucket/outputs/"
+            "name": "test input"
         }
 
         # Convert to JSON string as required by the API
@@ -62,14 +66,16 @@ class TestWorkflowExecution(BaseTestCase):
         workflow = DB.session.query(WorkflowRun).filter_by(run_id=run_id).first()
         self.assertIsNotNone(workflow, "Workflow not found in database")
         self.assertEqual(workflow.state, 'QUEUED', "Workflow state should be QUEUED")
-        self.assertAlmostEqual(workflow.submitted_at, datetime.datetime.now(),
+        self.assertAlmostEqual(
+            workflow.submitted_at.replace(tzinfo=datetime.timezone.utc),
+            datetime.datetime.now(datetime.timezone.utc),
             delta=datetime.timedelta(seconds=1),
             msg="Workflow submitted time should be close to now"
         )
 
         # Step 3: Simulate the workflow executor processing the request
         workflow.state = 'COMPLETE'
-        workflow.end_time = datetime.datetime.now()
+        workflow.end_time = datetime.datetime.now(datetime.timezone.utc)
         DB.session.commit()
 
         # Step 4: Check status until completion (should be immediate since we manually set it)
