@@ -4,6 +4,8 @@
 app.db
 **/__pycache__
 
+.vscode/
+
 # Cloudformation Files
 cloudformation/cloudformation-parameters.json
 cloudformation/cloudformation-tags.txt
