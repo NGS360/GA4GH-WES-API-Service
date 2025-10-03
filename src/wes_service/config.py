@@ -16,6 +16,12 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+    
+    # Workflow executor configuration
+    workflow_executor: Literal["local", "omics"] = Field(
+        default="local",
+        description="Workflow executor to use",
+    )
 
     # Database Configuration
     database_url: str = Field(
@@ -129,6 +135,20 @@ class Settings(BaseSettings):
     log_format: Literal["json", "text"] = Field(
         default="json",
         description="Log output format",
+    )
+    
+    # AWS Omics Configuration
+    omics_region: str = Field(
+        default="us-east-1",
+        description="AWS region for Omics",
+    )
+    omics_role_arn: str = Field(
+        default="",
+        description="IAM role ARN for Omics workflow execution",
+    )
+    omics_output_bucket: str = Field(
+        default="s3://omics-outputs",
+        description="S3 bucket for Omics workflow outputs",
     )
 
     # Supported Workflow Types

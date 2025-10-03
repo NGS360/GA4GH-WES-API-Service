@@ -11,6 +11,7 @@ from src.wes_service.config import get_settings
 from src.wes_service.db.models import WorkflowRun, WorkflowState
 from src.wes_service.db.session import AsyncSessionLocal
 from src.wes_service.daemon.executors.local import LocalExecutor
+from src.wes_service.daemon.executors.omics import OmicsExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,14 @@ class WorkflowMonitor:
     def __init__(self):
         """Initialize workflow monitor."""
         self.settings = get_settings()
-        self.executor = LocalExecutor()
+        
+        # Choose executor based on configuration
+        if self.settings.workflow_executor == "omics":
+            self.executor = OmicsExecutor()
+        else:
+            # Default to local executor
+            self.executor = LocalExecutor()
+            
         self.running = False
         self.active_runs: set[str] = set()
 
