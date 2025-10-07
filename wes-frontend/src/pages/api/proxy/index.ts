@@ -11,8 +11,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     
     // Basic auth credentials (hardcoded for development)
-    const username = 'admin'; // Replace with your username
-    const password = 'password'; // Replace with your password
+    const username = 'ngs360';
+    const password = 'ngs360password';
     
     const response = await axios({
       method: req.method || 'GET',
