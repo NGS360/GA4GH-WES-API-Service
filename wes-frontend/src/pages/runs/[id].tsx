@@ -97,6 +97,10 @@ export default function RunDetailPage() {
   const currentState = status?.state || run.state;
   const isActive = currentState === RunState.RUNNING || currentState === RunState.QUEUED;
   
+  // Check if we have log information in the outputs
+  const logInfo = run.outputs?.logs || {};
+  const hasTaskLogs = run.task_logs && run.task_logs.length > 0;
+  
   return (
     <Layout title={`Run: ${runId}`}>
       <Box mb={3}>
@@ -199,36 +203,44 @@ export default function RunDetailPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {run.task_logs.map((task) => (
-                    <TableRow key={task.name}>
-                      <TableCell>{task.name}</TableCell>
-                      <TableCell>
-                        {task.exit_code !== undefined ? (
-                          <Chip 
-                            label={task.exit_code === 0 ? 'Success' : 'Failed'} 
-                            color={task.exit_code === 0 ? 'success' : 'error'} 
-                          />
-                        ) : (
-                          <Chip label="Running" color="primary" />
-                        )}
-                      </TableCell>
-                      <TableCell>{task.start_time ? format(new Date(task.start_time), 'PPpp') : 'N/A'}</TableCell>
-                      <TableCell>{task.end_time ? format(new Date(task.end_time), 'PPpp') : 'N/A'}</TableCell>
-                      <TableCell>{task.exit_code !== undefined ? task.exit_code : 'N/A'}</TableCell>
-                      <TableCell>
-                        {task.stdout_url && (
-                          <Button variant="text" href={task.stdout_url} target="_blank" size="small">
-                            stdout
-                          </Button>
-                        )}
-                        {task.stderr_url && (
-                          <Button variant="text" href={task.stderr_url} target="_blank" size="small">
-                            stderr
-                          </Button>
-                        )}
+                  {hasTaskLogs ? (
+                    run.task_logs.map((task) => (
+                      <TableRow key={task.name}>
+                        <TableCell>{task.name}</TableCell>
+                        <TableCell>
+                          {task.exit_code !== undefined ? (
+                            <Chip 
+                              label={task.exit_code === 0 ? 'Success' : 'Failed'} 
+                              color={task.exit_code === 0 ? 'success' : 'error'} 
+                            />
+                          ) : (
+                            <Chip label="Running" color="primary" />
+                          )}
+                        </TableCell>
+                        <TableCell>{task.start_time ? format(new Date(task.start_time), 'PPpp') : 'N/A'}</TableCell>
+                        <TableCell>{task.end_time ? format(new Date(task.end_time), 'PPpp') : 'N/A'}</TableCell>
+                        <TableCell>{task.exit_code !== undefined ? task.exit_code : 'N/A'}</TableCell>
+                        <TableCell>
+                          {task.stdout_url && (
+                            <Button variant="text" href={task.stdout_url} target="_blank" size="small">
+                              stdout
+                            </Button>
+                          )}
+                          {task.stderr_url && (
+                            <Button variant="text" href={task.stderr_url} target="_blank" size="small">
+                              stderr
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center">
+                        {isActive ? 'No tasks available yet' : 'No tasks found for this run'}
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -238,9 +250,30 @@ export default function RunDetailPage() {
             <LogViewer 
               stdout={run.run_log.stdout}
               stderr={run.run_log.stderr}
-              stdoutUrl={run.run_log.stdout_url}
+              stdoutUrl={run.run_log.stdout_url || logInfo.run_log}
               stderrUrl={run.run_log.stderr_url}
             />
+            
+            {/* Show log URL from outputs if available */}
+            {logInfo.run_log && !run.run_log.stdout_url && (
+              <Box mt={3}>
+                <Alert severity="info">
+                  <Typography variant="body1">
+                    <strong>CloudWatch Log:</strong>{' '}
+                    <Button 
+                      variant="contained" 
+                      color="primary" 
+                      href={logInfo.run_log} 
+                      target="_blank"
+                      size="small"
+                      sx={{ ml: 1 }}
+                    >
+                      View in CloudWatch
+                    </Button>
+                  </Typography>
+                </Alert>
+              </Box>
+            )}
           </TabPanel>
           
           <TabPanel value={activeTab} index={3}>

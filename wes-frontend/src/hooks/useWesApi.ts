@@ -11,7 +11,8 @@ import {
 } from '../types/wes';
 
 // Initialize the WES service
-const wesService = new WesService(process.env.NEXT_PUBLIC_WES_API_URL || '/api');
+// We're using an empty string as the baseURL because the apiClient will handle the URL construction
+const wesService = new WesService(process.env.NEXT_PUBLIC_WES_API_URL || '');
 
 // Query keys
 export const queryKeys = {

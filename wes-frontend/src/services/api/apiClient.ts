@@ -10,8 +10,11 @@ class ApiClient {
     this.baseURL = baseURL;
     this.useProxy = useProxy;
     
+    // When using the proxy, we don't need a baseURL since we'll use relative URLs
+    const axiosBaseURL = useProxy ? '' : baseURL;
+    
     this.client = axios.create({
-      baseURL,
+      baseURL: axiosBaseURL,
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
@@ -69,31 +72,37 @@ class ApiClient {
     if (this.useProxy) {
       // For proxy requests, we need to use the /api/proxy endpoint
       // and pass the original endpoint as a query parameter
-      return `/api/proxy?endpoint=${encodeURIComponent(url.startsWith('/') ? url.substring(1) : url)}`;
+      // Make sure url doesn't start with a slash for the query parameter
+      const cleanUrl = url.startsWith('/') ? url.substring(1) : url;
+      return `/api/proxy?endpoint=${encodeURIComponent(cleanUrl)}`;
     }
     return url;
   }
 
   async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const finalUrl = this.getUrl(url);
+    console.log(`Making GET request to: ${finalUrl}`);
     const response: AxiosResponse<T> = await this.client.get(finalUrl, config);
     return response.data;
   }
 
   async post<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
     const finalUrl = this.getUrl(url);
+    console.log(`Making POST request to: ${finalUrl}`);
     const response: AxiosResponse<T> = await this.client.post(finalUrl, data, config);
     return response.data;
   }
 
   async put<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
     const finalUrl = this.getUrl(url);
+    console.log(`Making PUT request to: ${finalUrl}`);
     const response: AxiosResponse<T> = await this.client.put(finalUrl, data, config);
     return response.data;
   }
 
   async delete<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const finalUrl = this.getUrl(url);
+    console.log(`Making DELETE request to: ${finalUrl}`);
     const response: AxiosResponse<T> = await this.client.delete(finalUrl, config);
     return response.data;
   }
