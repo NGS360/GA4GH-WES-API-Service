@@ -160,8 +160,24 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    # Configure more detailed logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    asyncio.run(main())
+    
+    # Increase boto3/botocore logging level to reduce noise
+    logging.getLogger('botocore').setLevel(logging.WARNING)
+    logging.getLogger('boto3').setLevel(logging.WARNING)
+    
+    # Set our application loggers to INFO
+    logging.getLogger('src.wes_service').setLevel(logging.INFO)
+    
+    logger.info("Starting WES workflow monitor daemon...")
+    
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Workflow monitor stopped by user")
+    except Exception as e:
+        logger.error(f"Unhandled exception in workflow monitor: {str(e)}", exc_info=True)

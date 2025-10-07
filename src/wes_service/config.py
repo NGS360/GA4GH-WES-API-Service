@@ -55,6 +55,28 @@ class Settings(BaseSettings):
         description="AWS secret access key",
     )
 
+    # AWS Omics Configuration
+    omics_region: str = Field(
+        default="us-east-1",
+        description="AWS region for Omics",
+    )
+    omics_role_arn: str = Field(
+        default="",
+        description="AWS IAM role ARN for Omics workflow execution",
+    )
+    omics_output_bucket: str = Field(
+        default="",
+        description="S3 bucket URI for Omics workflow outputs",
+    )
+    daemon_poll_interval: int = Field(
+        default=30,
+        description="Interval in seconds between workflow status polling",
+    )
+    daemon_max_concurrent_runs: int = Field(
+        default=10,
+        description="Maximum number of concurrent workflow runs",
+    )
+
     # Authentication Configuration
     auth_method: Literal["basic", "oauth2", "none"] = Field(
         default="basic",
