@@ -80,7 +80,14 @@ class OmicsExecutor(WorkflowExecutor):
             
             # Start the Omics workflow run
             try:
-                output_uri = f"{self.output_bucket}/runs/{run.id}/output/"
+                # Set default output URI if not provided in workflow_engine_parameters
+                output_uri = None
+                if run.workflow_engine_parameters and 'outputUri' in run.workflow_engine_parameters:
+                    output_uri = run.workflow_engine_parameters['outputUri']
+                    logger.info(f"Using output URI from workflow_engine_parameters: {output_uri}")
+                else:
+                    output_uri = f"{self.output_bucket}/runs/{run.id}/output/"
+                    logger.info(f"Using default output URI: {output_uri}")
                 
                 # Set default parameters for the API call
                 kwargs = {
@@ -134,6 +141,12 @@ class OmicsExecutor(WorkflowExecutor):
                 log_msg = f"Started AWS Omics run: {omics_run_id}, output will be in: {output_uri}"
                 run.system_logs.append(log_msg)
                 logger.info(f"Run {run.id}: {log_msg}")
+                
+                # Store the Omics run ID in the outputs field for reference
+                if not run.outputs:
+                    run.outputs = {}
+                run.outputs['omics_run_id'] = omics_run_id
+                
                 await db.commit()
             except Exception as e:
                 error_msg = f"Failed to start Omics workflow: {str(e)}"
@@ -519,6 +532,9 @@ class OmicsExecutor(WorkflowExecutor):
             
             # Extract only the most relevant output information
             outputs = {}
+            
+            # Store the Omics run ID in the outputs
+            outputs['omics_run_id'] = omics_run_id
             
             # Primary output: the output location
             if 'outputUri' in response:
