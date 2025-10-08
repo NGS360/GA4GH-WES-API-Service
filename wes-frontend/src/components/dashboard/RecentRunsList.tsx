@@ -33,8 +33,8 @@ const RecentRunsList: React.FC<RecentRunsListProps> = ({ runs, isLoading }) => {
         <div key={run.run_id}>
           <ListItem>
             <ListItemText
-              primary={run.run_id}
-              secondary={`Updated: ${format(new Date(), 'PPpp')}`}
+              primary={run.name || 'Unnamed workflow'}
+              secondary={`ID: ${run.run_id} • Updated: ${format(new Date(), 'PPpp')}`}
             />
             <ListItemSecondaryAction>
               <Chip

@@ -145,6 +145,7 @@ export default function RunsPage() {
                 <TableHead>
                   <TableRow>
                     <TableCell>Run ID</TableCell>
+                    <TableCell>Name</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell>Start Time</TableCell>
                     <TableCell>End Time</TableCell>
@@ -158,14 +159,17 @@ export default function RunsPage() {
                         <Link href={`/runs/${run.run_id}`}>{run.run_id}</Link>
                       </TableCell>
                       <TableCell>
-                        <Chip 
-                          label={run.state} 
+                        {run.name || 'Unnamed workflow'}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={run.state}
                           color={
                             run.state === RunState.COMPLETE ? 'success' :
                             run.state === RunState.RUNNING ? 'primary' :
                             run.state === RunState.QUEUED ? 'warning' :
                             run.state.includes('ERROR') ? 'error' : 'default'
-                          } 
+                          }
                         />
                       </TableCell>
                       <TableCell>{run.start_time ? format(new Date(run.start_time), 'PPpp') : 'N/A'}</TableCell>

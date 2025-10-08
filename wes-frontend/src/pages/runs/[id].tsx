@@ -147,9 +147,9 @@ export default function RunDetailPage() {
                   <CardHeader title="Workflow Information" />
                   <CardContent>
                     <Typography><strong>Run ID:</strong> {run.run_id}</Typography>
-                    <Typography><strong>Type:</strong> {run.request.workflow_type}</Typography>
-                    <Typography><strong>Version:</strong> {run.request.workflow_type_version}</Typography>
-                    <Typography><strong>URL:</strong> {run.request.workflow_url}</Typography>
+                    <Typography><strong>Run Name:</strong> {run.name || 'Unnamed workflow'}</Typography>
+                    <Typography><strong>Workflow Type:</strong> {run.request.workflow_type}</Typography>
+                    <Typography><strong>Workflow URL:</strong> {run.request.workflow_url}</Typography>
                     <Typography><strong>State:</strong> {currentState}</Typography>
                     <Typography>
                       <strong>Start Time:</strong> {run.run_log.start_time ? format(new Date(run.run_log.start_time), 'PPpp') : 'N/A'}

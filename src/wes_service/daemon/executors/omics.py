@@ -88,7 +88,8 @@ class OmicsExecutor(WorkflowExecutor):
                     'roleArn': self.role_arn,
                     'parameters': omics_params,
                     'outputUri': output_uri,
-                    'name': f"wes-run-{run.id}"
+                    'name': f"wes-run-{run.id}",
+                    'retentionMode': 'REMOVE'
                 }
                 
                 # Add tags from the run object
@@ -542,31 +543,81 @@ class OmicsExecutor(WorkflowExecutor):
                         if len(parts) >= 8:
                             region = parts[3]
                             log_group = parts[6]
-                            log_stream = parts[7]
                             
-                            # Fix the log stream format - it needs to include the full path
-                            full_log_stream = log_stream
+                            # Extract the actual run ID from the ARN
+                            # Format is typically: arn:aws:logs:region:account:log-group:/aws/omics/WorkflowLog:log-stream:run/5721106
+                            arn_parts = run_log_stream.split(':log-stream:')
+                            if len(arn_parts) == 2:
+                                log_stream = arn_parts[1]  # This should be "run/5721106"
+                                logger.info(f"Extracted log stream from ARN: {log_stream}")
+                            else:
+                                # Fallback to the old method if the format is different
+                                log_stream_parts = parts[7:]
+                                log_stream = ':'.join(log_stream_parts)
+                                logger.info(f"Fallback log stream extraction: {log_stream}")
                             
-                            # Construct CloudWatch log URL
+                            # Log the extracted values for debugging
+                            logger.info(f"Extracted region: {region}, log_group: {log_group}, log_stream: {log_stream}")
+                            
+                            # Construct CloudWatch log URL with proper URL encoding
                             cloudwatch_url = (
                                 f"https://{region}.console.aws.amazon.com/cloudwatch/home"
                                 f"?region={region}#logsV2:log-groups/log-group/{log_group.replace('/', '%2F')}"
-                                f"/log-events/{full_log_stream.replace('/', '%2F')}"
+                                f"/log-events/{log_stream.replace('/', '%2F')}"
                             )
                             
                             # Add to outputs
                             outputs['logs'] = {
                                 'run_log': cloudwatch_url,
                                 'log_group': log_group,
-                                'log_stream': full_log_stream
+                                'log_stream': log_stream
                             }
                             
                             logger.info(f"Created CloudWatch log URL: {cloudwatch_url}")
                             
-                            # We don't have task logs in the same format, but we can add a placeholder
-                            outputs['logs']['task_logs'] = {
-                                'main': cloudwatch_url  # Use the same URL for now
-                            }
+                            # Try to construct task-specific log URLs if possible
+                            # Format is typically: task/{runId}/{taskId}
+                            run_id_match = log_stream.split('/')
+                            if len(run_id_match) >= 2 and run_id_match[0] == 'run':
+                                run_id = run_id_match[1]
+                                
+                                # Get the actual run ID from the log stream (format: run/XXXXXXX)
+                                run_id_parts = log_stream.split('/')
+                                if len(run_id_parts) >= 2 and run_id_parts[0] == 'run':
+                                    run_id = run_id_parts[1]
+                                    logger.info(f"Extracted run ID: {run_id}")
+                                    
+                                    # Create task log URL - use the actual run ID
+                                    task_log_stream = f"task/{run_id}/main"
+                                    task_log_url = (
+                                        f"https://{region}.console.aws.amazon.com/cloudwatch/home"
+                                        f"?region={region}#logsV2:log-groups/log-group/{log_group.replace('/', '%2F')}"
+                                        f"/log-events/{task_log_stream.replace('/', '%2F')}"
+                                    )
+                                    
+                                    # Create manifest log URL - use the actual run ID
+                                    manifest_log_stream = f"manifest/run/{run_id}"
+                                    manifest_log_url = (
+                                        f"https://{region}.console.aws.amazon.com/cloudwatch/home"
+                                        f"?region={region}#logsV2:log-groups/log-group/{log_group.replace('/', '%2F')}"
+                                        f"/log-events/{manifest_log_stream.replace('/', '%2F')}"
+                                    )
+                                
+                                # Add task logs
+                                outputs['logs']['task_logs'] = {
+                                    'main': task_log_url
+                                }
+                                
+                                # Add manifest log
+                                outputs['logs']['manifest_log'] = manifest_log_url
+                                
+                                logger.info(f"Created task log URL: {task_log_url}")
+                                logger.info(f"Created manifest log URL: {manifest_log_url}")
+                            else:
+                                # Fallback to using the same URL for task logs
+                                outputs['logs']['task_logs'] = {
+                                    'main': cloudwatch_url
+                                }
                     else:
                         logger.warning(f"runLogStream doesn't match expected CloudWatch ARN format: {run_log_stream}")
                 else:

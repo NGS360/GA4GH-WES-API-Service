@@ -30,12 +30,17 @@ export interface RunListResponse {
 export interface RunListItem {
   run_id: string;
   state: RunState;
+  start_time?: string;
+  end_time?: string;
+  name?: string;
+  tags?: Record<string, string>;
 }
 
 // Run Details
 export interface RunResponse {
   run_id: string;
   state: RunState;
+  name?: string;
   run_log: RunLog;
   task_logs: TaskLog[];
   outputs: Record<string, any>;
