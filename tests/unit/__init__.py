@@ -1,1 +1,0 @@
-"""Unit tests for the GA4GH WES API Service"""
