@@ -38,7 +38,10 @@ class TestSubmitWorkflow:
                 "workflow_type": "CWL",
                 "workflow_type_version": "v1.0",
                 "workflow_params": json.dumps(params),
-                "tags": json.dumps({"project": "test"}),
+                "tags": json.dumps(
+                    {"project": "test"},
+                    {"name": "example_workflow"},
+                ),
             },
         )
         assert response.status_code == 200
@@ -78,7 +81,7 @@ class TestSubmitWorkflow:
 class TestListRuns:
     """Tests for GET /runs endpoint."""
 
-    async def test_list_runs_empty(self, client: TestClient):
+    def test_list_runs_empty(self, client: TestClient):
         """Test listing runs when none exist."""
         response = client.get("/ga4gh/wes/v1/runs")
         assert response.status_code == 200
@@ -106,6 +109,32 @@ class TestListRuns:
         )
         assert response.status_code == 200
 
+    def test_list_runs_filtered_by_name(self, client: TestClient, test_db):
+        """Test listing runs filtered by name."""
+        # Create a test run
+        run = WorkflowRun(
+            id="test-run-001",
+            state=WorkflowState.QUEUED,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="https://example.com/workflow.cwl",
+            tags={"name": "example_workflow"},
+        )
+        test_db.add(run)
+        test_db.commit()
+
+        response = client.get(
+            "/ga4gh/wes/v1/runs",
+            params={
+                "tags": [
+                    {"name": "a_different_name"},
+                ]
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["runs"]) == 1
+        assert data["runs"][0]["run_id"] == "test-run-001"
 
 class TestGetRunStatus:
     """Tests for GET /runs/{run_id}/status endpoint."""
