@@ -32,7 +32,7 @@ jobs:
         run: uv sync --locked --all-extras --dev
 
       - name: Run linter
-        run: uv run make lint
+        run: uv run flake8 .
 
   test:
     runs-on: ubuntu-latest
