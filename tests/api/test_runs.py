@@ -112,7 +112,7 @@ class TestListRuns:
     def test_list_runs_filtered_by_name(self, client: TestClient, test_db):
         """Test listing runs filtered by name."""
         # Create a test run
-        run = WorkflowRun(
+        run1 = WorkflowRun(
             id="test-run-001",
             state=WorkflowState.QUEUED,
             workflow_type="CWL",
@@ -120,14 +120,23 @@ class TestListRuns:
             workflow_url="https://example.com/workflow.cwl",
             tags={"name": "example_workflow"},
         )
-        test_db.add(run)
+        run2 = WorkflowRun(
+            id="test-run-001",
+            state=WorkflowState.QUEUED,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="https://example.com/workflow.cwl",
+            tags={"name": "another_workflow"},
+        )
+        test_db.add(run1)
+        test_db.add(run2)
         test_db.commit()
 
         response = client.get(
             "/ga4gh/wes/v1/runs",
             params={
                 "tags": [
-                    {"name": "a_different_name"},
+                    {"name": "example_workflow"},
                 ]
             }
         )
