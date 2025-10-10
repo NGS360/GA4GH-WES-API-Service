@@ -16,6 +16,12 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+    
+    # Workflow executor configuration
+    workflow_executor: Literal["local", "omics"] = Field(
+        default="local",
+        description="Workflow executor to use",
+    )
 
     # Database Configuration
     database_url: str = Field(
@@ -47,6 +53,28 @@ class Settings(BaseSettings):
     s3_secret_access_key: str = Field(
         default="",
         description="AWS secret access key",
+    )
+
+    # AWS Omics Configuration
+    omics_region: str = Field(
+        default="us-east-1",
+        description="AWS region for Omics",
+    )
+    omics_role_arn: str = Field(
+        default="",
+        description="AWS IAM role ARN for Omics workflow execution",
+    )
+    omics_output_bucket: str = Field(
+        default="",
+        description="S3 bucket URI for Omics workflow outputs",
+    )
+    daemon_poll_interval: int = Field(
+        default=30,
+        description="Interval in seconds between workflow status polling",
+    )
+    daemon_max_concurrent_runs: int = Field(
+        default=10,
+        description="Maximum number of concurrent workflow runs",
     )
 
     # Authentication Configuration
@@ -129,6 +157,20 @@ class Settings(BaseSettings):
     log_format: Literal["json", "text"] = Field(
         default="json",
         description="Log output format",
+    )
+    
+    # AWS Omics Configuration
+    omics_region: str = Field(
+        default="us-east-1",
+        description="AWS region for Omics",
+    )
+    omics_role_arn: str = Field(
+        default="",
+        description="IAM role ARN for Omics workflow execution",
+    )
+    omics_output_bucket: str = Field(
+        default="s3://omics-outputs",
+        description="S3 bucket for Omics workflow outputs",
     )
 
     # Supported Workflow Types

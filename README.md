@@ -353,16 +353,24 @@ GA4GH-WES-API-Service/
 
 ## Workflow Engines
 
-The current implementation includes a stub executor for demonstration. To integrate real workflow engines:
+The current implementation includes:
+- A stub local executor for demonstration
+- AWS Omics integration for running workflows on AWS HealthOmics
+
+To integrate additional workflow engines:
 
 1. **Create a new executor** in `src/wes_service/daemon/executors/`
 2. **Implement the `WorkflowExecutor` interface**
 3. **Configure the daemon** to use your executor
 
-Example executors to implement:
-- `CWLToolExecutor` - For Common Workflow Language
-- `CromwellExecutor` - For WDL workflows
-- `NextflowExecutor` - For Nextflow pipelines
+Example executors:
+- `LocalExecutor` - Stub implementation for demonstration
+- `OmicsExecutor` - For AWS HealthOmics workflows
+- `CWLToolExecutor` - For Common Workflow Language (to be implemented)
+- `CromwellExecutor` - For WDL workflows (to be implemented)
+- `NextflowExecutor` - For Nextflow pipelines (to be implemented)
+
+For AWS Omics usage instructions, see [docs/aws_omics_usage.md](docs/aws_omics_usage.md).
 
 ## Supported Workflow Types
 

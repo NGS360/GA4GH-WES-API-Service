@@ -1,10 +1,12 @@
 """FastAPI application factory."""
 
+import json
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.wes_service.api.middleware import add_error_handlers
@@ -76,6 +78,36 @@ def create_app() -> FastAPI:
 
     # Add error handlers
     add_error_handlers(app)
+    
+    # Simple fix for newlines in responses
+    @app.middleware("http")
+    async def add_newline_to_responses(request: Request, call_next):
+        response = await call_next(request)
+        if isinstance(response, JSONResponse):
+            response.headers["X-Content-Has-Newline"] = "true"
+            
+            # Get the response content
+            content = await response.body()
+            
+            # Only add newline if it doesn't already have one
+            if not content.endswith(b'\n'):
+                # Create a new response with newline
+                new_content = content + b'\n'
+                
+                # Create a completely new response to avoid mutation issues
+                new_response = JSONResponse(
+                    content=json.loads(content),  # Parse and re-serialize to ensure valid JSON
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                )
+                # Override the body directly
+                new_response.body = new_content
+                # Update content length
+                new_response.headers["Content-Length"] = str(len(new_content))
+                
+                return new_response
+        
+        return response
 
     # Register routers
     app.include_router(

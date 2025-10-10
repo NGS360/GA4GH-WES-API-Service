@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 28, "column": 0}, "map": {"version":3,"sources":["file:///scratch/GA4GH-WES-API-Service/wes-frontend/src/pages/index.tsx"],"sourcesContent":["import { useEffect } from 'react';\nimport { useRouter } from 'next/router';\nimport { CircularProgress, Box } from '@mui/material';\n\nexport default function Home() {\n  const router = useRouter();\n\n  useEffect(() => {\n    router.push('/dashboard');\n  }, [router]);\n\n  return (\n    <Box\n      display=\"flex\"\n      justifyContent=\"center\"\n      alignItems=\"center\"\n      minHeight=\"100vh\"\n    >\n      <CircularProgress />\n    </Box>\n  );\n}\n"],"names":[],"mappings":";;;;;AAAA;AACA;AACA;AAAA;;;;;AAEe,SAAS;IACtB,MAAM,SAAS,IAAA,oIAAS;IAExB,IAAA,gHAAS,EAAC;QACR,OAAO,IAAI,CAAC;IACd,GAAG;QAAC;KAAO;IAEX,qBACE,qKAAC,wLAAG;QACF,SAAQ;QACR,gBAAe;QACf,YAAW;QACX,WAAU;kBAEV,cAAA,qKAAC,4OAAgB;;;;;;;;;;AAGvB","debugId":null}}]
+}

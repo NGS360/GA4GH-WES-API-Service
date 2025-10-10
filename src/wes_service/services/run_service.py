@@ -350,6 +350,11 @@ class RunService:
 
     def _run_to_summary(self, run: WorkflowRun) -> RunSummary:
         """Convert WorkflowRun to RunSummary."""
+        # Extract name from workflow_engine_parameters if available
+        name = None
+        if run.workflow_engine_parameters and "name" in run.workflow_engine_parameters:
+            name = run.workflow_engine_parameters["name"]
+            
         return RunSummary(
             run_id=run.id,
             state=State(run.state.value),
@@ -358,4 +363,5 @@ class RunService:
             ),
             end_time=run.end_time.isoformat() + "Z" if run.end_time else None,
             tags=run.tags,
+            name=name,
         )

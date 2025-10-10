@@ -35,6 +35,10 @@ class RunSummary(RunStatus):
         default_factory=dict,
         description="Arbitrary key/value tags added by the client",
     )
+    name: str | None = Field(
+        None,
+        description="Workflow name from workflow_engine_parameters",
+    )
 
 
 class RunRequest(BaseModel):
@@ -114,6 +118,7 @@ class RunLog(BaseModel):
     run_id: str = Field(..., description="Workflow run ID")
     request: RunRequest = Field(..., description="Original run request")
     state: State | None = Field(None, description="Current workflow state")
+    name: str | None = Field(None, description="Workflow name from workflow_engine_parameters")
     run_log: Log | None = Field(None, description="Overall workflow log")
     task_logs_url: str | None = Field(
         None,
