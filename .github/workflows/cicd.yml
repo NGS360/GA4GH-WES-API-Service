@@ -62,7 +62,7 @@ jobs:
       #    pytest --version
 
       - name: Run tests
-        run: uv run make test
+        run: uv run pytest --cov=src --cov-report=html
 
       - name: Store coverage files
         uses: actions/upload-artifact@v4
