@@ -52,7 +52,7 @@ async def test_convert_params_to_omics(omics_executor):
         "threads": 4
     }
     
-    omics_params = omics_executor._convert_params_to_omics(wes_params)
+    omics_params = omics_executor._convert_params_to_omics(wes_params, "WDL")
     
     # workflow_id should be excluded
     assert "workflow_id" not in omics_params
@@ -69,10 +69,17 @@ async def test_execute_workflow_success(omics_executor, mock_omics_client, test_
     # Mock responses
     mock_omics_client.start_run.return_value = {"id": "omics-run-123"}
     
-    # Mock get_run responses for status checks
+    # Mock get_run responses for status checks (3 for monitoring + 1 for _get_run_outputs)
     mock_omics_client.get_run.side_effect = [
         {"status": "PENDING"},
         {"status": "RUNNING"},
+        {
+            "status": "COMPLETED",
+            "outputUri": "s3://bucket/output/",
+            "logLocation": {
+                "runLogStream": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/omics/WorkflowLog:log-stream:run/omics-run-123"
+            }
+        },
         {
             "status": "COMPLETED",
             "outputUri": "s3://bucket/output/",
@@ -111,7 +118,7 @@ async def test_execute_workflow_success(omics_executor, mock_omics_client, test_
     
     # Verify AWS calls
     mock_omics_client.start_run.assert_called_once()
-    assert mock_omics_client.get_run.call_count == 3
+    assert mock_omics_client.get_run.call_count == 4
 
 
 @pytest.mark.asyncio
@@ -120,10 +127,16 @@ async def test_execute_workflow_failure(omics_executor, mock_omics_client, test_
     # Mock responses
     mock_omics_client.start_run.return_value = {"id": "omics-run-456"}
     
-    # Mock get_run responses for status checks - failure case
+    # Mock get_run responses for status checks - failure case (3 for monitoring + 1 for double-check)
     mock_omics_client.get_run.side_effect = [
         {"status": "PENDING"},
         {"status": "RUNNING"},
+        {
+            "status": "FAILED",
+            "logLocation": {
+                "runLogStream": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/omics/WorkflowLog:log-stream:run/omics-run-456"
+            }
+        },
         {
             "status": "FAILED",
             "logLocation": {
@@ -156,7 +169,7 @@ async def test_execute_workflow_failure(omics_executor, mock_omics_client, test_
     
     # Verify AWS calls
     mock_omics_client.start_run.assert_called_once()
-    assert mock_omics_client.get_run.call_count == 3
+    assert mock_omics_client.get_run.call_count == 4
 
 
 @pytest.mark.asyncio

@@ -10,7 +10,7 @@ from src.wes_service.db.models import WorkflowRun, WorkflowState
 class TestWorkflowLifecycle:
     """Integration tests for complete workflow execution lifecycle."""
 
-    def test_complete_workflow_lifecycle(self, client: TestClient, test_db):
+    async def test_complete_workflow_lifecycle(self, client: TestClient, test_db):
         """Test submitting, monitoring, and completing a workflow."""
         # 1. Submit workflow
         response = client.post(
@@ -48,9 +48,9 @@ class TestWorkflowLifecycle:
         assert log["request"]["workflow_params"]["input"] == "test.txt"
 
         # 5. Simulate workflow execution (normally done by daemon)
-        run = test_db.get(WorkflowRun, run_id)
+        run = await test_db.get(WorkflowRun, run_id)
         run.state = WorkflowState.RUNNING
-        test_db.commit()
+        await test_db.commit()
 
         response = client.get(f"/ga4gh/wes/v1/runs/{run_id}/status")
         assert response.json()["state"] == "RUNNING"
@@ -139,7 +139,7 @@ class TestWorkflowLifecycle:
         data = response.json()
         assert len(data["runs"]) == 5
 
-    def test_service_info_reflects_system_state(
+    async def test_service_info_reflects_system_state(
         self,
         client: TestClient,
         test_db,
@@ -169,7 +169,7 @@ class TestWorkflowLifecycle:
                 tags={},
             )
             test_db.add(run)
-        test_db.commit()
+        await test_db.commit()
 
         # Check service info
         response = client.get("/ga4gh/wes/v1/service-info")

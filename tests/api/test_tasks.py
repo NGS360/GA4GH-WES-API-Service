@@ -13,7 +13,7 @@ class TestListTasks:
         response = client.get("/ga4gh/wes/v1/runs/nonexistent/tasks")
         assert response.status_code == 404
 
-    def test_list_tasks_empty(self, client: TestClient, test_db):
+    async def test_list_tasks_empty(self, client: TestClient, test_db):
         """Test listing tasks when none exist."""
         run = WorkflowRun(
             id="test-run-no-tasks",
@@ -22,9 +22,10 @@ class TestListTasks:
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             tags={},
+            user_id="test_user",
         )
         test_db.add(run)
-        test_db.commit()
+        await test_db.commit()
 
         response = client.get("/ga4gh/wes/v1/runs/test-run-no-tasks/tasks")
         assert response.status_code == 200
@@ -33,7 +34,7 @@ class TestListTasks:
         assert len(data["task_logs"]) == 0
         assert data["next_page_token"] == ""
 
-    def test_list_tasks_with_data(self, client: TestClient, test_db):
+    async def test_list_tasks_with_data(self, client: TestClient, test_db):
         """Test listing tasks with data."""
         run = WorkflowRun(
             id="test-run-with-tasks",
@@ -42,9 +43,10 @@ class TestListTasks:
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             tags={},
+            user_id="test_user",
         )
         test_db.add(run)
-        test_db.commit()
+        await test_db.commit()
 
         # Add tasks
         task1 = TaskLog(
@@ -61,7 +63,7 @@ class TestListTasks:
         )
         test_db.add(task1)
         test_db.add(task2)
-        test_db.commit()
+        await test_db.commit()
 
         response = client.get("/ga4gh/wes/v1/runs/test-run-with-tasks/tasks")
         assert response.status_code == 200
@@ -70,7 +72,7 @@ class TestListTasks:
         assert data["task_logs"][0]["id"] == "task-1"
         assert data["task_logs"][1]["id"] == "task-2"
 
-    def test_list_tasks_with_pagination(self, client: TestClient, test_db):
+    async def test_list_tasks_with_pagination(self, client: TestClient, test_db):
         """Test listing tasks with pagination."""
         run = WorkflowRun(
             id="test-run-paginated",
@@ -79,9 +81,10 @@ class TestListTasks:
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             tags={},
+            user_id="test_user",
         )
         test_db.add(run)
-        test_db.commit()
+        await test_db.commit()
 
         # Add multiple tasks
         for i in range(5):
@@ -92,7 +95,7 @@ class TestListTasks:
                 cmd=["echo", f"{i}"],
             )
             test_db.add(task)
-        test_db.commit()
+        await test_db.commit()
 
         # Request with page size
         response = client.get(
@@ -115,7 +118,7 @@ class TestGetTask:
         )
         assert response.status_code == 404
 
-    def test_get_task_not_found(self, client: TestClient, test_db):
+    async def test_get_task_not_found(self, client: TestClient, test_db):
         """Test getting non-existent task."""
         run = WorkflowRun(
             id="test-run-task",
@@ -124,16 +127,17 @@ class TestGetTask:
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             tags={},
+            user_id="test_user",
         )
         test_db.add(run)
-        test_db.commit()
+        await test_db.commit()
 
         response = client.get(
             "/ga4gh/wes/v1/runs/test-run-task/tasks/nonexistent"
         )
         assert response.status_code == 404
 
-    def test_get_task_success(self, client: TestClient, test_db):
+    async def test_get_task_success(self, client: TestClient, test_db):
         """Test getting existing task."""
         run = WorkflowRun(
             id="test-run-get-task",
@@ -142,9 +146,10 @@ class TestGetTask:
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             tags={},
+            user_id="test_user",
         )
         test_db.add(run)
-        test_db.commit()
+        await test_db.commit()
 
         task = TaskLog(
             id="task-detail",
@@ -156,7 +161,7 @@ class TestGetTask:
             stderr_url="file:///tmp/stderr.txt",
         )
         test_db.add(task)
-        test_db.commit()
+        await test_db.commit()
 
         response = client.get(
             "/ga4gh/wes/v1/runs/test-run-get-task/tasks/task-detail"
