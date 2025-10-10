@@ -38,10 +38,10 @@ class TestSubmitWorkflow:
                 "workflow_type": "CWL",
                 "workflow_type_version": "v1.0",
                 "workflow_params": json.dumps(params),
-                "tags": json.dumps(
-                    {"project": "test"},
-                    {"name": "example_workflow"},
-                ),
+                "tags": json.dumps({
+                    "project": "test",
+                    "name": "example_workflow"
+                }),
             },
         )
         assert response.status_code == 200
