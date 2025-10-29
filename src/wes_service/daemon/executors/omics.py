@@ -103,13 +103,13 @@ class OmicsExecutor(WorkflowExecutor):
                 if run.tags and len(run.tags) > 0:
                     kwargs['tags'] = run.tags
                     logger.info(f"Adding tags to Omics run: {run.tags}")
-                
+                    if "Name" in run.tags:
+                        kwargs['name'] = run.tags.get("Name")
+
                 # Extract and add Omics-specific parameters from workflow_engine_parameters
                 if run.workflow_engine_parameters:
                     engine_params = run.workflow_engine_parameters
                     # Override name if provided
-                    if run.tags and "Name" in run.tags:
-                        kwargs['name'] = run.tags.get("Name")
                     if 'name' in engine_params:
                         kwargs['name'] = engine_params['name']
                         
