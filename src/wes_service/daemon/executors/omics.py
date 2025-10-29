@@ -108,6 +108,8 @@ class OmicsExecutor(WorkflowExecutor):
                 if run.workflow_engine_parameters:
                     engine_params = run.workflow_engine_parameters
                     # Override name if provided
+                    if run.tags and "Name" in run.tags:
+                        kwargs['name'] = run.tags.get("Name")
                     if 'name' in engine_params:
                         kwargs['name'] = engine_params['name']
                         
