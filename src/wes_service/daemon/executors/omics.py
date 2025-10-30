@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 class OmicsExecutor(WorkflowExecutor):
     """Executor for AWS Omics workflows."""
-    
     def __init__(self, region_name=None):
         """
         Initialize with AWS region.
@@ -44,7 +43,8 @@ class OmicsExecutor(WorkflowExecutor):
         try:
             # Update state to INITIALIZING
             run.state = WorkflowState.INITIALIZING
-            run.system_logs.append(f"Initializing AWS Omics workflow at {datetime.utcnow().isoformat()}")
+            timestamp = datetime.utcnow().isoformat()
+            run.system_logs.append(f"Initializing AWS Omics workflow at {timestamp}")
             await db.commit()
             logger.info(f"Run {run.id}: Initializing AWS Omics workflow")
             
@@ -119,7 +119,8 @@ class OmicsExecutor(WorkflowExecutor):
                         kwargs['tags'] = engine_params['tags']
                     
                     # Add other supported parameters
-                    for param in ['priority', 'storageCapacity', 'accelerators', 'logLevel', 'storageType']:
+                    omics_params = ['priority', 'storageCapacity', 'accelerators', 'logLevel', 'storageType']
+                    for param in omics_params:
                         if param in engine_params:
                             kwargs[param] = engine_params[param]
                 
@@ -175,7 +176,8 @@ class OmicsExecutor(WorkflowExecutor):
                             
                             # Update task log URLs
                             if 'task_logs' in outputs['logs']:
-                                await self._update_task_log_urls(db, run.id, outputs['logs']['task_logs'])
+                                task_logs = outputs['logs']['task_logs']
+                                await self._update_task_log_urls(db, run.id, task_logs)
                         
                         log_msg = f"Workflow completed successfully at {run.end_time.isoformat()}"
                         run.system_logs.append(log_msg)
@@ -187,7 +189,8 @@ class OmicsExecutor(WorkflowExecutor):
                         # Still mark as complete even if we couldn't get outputs
                 else:
                     run.exit_code = 1
-                    log_msg = f"Workflow failed with state {final_state} at {run.end_time.isoformat()}"
+                    end_time = run.end_time.isoformat()
+                    log_msg = f"Workflow failed with state {final_state} at {end_time}"
                     run.system_logs.append(log_msg)
                     logger.error(f"Run {run.id}: {log_msg}")
                 
@@ -203,12 +206,14 @@ class OmicsExecutor(WorkflowExecutor):
                 return
                 
             # Double check the AWS status if we marked as error
-            if run.state in [WorkflowState.EXECUTOR_ERROR, WorkflowState.SYSTEM_ERROR] and omics_run_id:
+            error_states = [WorkflowState.EXECUTOR_ERROR, WorkflowState.SYSTEM_ERROR]
+            if run.state in error_states and omics_run_id:
                 try:
                     aws_status = self.omics_client.get_run(id=omics_run_id).get('status')
                     if aws_status == 'COMPLETED':
                         # AWS shows completed but we marked as error - override to completed
-                        log_msg = f"AWS reports workflow as COMPLETED but WES had error state {run.state}. Setting to COMPLETE."
+                        log_msg = (f"AWS reports workflow as COMPLETED but WES had error state {run.state}. "
+                                  f"Setting to COMPLETE.")
                         logger.warning(f"Run {run.id}: {log_msg}")
                         run.system_logs.append(log_msg)
                         run.state = WorkflowState.COMPLETE
@@ -239,7 +244,8 @@ class OmicsExecutor(WorkflowExecutor):
                     
                     if aws_status == 'COMPLETED':
                         # If AWS shows completed but we got an error, override to completed
-                        override_msg = "AWS reports workflow as COMPLETED despite error. Setting state to COMPLETE."
+                        override_msg = ("AWS reports workflow as COMPLETED despite error. "
+                                       "Setting state to COMPLETE.")
                         logger.warning(f"Run {run.id}: {override_msg}")
                         run.system_logs.append(override_msg)
                         run.state = WorkflowState.COMPLETE
@@ -270,7 +276,9 @@ class OmicsExecutor(WorkflowExecutor):
         # Option 3: Use the workflow_url directly if it looks like an ID
         return run.workflow_url
     
-    def _convert_params_to_omics(self, wes_params: Dict[str, Any], workflow_type: str) -> Dict[str, Any]:
+    def _convert_params_to_omics(
+        self, wes_params: Dict[str, Any], workflow_type: str
+    ) -> Dict[str, Any]:
         """
         Convert WES parameters to Omics format.
         
@@ -284,7 +292,9 @@ class OmicsExecutor(WorkflowExecutor):
         omics_params = {}
         
         # Log the incoming parameters for debugging
-        logger.info(f"Converting WES parameters to Omics format for {workflow_type} workflow: {wes_params}")
+        logger.info(
+            f"Converting WES parameters to Omics format for {workflow_type} workflow: {wes_params}"
+        )
         
         try:
             # Map input file paths to Omics parameter format
@@ -333,7 +343,9 @@ class OmicsExecutor(WorkflowExecutor):
             # Return original params to avoid breaking the workflow
             return wes_params
     
-    async def _monitor_omics_run(self, db: AsyncSession, run: WorkflowRun, omics_run_id: str) -> WorkflowState:
+    async def _monitor_omics_run(
+        self, db: AsyncSession, run: WorkflowRun, omics_run_id: str
+    ) -> WorkflowState:
         """
         Monitor Omics run until completion.
         
@@ -368,7 +380,8 @@ class OmicsExecutor(WorkflowExecutor):
                     if status == 'COMPLETED':
                         return WorkflowState.COMPLETE
                     elif status == 'FAILED':
-                        log_msg = f"Omics workflow failed: {response.get('message', 'No error message')}"
+                        error_message = response.get('message', 'No error message')
+                        log_msg = f"Omics workflow failed: {error_message}"
                         run.system_logs.append(log_msg)
                         await db.commit()
                         return WorkflowState.EXECUTOR_ERROR
@@ -643,3 +656,4 @@ class OmicsExecutor(WorkflowExecutor):
             error_msg = f"Error getting outputs for Omics run {omics_run_id}: {str(e)}"
             logger.error(error_msg)
             return {"error": error_msg}
+

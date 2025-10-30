@@ -180,7 +180,10 @@ async def test_get_run_outputs(omics_executor, mock_omics_client):
         "status": "COMPLETED",
         "outputUri": "s3://bucket/output/",
         "logLocation": {
-            "runLogStream": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/omics/WorkflowLog:log-stream:run/test-run-789"
+            "runLogStream": (
+                "arn:aws:logs:us-east-1:123456789012:log-group:/aws/omics/WorkflowLog:"
+                "log-stream:run/test-run-789"
+            )
         },
         "tasks": [
             {

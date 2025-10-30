@@ -1,7 +1,6 @@
 """Global error handling middleware."""
 
 import logging
-from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -62,6 +61,7 @@ def add_error_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=error.model_dump(),
         )
+
 
     @app.exception_handler(Exception)
     async def general_exception_handler(
