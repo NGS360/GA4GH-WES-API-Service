@@ -437,7 +437,9 @@ class OmicsExecutor(WorkflowExecutor):
             start_time = None
             if 'startTime' in task_data:
                 try:
-                    start_time = datetime.fromisoformat(task_data['startTime'].replace('Z','+00:00'))
+                    start_time = datetime.fromisoformat(
+                        task_data['startTime'].replace('Z', '+00:00')
+                    )
                 except (ValueError, TypeError):
                     pass
 
@@ -576,13 +578,15 @@ class OmicsExecutor(WorkflowExecutor):
 
                             # Log the extracted values for debugging
                             logger.info(
-                                f"Extracted region: {region}, log_group: {log_group}, log_stream: {log_stream}"
+                                (f"Extracted region: {region}, log_group: {log_group}, "
+                                 f"log_stream: {log_stream}"
                             )
 
                             # Construct CloudWatch log URL with proper URL encoding
                             cloudwatch_url = (
-                                f"https://{region}.console.aws.amazon.com/cloudwatch/home?region="
-                                f"{region}#logsV2:log-groups/log-group/{log_group.replace('/', '%2F')}"
+                                f"https://{region}.console.aws.amazon.com/cloudwatch/home"
+                                f"?region={region}#logsV2:log-groups/log-group/"
+                                f"{log_group.replace('/', '%2F')}"
                                 f"/log-events/{log_stream.replace('/', '%2F')}"
                             )
 
@@ -610,16 +614,18 @@ class OmicsExecutor(WorkflowExecutor):
                                     # Create task log URL - use the actual run ID
                                     task_log_stream = f"task/{run_id}/main"
                                     task_log_url = (
-                                        f"https://{region}.console.aws.amazon.com/cloudwatch/home?region="
-                                        f"{region}#logsV2:log-groups/log-group/{log_group.replace('/', '%2F')}"
+                                        f"https://{region}.console.aws.amazon.com/cloudwatch/home"
+                                        f"?region={region}#logsV2:log-groups/log-group/"
+                                        f"{log_group.replace('/', '%2F')}"
                                         f"/log-events/{task_log_stream.replace('/', '%2F')}"
                                     )
 
                                     # Create manifest log URL - use the actual run ID
                                     manifest_log_stream = f"manifest/run/{run_id}"
                                     manifest_log_url = (
-                                        f"https://{region}.console.aws.amazon.com/cloudwatch/home?region="
-                                        f"{region}#logsV2:log-groups/log-group/{log_group.replace('/', '%2F')}"
+                                        f"https://{region}.console.aws.amazon.com/cloudwatch/home"
+                                        f"?region={region}#logsV2:log-groups/log-group/"
+                                        f"{log_group.replace('/', '%2F')}"
                                         f"/log-events/{manifest_log_stream.replace('/', '%2F')}"
                                     )
 
@@ -639,8 +645,10 @@ class OmicsExecutor(WorkflowExecutor):
                                     'main': cloudwatch_url
                                 }
                     else:
+                        msg = 
                         logger.warning(
-                            f"runLogStream doesn't match expected CloudWatch ARN format: {run_log_stream}"
+                            (f"runLogStream doesn't match expected CloudWatch ARN format: "
+                             f"{run_log_stream}")
                         )
                 else:
                     logger.warning(

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
-    
+
     # Workflow executor configuration
     workflow_executor: Literal["local", "omics"] = Field(
         default="local",
@@ -158,7 +158,7 @@ class Settings(BaseSettings):
         default="json",
         description="Log output format",
     )
-    
+
     # AWS Omics Configuration
     omics_region: str = Field(
         default="us-east-1",

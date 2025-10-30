@@ -78,22 +78,22 @@ def create_app() -> FastAPI:
 
     # Add error handlers
     add_error_handlers(app)
-    
+
     # Simple fix for newlines in responses
     @app.middleware("http")
     async def add_newline_to_responses(request: Request, call_next):
         response = await call_next(request)
         if isinstance(response, JSONResponse):
             response.headers["X-Content-Has-Newline"] = "true"
-            
+
             # Get the response content
             content = await response.body()
-            
+
             # Only add newline if it doesn't already have one
             if not content.endswith(b'\n'):
                 # Create a new response with newline
                 new_content = content + b'\n'
-                
+
                 # Create a completely new response to avoid mutation issues
                 new_response = JSONResponse(
                     content=json.loads(content),  # Parse and re-serialize to ensure valid JSON
@@ -104,9 +104,9 @@ def create_app() -> FastAPI:
                 new_response.body = new_content
                 # Update content length
                 new_response.headers["Content-Length"] = str(len(new_content))
-                
+
                 return new_response
-        
+
         return response
 
     # Register routers
@@ -156,4 +156,3 @@ if __name__ == "__main__":
         port=settings.port,
         reload=True,
         log_level=settings.log_level.lower(),
-    )
