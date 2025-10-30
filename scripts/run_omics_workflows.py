@@ -3,7 +3,8 @@
 Script for running multiple workflows in AWS Omics through the WES API.
 
 Usage:
-    python run_omics_workflows.py --workflow-id wf-12345abcdef --input-files s3://bucket/file1.fastq s3://bucket/file2.fastq
+    python run_omics_workflows.py --workflow-id wf-12345abcdef \
+        --input-files s3://bucket/file1.fastq s3://bucket/file2.fastq
 """
 
 import argparse
@@ -15,11 +16,14 @@ from typing import List
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Import after path modification
 from scripts.wes_client import WESClient
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Run multiple workflows in AWS Omics through WES API")
+    parser = argparse.ArgumentParser(
+        description="Run multiple workflows in AWS Omics through WES API"
+    )
     # WES API connection parameters
     parser.add_argument(
         "--wes-url",
@@ -175,7 +179,10 @@ def main():
     # Validate inputs
     if not args.username or not args.password:
         print("Error: WES API username and password are required.", file=sys.stderr)
-        print("Set them using --username/--password or WES_USERNAME/WES_PASSWORD environment variables.", file=sys.stderr)
+        print(
+            "Set them using --username/--password or WES_USERNAME/WES_PASSWORD environment variables.",
+            file=sys.stderr
+        )
         sys.exit(1)
 
     # Parse additional parameters
@@ -205,7 +212,6 @@ def main():
     # Monitor workflows if requested
     if args.monitor and run_ids:
         monitor_workflows(client, run_ids, args.poll_interval)
-
 
 if __name__ == "__main__":
     main()

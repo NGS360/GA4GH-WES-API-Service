@@ -2,8 +2,6 @@
 
 import io
 import json
-
-import pytest
 from fastapi.testclient import TestClient
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
@@ -108,6 +106,7 @@ class TestListRuns:
             params={"page_size": 1000},  # Should be capped at 100
         )
         assert response.status_code == 200
+
 
 class TestGetRunStatus:
     """Tests for GET /runs/{run_id}/status endpoint."""

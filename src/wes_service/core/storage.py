@@ -1,6 +1,5 @@
 """Storage abstraction layer for file handling."""
 
-import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import BinaryIO

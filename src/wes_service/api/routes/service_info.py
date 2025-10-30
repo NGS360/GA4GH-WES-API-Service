@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends
 from src.wes_service.api.deps import DatabaseSession
 from src.wes_service.config import Settings, get_settings
 from src.wes_service.schemas.service_info import (
-    DefaultWorkflowEngineParameter,
     ServiceInfo,
     WorkflowEngineVersion,
     WorkflowTypeVersion,
