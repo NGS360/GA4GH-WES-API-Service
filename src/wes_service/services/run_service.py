@@ -364,3 +364,4 @@ class RunService:
             end_time=run.end_time.isoformat() + "Z" if run.end_time else None,
             tags=run.tags,
             name=name,
+        )

@@ -3,4 +3,3 @@
 from src.wes_service.daemon.executors.base import WorkflowExecutor
 from src.wes_service.daemon.executors.local import LocalExecutor
 
-__all__ = ["WorkflowExecutor", "LocalExecutor"]

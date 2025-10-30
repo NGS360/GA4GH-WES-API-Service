@@ -53,4 +53,3 @@ async def get_task(
     exit code, and log URLs.
     """
     service = TaskService(db)
-    return await service.get_task(run_id, task_id, user)

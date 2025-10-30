@@ -579,7 +579,7 @@ class OmicsExecutor(WorkflowExecutor):
                             # Log the extracted values for debugging
                             logger.info(
                                 (f"Extracted region: {region}, log_group: {log_group}, "
-                                 f"log_stream: {log_stream}"
+                                 f"log_stream: {log_stream}")
                             )
 
                             # Construct CloudWatch log URL with proper URL encoding

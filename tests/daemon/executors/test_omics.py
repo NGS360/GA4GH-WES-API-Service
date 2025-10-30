@@ -2,7 +2,6 @@
 
 import pytest
 from unittest.mock import MagicMock, patch
-from datetime import datetime
 
 from src.wes_service.daemon.executors.omics import OmicsExecutor
 from src.wes_service.db.models import WorkflowRun, WorkflowState
@@ -77,14 +76,20 @@ async def test_execute_workflow_success(omics_executor, mock_omics_client, test_
             "status": "COMPLETED",
             "outputUri": "s3://bucket/output/",
             "logLocation": {
-                "runLogStream": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/omics/WorkflowLog:log-stream:run/omics-run-123"
+                "runLogStream": (
+                    "arn:aws:logs:us-east-1:123456789012:log-group:"
+                    "/aws/omics/WorkflowLog:log-stream:run/omics-run-123"
+                )
             }
         },
         {
             "status": "COMPLETED",
             "outputUri": "s3://bucket/output/",
             "logLocation": {
-                "runLogStream": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/omics/WorkflowLog:log-stream:run/omics-run-123"
+                "runLogStream": (
+                    "arn:aws:logs:us-east-1:123456789012:log-group:"
+                    "/aws/omics/WorkflowLog:log-stream:run/omics-run-123"
+                )
             }
         }
     ]
@@ -134,13 +139,19 @@ async def test_execute_workflow_failure(omics_executor, mock_omics_client, test_
         {
             "status": "FAILED",
             "logLocation": {
-                "runLogStream": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/omics/WorkflowLog:log-stream:run/omics-run-456"
+                "runLogStream": (
+                    "arn:aws:logs:us-east-1:123456789012:log-group:"
+                    "/aws/omics/WorkflowLog:log-stream:run/omics-run-456"
+                )
             }
         },
         {
             "status": "FAILED",
             "logLocation": {
-                "runLogStream": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/omics/WorkflowLog:log-stream:run/omics-run-456"
+                "runLogStream": (
+                    "arn:aws:logs:us-east-1:123456789012:log-group:"
+                    "/aws/omics/WorkflowLog:log-stream:run/omics-run-456"
+                )
             }
         }
     ]

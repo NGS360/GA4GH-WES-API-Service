@@ -13,11 +13,12 @@ import os
 import sys
 import time
 from typing import List
+from scripts.wes_client import WESClient
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import after path modification
-from scripts.wes_client import WESClient
+
 
 def parse_args():
     """Parse command line arguments."""
@@ -180,7 +181,8 @@ def main():
     if not args.username or not args.password:
         print("Error: WES API username and password are required.", file=sys.stderr)
         print(
-            "Set them using --username/--password or WES_USERNAME/WES_PASSWORD environment variables.",
+            "Set them using --username/--password or "
+            "WES_USERNAME/WES_PASSWORD environment variables.",
             file=sys.stderr
         )
         sys.exit(1)
@@ -213,6 +215,6 @@ def main():
     if args.monitor and run_ids:
         monitor_workflows(client, run_ids, args.poll_interval)
 
+
 if __name__ == "__main__":
     main()
-

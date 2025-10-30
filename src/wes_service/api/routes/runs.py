@@ -155,4 +155,3 @@ async def cancel_run(
     """
     service = RunService(db, None)  # type: ignore
     canceled_id = await service.cancel_run(run_id, user)
-    return RunId(run_id=canceled_id)

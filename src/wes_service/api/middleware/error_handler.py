@@ -62,7 +62,6 @@ def add_error_handlers(app: FastAPI) -> None:
             content=error.model_dump(),
         )
 
-
     @app.exception_handler(Exception)
     async def general_exception_handler(
         request: Request,
