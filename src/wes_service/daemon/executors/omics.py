@@ -645,7 +645,6 @@ class OmicsExecutor(WorkflowExecutor):
                                     'main': cloudwatch_url
                                 }
                     else:
-                        msg = 
                         logger.warning(
                             (f"runLogStream doesn't match expected CloudWatch ARN format: "
                              f"{run_log_stream}")

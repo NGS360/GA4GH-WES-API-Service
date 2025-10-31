@@ -154,4 +154,4 @@ async def cancel_run(
     Cannot cancel workflows that are already in a terminal state.
     """
     service = RunService(db, None)  # type: ignore
-    canceled_id = await service.cancel_run(run_id, user)
+    return await service.cancel_run(run_id, user)
