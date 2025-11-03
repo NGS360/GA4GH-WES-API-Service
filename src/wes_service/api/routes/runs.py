@@ -37,7 +37,7 @@ async def list_runs(
     This list is provided in a stable ordering. The client should not
     make assumptions about live updates. Use GetRunStatus or GetRunLog
     to monitor specific runs.
-    
+
     Supports filtering by tags using a JSON string in the 'tags' parameter, e.g.:
     ?tags={"project":"testproject","name":"sampleA"}
     """
@@ -51,7 +51,7 @@ async def list_runs(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid JSON format for tags parameter",
             )
-        
+
     service = RunService(db, None)  # type: ignore
     return await service.list_runs(page_size, page_token, user, tag_filters)
 
@@ -104,7 +104,7 @@ async def run_workflow(
         workflow_engine_parameters=workflow_engine_parameters,
         user_id=user,
     )
-    
+
     # Get the run to check if Omics run ID is available
     # This will be available immediately if the run was created with an Omics ID
     # from a previous execution
@@ -117,7 +117,7 @@ async def run_workflow(
         # Log but don't fail if we can't get the Omics run ID
         import logging
         logging.error(f"Error getting Omics run ID: {e}")
-    
+
     return RunId(run_id=run_id, omics_run_id=omics_run_id)
 
 

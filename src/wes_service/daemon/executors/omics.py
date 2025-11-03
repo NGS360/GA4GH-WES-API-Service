@@ -88,7 +88,7 @@ class OmicsExecutor(WorkflowExecutor):
                 else:
                     output_uri = f"{self.output_bucket}/runs/{run.id}/output/"
                     logger.info(f"Using default output URI: {output_uri}")
-                
+
                 # Set default parameters for the API call
                 kwargs = {
                     'workflowId': workflow_id,
@@ -146,12 +146,12 @@ class OmicsExecutor(WorkflowExecutor):
                 log_msg = f"Started AWS Omics run: {omics_run_id}, output will be in: {output_uri}"
                 run.system_logs.append(log_msg)
                 logger.info(f"Run {run.id}: {log_msg}")
-                
+
                 # Store the Omics run ID in the outputs field for reference
                 if not run.outputs:
                     run.outputs = {}
                 run.outputs['omics_run_id'] = omics_run_id
-                
+
                 # Store the output location with the run ID appended
                 # If the URI doesn't end with a slash, add one
                 if not output_uri.endswith('/'):
@@ -160,7 +160,7 @@ class OmicsExecutor(WorkflowExecutor):
                 complete_output_uri = f"{output_uri}{omics_run_id}"
                 run.outputs['output_location'] = complete_output_uri
                 logger.info(f"Set output_location to {complete_output_uri} for run {run.id}")
-                
+
                 await db.commit()
             except Exception as e:
                 error_msg = f"Failed to start Omics workflow: {str(e)}"
@@ -563,10 +563,10 @@ class OmicsExecutor(WorkflowExecutor):
 
             # Extract only the most relevant output information
             outputs = {}
-            
+
             # Store the Omics run ID in the outputs
             outputs['omics_run_id'] = omics_run_id
-            
+
             # Primary output: the output location
             if 'outputUri' in response:
                 output_uri = response['outputUri']
@@ -579,7 +579,7 @@ class OmicsExecutor(WorkflowExecutor):
                     output_uri += omics_run_id
                 outputs['output_location'] = output_uri
                 logger.info(f"Set output_location to {output_uri} for run {omics_run_id}")
-            
+
             # Log the full response for debugging
             logger.debug(f"Full AWS Omics response for run {omics_run_id}: {response}")
 

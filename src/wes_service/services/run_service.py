@@ -74,7 +74,7 @@ class RunService:
             if workflow_engine_parameters
             else {}
         )
-        
+
         # Add "Name" tag if not already present, extracting it from workflow_engine_parameters
         if "Name" not in tags_dict and engine_params and "name" in engine_params:
             tags_dict["Name"] = engine_params["name"]
@@ -162,7 +162,7 @@ class RunService:
         # Filter by user if specified
         if user_id:
             query = query.where(WorkflowRun.user_id == user_id)
-            
+
         # Filter by tags if specified
         if tag_filters and isinstance(tag_filters, dict):
             from sqlalchemy import text
