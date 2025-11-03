@@ -277,7 +277,7 @@ class WorkflowMonitor:
                                     )
 
                                     # Create a default task log if none exists
-                                    # This ensures we have at least one task log entry in the database
+                                    # This ensures we have at least one task log entry in database
                                     task_name = 'main'
                                     log_url = outputs['logs']['task_logs'].get(task_name)
                                     if log_url:
@@ -293,7 +293,8 @@ class WorkflowMonitor:
 
                                         if not task:
                                             # Create a new task log entry
-                                            logger.info(f"Creating default task log for run {run.id}")
+                                            logger.info((f"Creating default task log "
+                                                         f"for run {run.id}"))
                                             task = TaskLog(
                                                 id=f"omics-{omics_run_id}-{task_name}",
                                                 run_id=run.id,
@@ -309,11 +310,12 @@ class WorkflowMonitor:
                                             await db.commit()
                                             logger.info(f"Created default task log for run {run.id}")
 
-                            log_msg = f"Workflow completed successfully at {run.end_time.isoformat()}"
-                            run.system_logs.append(log_msg)
+                            run.system_logs.append(f"Workflow completed successfully at "
+                                                   f"{run.end_time.isoformat()}")
                             logger.info(f"Run {run.id}: {log_msg}")
                         except Exception as e:
-                            error_msg = f"Workflow completed but failed to retrieve outputs: {str(e)}"
+                            error_msg = (f"Workflow completed but failed to "
+                                         f"retrieve outputs: {str(e)}")
                             logger.warning(f"Run {run.id}: {error_msg}")
                             run.system_logs.append(error_msg)
                     else:
@@ -343,7 +345,9 @@ class WorkflowMonitor:
                     if error_run:
                         error_run.state = WorkflowState.SYSTEM_ERROR
                         error_run.end_time = datetime.utcnow()
-                        error_run.system_logs.append(f"System error monitoring existing run: {str(e)}")
+                        error_run.system_logs.append(
+                            f"System error monitoring existing run: {str(e)}"
+                        )
                         error_run.exit_code = 1
                         await error_db.commit()
                         logger.info(f"Updated run {run_id} to SYSTEM_ERROR state due to exception")
