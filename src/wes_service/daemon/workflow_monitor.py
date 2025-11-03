@@ -28,14 +28,14 @@ class WorkflowMonitor:
     def __init__(self):
         """Initialize workflow monitor."""
         self.settings = get_settings()
-        
+
         # Choose executor based on configuration
         if self.settings.workflow_executor == "omics":
             self.executor = OmicsExecutor()
         else:
             # Default to local executor
             self.executor = LocalExecutor()
-            
+
         self.running = False
         self.active_runs: set[str] = set()
 
@@ -363,16 +363,16 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    
+
     # Increase boto3/botocore logging level to reduce noise
     logging.getLogger('botocore').setLevel(logging.WARNING)
     logging.getLogger('boto3').setLevel(logging.WARNING)
-    
+
     # Set our application loggers to INFO
     logging.getLogger('src.wes_service').setLevel(logging.INFO)
-    
+
     logger.info("Starting WES workflow monitor daemon...")
-    
+
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

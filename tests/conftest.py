@@ -102,14 +102,20 @@ def app(test_settings: Settings, test_db: AsyncSession, mock_storage: MagicMock)
     def override_get_storage() -> StorageBackend:
         return mock_storage
 
+    def override_get_current_user() -> str:
+        """Override authentication for tests - return test user."""
+        return "test_user"
+
     app = create_app()
 
     # Override dependencies
     from src.wes_service.core.storage import get_storage_backend
+    from src.wes_service.core.security import get_current_user
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_settings] = override_get_settings
     app.dependency_overrides[get_storage_backend] = override_get_storage
+    app.dependency_overrides[get_current_user] = override_get_current_user
 
     return app
 

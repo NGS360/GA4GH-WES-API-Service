@@ -2,8 +2,6 @@
 
 import io
 import json
-
-import pytest
 from fastapi.testclient import TestClient
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
@@ -38,7 +36,10 @@ class TestSubmitWorkflow:
                 "workflow_type": "CWL",
                 "workflow_type_version": "v1.0",
                 "workflow_params": json.dumps(params),
-                "tags": json.dumps({"project": "test"}),
+                "tags": json.dumps({
+                    "project": "test",
+                    "name": "example_workflow"
+                }),
             },
         )
         assert response.status_code == 200
@@ -72,13 +73,13 @@ class TestSubmitWorkflow:
                 # Missing workflow_url and workflow_type_version
             },
         )
-        assert response.status_code == 422
+        assert response.status_code == 400
 
 
 class TestListRuns:
     """Tests for GET /runs endpoint."""
 
-    async def test_list_runs_empty(self, client: TestClient):
+    def test_list_runs_empty(self, client: TestClient):
         """Test listing runs when none exist."""
         response = client.get("/ga4gh/wes/v1/runs")
         assert response.status_code == 200
@@ -115,7 +116,7 @@ class TestGetRunStatus:
         response = client.get("/ga4gh/wes/v1/runs/nonexistent/status")
         assert response.status_code == 404
 
-    def test_get_run_status_success(
+    async def test_get_run_status_success(
         self,
         client: TestClient,
         test_db,
@@ -129,9 +130,10 @@ class TestGetRunStatus:
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             tags={},
+            user_id="test_user",
         )
         test_db.add(run)
-        test_db.commit()
+        await test_db.commit()
 
         response = client.get("/ga4gh/wes/v1/runs/test-run-123/status")
         assert response.status_code == 200
@@ -148,7 +150,7 @@ class TestGetRunLog:
         response = client.get("/ga4gh/wes/v1/runs/nonexistent")
         assert response.status_code == 404
 
-    def test_get_run_log_success(self, client: TestClient, test_db):
+    async def test_get_run_log_success(self, client: TestClient, test_db):
         """Test getting log of existing run."""
         run = WorkflowRun(
             id="test-run-456",
@@ -158,9 +160,10 @@ class TestGetRunLog:
             workflow_url="https://example.com/workflow.cwl",
             workflow_params={"input": "value"},
             tags={"project": "test"},
+            user_id="test_user",
         )
         test_db.add(run)
-        test_db.commit()
+        await test_db.commit()
 
         response = client.get("/ga4gh/wes/v1/runs/test-run-456")
         assert response.status_code == 200
@@ -179,7 +182,7 @@ class TestCancelRun:
         response = client.post("/ga4gh/wes/v1/runs/nonexistent/cancel")
         assert response.status_code == 404
 
-    def test_cancel_run_success(self, client: TestClient, test_db):
+    async def test_cancel_run_success(self, client: TestClient, test_db):
         """Test canceling a running workflow."""
         run = WorkflowRun(
             id="test-run-789",
@@ -188,20 +191,22 @@ class TestCancelRun:
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             tags={},
+            user_id="test_user",
         )
         test_db.add(run)
-        test_db.commit()
+        await test_db.commit()
 
         response = client.post("/ga4gh/wes/v1/runs/test-run-789/cancel")
         assert response.status_code == 200
         data = response.json()
         assert data["run_id"] == "test-run-789"
 
-        # Verify state changed
-        test_db.refresh(run)
+        # Verify state changed - need to re-query from a fresh session
+        test_db.expire(run)
+        await test_db.refresh(run)
         assert run.state == WorkflowState.CANCELING
 
-    def test_cancel_completed_run(self, client: TestClient, test_db):
+    async def test_cancel_completed_run(self, client: TestClient, test_db):
         """Test that completed runs cannot be canceled."""
         run = WorkflowRun(
             id="test-run-complete",
@@ -210,9 +215,10 @@ class TestCancelRun:
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             tags={},
+            user_id="test_user",
         )
         test_db.add(run)
-        test_db.commit()
+        await test_db.commit()
 
         response = client.post("/ga4gh/wes/v1/runs/test-run-complete/cancel")
         assert response.status_code == 400

@@ -1,8 +1,6 @@
 """Service layer for workflow run operations."""
 
 import json
-from datetime import datetime
-from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
@@ -375,7 +373,7 @@ class RunService:
         name = None
         if run.workflow_engine_parameters and "name" in run.workflow_engine_parameters:
             name = run.workflow_engine_parameters["name"]
-            
+
         return RunSummary(
             run_id=run.id,
             state=State(run.state.value),
