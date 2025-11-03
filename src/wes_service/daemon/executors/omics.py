@@ -570,13 +570,6 @@ class OmicsExecutor(WorkflowExecutor):
             # Primary output: the output location
             if 'outputUri' in response:
                 output_uri = response['outputUri']
-                # Ensure the output location ends with the run ID
-                if not output_uri.endswith(f"/{omics_run_id}"):
-                    # If the URI doesn't end with a slash, add one
-                    if not output_uri.endswith('/'):
-                        output_uri += '/'
-                    # Append the run ID
-                    output_uri += omics_run_id
                 outputs['output_location'] = output_uri
                 logger.info(f"Set output_location to {output_uri} for run {omics_run_id}")
 
