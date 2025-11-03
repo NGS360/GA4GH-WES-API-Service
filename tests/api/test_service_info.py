@@ -1,6 +1,5 @@
 """Tests for service info endpoint."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 

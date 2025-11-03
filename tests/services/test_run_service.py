@@ -1,7 +1,6 @@
 """Tests for run service."""
 
 import pytest
-from unittest.mock import MagicMock
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
 from src.wes_service.services.run_service import RunService

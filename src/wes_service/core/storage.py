@@ -1,6 +1,5 @@
 """Storage abstraction layer for file handling."""
 
-import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import BinaryIO
@@ -125,7 +124,7 @@ class LocalStorageBackend(StorageBackend):
         else:
             # Regular file object
             async with aiofiles.open(full_path, "wb") as f:
-                content = file.read()
+                content = await file.read()
                 await f.write(content)
 
         return path
@@ -157,11 +156,8 @@ class LocalStorageBackend(StorageBackend):
 
     async def file_exists(self, path: str) -> bool:
         """Check if file exists in local filesystem."""
-        try:
-            full_path = self._get_full_path(path)
-            return full_path.exists()
-        except ValueError:
-            return False
+        full_path = self._get_full_path(path)
+        return full_path.exists()
 
 
 class S3StorageBackend(StorageBackend):

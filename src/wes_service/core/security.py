@@ -1,6 +1,5 @@
 """Security utilities for authentication and authorization."""
 
-import secrets
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status

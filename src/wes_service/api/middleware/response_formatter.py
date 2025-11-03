@@ -1,16 +1,13 @@
 """Response formatting middleware."""
 
-import json
 from typing import Callable
 
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from starlette.types import ASGIApp
 
 
 class AddNewlineMiddleware:
     """Middleware to add a newline character to JSON responses."""
-    
     def __init__(self, app: ASGIApp):
         """Initialize middleware with app."""
         self.app = app
@@ -30,11 +27,11 @@ class AddNewlineMiddleware:
                         if header[0].decode() == "content-type" and b"application/json" in header[1]:
                             is_json = True
                             break
-                    
+
                     if is_json and message["body"] and not message["body"].endswith(b"\n"):
                         # Add a newline at the end
                         message["body"] = message["body"] + b"\n"
-                        
+
                         # Update content length
                         for i, header in enumerate(headers):
                             if header[0].decode() == "content-length":
@@ -43,12 +40,12 @@ class AddNewlineMiddleware:
                                     str(len(message["body"])).encode()
                                 )
                                 break
-            
+
             await original_send(message)
 
         # Keep track of headers for checking content type
         headers = []
-        
+
         async def _receive_headers(message: dict) -> None:
             if message["type"] == "http.response.start":
                 nonlocal headers
@@ -57,6 +54,7 @@ class AddNewlineMiddleware:
 
         original_send = send
         await self.app(scope, receive, _receive_headers)
+
 
 def add_response_formatter(app: FastAPI) -> None:
     """Add response formatting middleware to FastAPI app."""
