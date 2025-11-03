@@ -215,8 +215,8 @@ class OmicsExecutor(WorkflowExecutor):
                     if aws_status == 'COMPLETED':
                         # AWS shows completed but we marked as error - override to completed
                         log_msg = (
-                            f"AWS reports workflow as COMPLETED but WES had error state {run.state}. "
-                            f"Setting to COMPLETE.")
+                            f"AWS reports workflow as COMPLETED but WES had error state "
+                            f"{run.state}. Setting to COMPLETE.")
                         logger.warning(f"Run {run.id}: {log_msg}")
                         run.system_logs.append(log_msg)
                         run.state = WorkflowState.COMPLETE
