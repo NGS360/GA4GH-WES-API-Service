@@ -312,7 +312,8 @@ class WorkflowMonitor:
 
                             run.system_logs.append(f"Workflow completed successfully at "
                                                    f"{run.end_time.isoformat()}")
-                            logger.info(f"Run {run.id}: {log_msg}")
+                            logger.info((f"Run {run.id}: Workflow completed successfully "
+                                         f"at {run.end_time.isoformat()}"))
                         except Exception as e:
                             error_msg = (f"Workflow completed but failed to "
                                          f"retrieve outputs: {str(e)}")
