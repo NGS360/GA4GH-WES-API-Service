@@ -75,6 +75,10 @@ class RunService:
             else {}
         )
 
+        # Add "Name" tag if not already present, extracting it from workflow_engine_parameters
+        if "Name" not in tags_dict and engine_params and "name" in engine_params:
+            tags_dict["Name"] = engine_params["name"]
+
         # Validate workflow type
         supported_types = list(
             self.settings.get_workflow_type_versions().keys()
@@ -130,14 +134,16 @@ class RunService:
         page_size: int | None,
         page_token: str | None,
         user_id: str | None,
+        tag_filters: dict[str, str] | None = None,
     ) -> RunListResponse:
         """
-        List workflow runs with pagination.
+        List workflow runs with pagination and tag filtering.
 
         Args:
             page_size: Number of runs per page
             page_token: Token for next page
             user_id: Filter by user (None for all runs)
+            tag_filters: Dictionary of tag key-value pairs to filter by
 
         Returns:
             RunListResponse with runs and next page token
@@ -156,6 +162,15 @@ class RunService:
         # Filter by user if specified
         if user_id:
             query = query.where(WorkflowRun.user_id == user_id)
+
+        # Filter by tags if specified
+        if tag_filters and isinstance(tag_filters, dict):
+            from sqlalchemy import text
+            for tag_key, tag_value in tag_filters.items():
+                # Use JSON containment operator to check if the tags JSON contains the key-value pair
+                # This creates a condition like: tags @> {"project": "testproject"}
+                json_condition = text(f"JSON_EXTRACT(tags, '$.{tag_key}') = '{tag_value}'")
+                query = query.where(json_condition)
 
         # Apply pagination
         query = query.offset(offset).limit(page_size + 1)
@@ -242,10 +257,16 @@ class RunService:
             f"{self.settings.api_prefix}/runs/{run_id}/tasks"
         )
 
+        # Extract name from workflow_engine_parameters if available
+        name = None
+        if run.workflow_engine_parameters and "name" in run.workflow_engine_parameters:
+            name = run.workflow_engine_parameters["name"]
+
         return RunLog(
             run_id=run.id,
             request=request,
             state=State(run.state.value),
+            name=name,
             run_log=run_log,
             task_logs_url=task_logs_url,
             task_logs=None,  # Deprecated

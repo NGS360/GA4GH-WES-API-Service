@@ -1,8 +1,9 @@
 """Workflow runs endpoints."""
 
+import json
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
 from src.wes_service.api.deps import CurrentUser, DatabaseSession, Storage
 from src.wes_service.schemas.run import (
@@ -21,13 +22,14 @@ router = APIRouter()
     response_model=RunListResponse,
     tags=["Workflow Runs"],
     summary="ListRuns",
-    description="List workflow runs with pagination",
+    description="List workflow runs with pagination and tag filtering",
 )
 async def list_runs(
     db: DatabaseSession,
     user: CurrentUser,
     page_size: int | None = None,
     page_token: str | None = None,
+    tags: str | None = None,
 ) -> RunListResponse:
     """
     List workflow runs.
@@ -35,9 +37,23 @@ async def list_runs(
     This list is provided in a stable ordering. The client should not
     make assumptions about live updates. Use GetRunStatus or GetRunLog
     to monitor specific runs.
+
+    Supports filtering by tags using a JSON string in the 'tags' parameter, e.g.:
+    ?tags={"project":"testproject","name":"sampleA"}
     """
+    # Parse tags if provided
+    tag_filters = {}
+    if tags:
+        try:
+            tag_filters = json.loads(tags)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON format for tags parameter",
+            )
+
     service = RunService(db, None)  # type: ignore
-    return await service.list_runs(page_size, page_token, user)
+    return await service.list_runs(page_size, page_token, user, tag_filters)
 
 
 @router.post(
@@ -88,7 +104,21 @@ async def run_workflow(
         workflow_engine_parameters=workflow_engine_parameters,
         user_id=user,
     )
-    return RunId(run_id=run_id)
+
+    # Get the run to check if Omics run ID is available
+    # This will be available immediately if the run was created with an Omics ID
+    # from a previous execution
+    omics_run_id = None
+    try:
+        run = await service._get_run(run_id, user)
+        if run.outputs and "omics_run_id" in run.outputs:
+            omics_run_id = run.outputs["omics_run_id"]
+    except Exception as e:
+        # Log but don't fail if we can't get the Omics run ID
+        import logging
+        logging.error(f"Error getting Omics run ID: {e}")
+
+    return RunId(run_id=run_id, omics_run_id=omics_run_id)
 
 
 @router.get(
