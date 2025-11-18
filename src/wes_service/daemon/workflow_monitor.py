@@ -262,6 +262,8 @@ class WorkflowMonitor:
                         try:
                             outputs = self.executor._get_run_outputs(omics_run_id)
                             run.outputs = outputs
+                            await db.commit()
+                            logger.info(f"Committed outputs to database for run {run.id}")
 
                             # Update log URLs in the database
                             if 'logs' in outputs:

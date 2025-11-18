@@ -14,6 +14,8 @@ from src.wes_service.daemon.executors.base import WorkflowExecutor
 from src.wes_service.db.models import TaskLog, WorkflowRun, WorkflowState
 from src.wes_service.config import get_settings
 
+from sqlalchemy.orm import attributes
+
 logger = logging.getLogger(__name__)
 
 
@@ -189,6 +191,9 @@ class OmicsExecutor(WorkflowExecutor):
                     try:
                         outputs = await self._get_run_outputs(omics_run_id)
                         run.outputs = outputs
+                        attributes.flag_modified(run, "outputs")
+                        await db.commit()
+                        logger.info(f"Committed outputs to database for run {run.id}")
 
                         # Update log URLs in the database
                         if 'logs' in outputs:
@@ -410,6 +415,7 @@ class OmicsExecutor(WorkflowExecutor):
                     if status == 'COMPLETED':
                         # Get outputs including output mapping
                         outputs = await self._get_run_outputs(omics_run_id)
+                        logger.info("checkpoint1:"+str(outputs))
                         if outputs:
                             run.outputs.update(outputs)
                             await db.commit()
@@ -710,7 +716,7 @@ class OmicsExecutor(WorkflowExecutor):
                 try:
                     output_mapping = await self._fetch_output_mapping(outputs['output_location'], omics_run_id)
                     if output_mapping:
-                        outputs['output_mapping'] = str(output_mapping)
+                        outputs['output_mapping'] = output_mapping
                         logger.info(f"Added output mapping to outputs for run {omics_run_id}")
                         logger.info(f"{outputs['output_mapping']}")
                 except Exception as e:
