@@ -101,7 +101,8 @@ class OmicsExecutor(WorkflowExecutor):
                     'parameters': omics_params,
                     'outputUri': output_uri,
                     'name': f"wes-run-{run.id}",
-                    'retentionMode': 'REMOVE'
+                    'retentionMode': 'REMOVE',
+                    'storageType': 'DYNAMIC'
                 }
 
                 # Add tags from the run object
