@@ -105,9 +105,10 @@ uv run python -m src.wes_service.main
 ```
 
 8. **Start the workflow daemon** (in a separate terminal)
-   ```bash
-   uv run python -m src.wes_service.daemon.workflow_monitor
-   ```
+
+```bash
+uv run python -m src.wes_service.daemon.workflow_monitor
+```
 
 The API will be available at `http://localhost:8000`
 
