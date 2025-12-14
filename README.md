@@ -55,47 +55,54 @@ GA4GH WES is designed with a clean separation: the API service logs workflow req
 ### Installation
 
 1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd GA4GH-WES-API-Service
-   ```
+
+```bash
+git clone <repository-url>
+cd GA4GH-WES-API-Service
+```
 
 2. **Install uv (if not already installed)**
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
 3. **Install dependencies**
-   ```bash
-   uv sync
-   ```
+
+```bash
+uv sync
+```
 
 4. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
+
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
 
 5. **Configure database**
-   ```bash
-   # Create MySQL database
-   mysql -u root -p -e "CREATE DATABASE wes_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-   mysql -u root -p -e "CREATE USER 'wes_user'@'localhost' IDENTIFIED BY 'your_password';"
-   mysql -u root -p -e "GRANT ALL PRIVILEGES ON wes_db.* TO 'wes_user'@'localhost';"
-   
-   # Update DATABASE_URL in .env
-   # DATABASE_URL=mysql+aiomysql://wes_user:your_password@localhost:3306/wes_db
-   ```
+
+```bash
+# Create MySQL database
+mysql -u root -p -e "CREATE DATABASE wes_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -u root -p -e "CREATE USER 'wes_user'@'localhost' IDENTIFIED BY 'your_password';"
+mysql -u root -p -e "GRANT ALL PRIVILEGES ON wes_db.* TO 'wes_user'@'localhost';"
+
+# Update DATABASE_URL in .env
+# DATABASE_URL=mysql+aiomysql://wes_user:your_password@localhost:3306/wes_db
+```
 
 6. **Run database migrations**
-   ```bash
-   uv run alembic upgrade head
-   ```
+
+```bash
+uv run alembic upgrade head
+```
 
 7. **Start the API service**
-   ```bash
-   uv run python -m src.wes_service.main
-   ```
+
+```bash
+uv run python -m src.wes_service.main
+```
 
 8. **Start the workflow daemon** (in a separate terminal)
    ```bash
