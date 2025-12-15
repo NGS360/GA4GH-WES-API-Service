@@ -286,8 +286,10 @@ class WorkflowMonitor:
                                 # Store all log URLs as JSON in stdout_url
                                 run.stdout_url = json.dumps(log_urls)
                                 await db.commit()
-                                logger.info(f"Run {run.id}: Set stdout_url to JSON structure with all log URLs")
-                                run.system_logs.append(f"Set stdout_url to JSON structure with all log URLs")
+                                logger.info(f"Run {run.id}: Set stdout_url to JSON structure "
+                                            f"with all log URLs")
+                                run.system_logs.append(f"Set stdout_url to JSON structure "
+                                                       f"with all log URLs")
 
                                 # Still update individual task log entries
                                 if 'task_logs' in outputs['logs']:
@@ -302,7 +304,6 @@ class WorkflowMonitor:
                                     attributes.flag_modified(run, "outputs")
                                     await db.commit()
                                     logger.info(f"Run {run.id}: Removed log URLs from outputs field")
-
 
                             run.system_logs.append(f"Workflow completed successfully at "
                                                    f"{run.end_time.isoformat()}")

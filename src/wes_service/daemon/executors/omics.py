@@ -803,8 +803,8 @@ class OmicsExecutor(WorkflowExecutor):
                         if isinstance(value, dict) and 'location' in value:
                             # Extract the S3 URI from the location field
                             result[key] = value['location']
-                        elif isinstance(value, list) and 
-                            all(isinstance(item, dict) and 'location' in item for item in value):
+                        elif (isinstance(value, list) and
+                            all(isinstance(item, dict) and 'location' in item for item in value)):
                             # For array outputs, extract all locations
                             result[key] = [item['location'] for item in value]
                         else:
