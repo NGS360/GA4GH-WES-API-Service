@@ -216,8 +216,8 @@ class OmicsExecutor(WorkflowExecutor):
                             run.stdout_url = json.dumps(log_urls)
                             logger.info(f"Run {run.id}: Set stdout_url to "
                                         f"JSON structure with all log URLs")
-                            run.system_logs.append(f"Set stdout_url to "
-                                                   f"JSON structure with all log URLs")
+                            run.system_logs.append("Set stdout_url to "
+                                                   "JSON structure with all log URLs")
 
                             # Remove log URLs from outputs to avoid duplication
                             if 'logs' in run.outputs:
@@ -804,7 +804,7 @@ class OmicsExecutor(WorkflowExecutor):
                             # Extract the S3 URI from the location field
                             result[key] = value['location']
                         elif (isinstance(value, list) and
-                            all(isinstance(item, dict) and 'location' in item for item in value)):
+                             all(isinstance(item, dict) and 'location' in item for item in value)):
                             # For array outputs, extract all locations
                             result[key] = [item['location'] for item in value]
                         else:

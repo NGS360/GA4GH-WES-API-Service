@@ -288,8 +288,8 @@ class WorkflowMonitor:
                                 await db.commit()
                                 logger.info(f"Run {run.id}: Set stdout_url to JSON structure "
                                             f"with all log URLs")
-                                run.system_logs.append(f"Set stdout_url to JSON structure "
-                                                       f"with all log URLs")
+                                run.system_logs.append("Set stdout_url to JSON structure "
+                                                       "with all log URLs")
 
                                 # Still update individual task log entries
                                 if 'task_logs' in outputs['logs']:
