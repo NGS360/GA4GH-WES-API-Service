@@ -1,6 +1,7 @@
 """Workflow monitoring daemon."""
 
 import asyncio
+import json
 import logging
 from datetime import datetime
 
@@ -267,50 +268,41 @@ class WorkflowMonitor:
 
                             # Update log URLs in the database
                             if 'logs' in outputs:
-                                if 'run_log' in outputs['logs']:
-                                    # Set the stdout_url directly
-                                    run.stdout_url = outputs['logs']['run_log']
-                                    logger.info(f"Run {run.id}: Set stdout_url to {run.stdout_url}")
+                                # Create a JSON structure with all log URLs
+                                log_urls = {}
 
-                                # Update task log URLs
+                                # Add run log URL
+                                if 'run_log' in outputs['logs']:
+                                    log_urls['run_log'] = outputs['logs']['run_log']
+
+                                # Add manifest log URL
+                                if 'manifest_log' in outputs['logs']:
+                                    log_urls['manifest_log'] = outputs['logs']['manifest_log']
+
+                                # Add task log URLs
+                                if 'task_logs' in outputs['logs']:
+                                    log_urls['task_logs'] = outputs['logs']['task_logs']
+
+                                # Store all log URLs as JSON in stdout_url
+                                run.stdout_url = json.dumps(log_urls)
+                                await db.commit()
+                                logger.info(f"Run {run.id}: Set stdout_url to JSON structure with all log URLs")
+                                run.system_logs.append(f"Set stdout_url to JSON structure with all log URLs")
+
+                                # Still update individual task log entries
                                 if 'task_logs' in outputs['logs']:
                                     await self.executor._update_task_log_urls(
                                         db, run.id, outputs['logs']['task_logs']
                                     )
 
-                                    # Create a default task log if none exists
-                                    # This ensures we have at least one task log entry in database
-                                    task_name = 'main'
-                                    log_url = outputs['logs']['task_logs'].get(task_name)
-                                    if log_url:
-                                        # Check if task exists
-                                        from src.wes_service.db.models import TaskLog
+                                # Remove log URLs from outputs to avoid duplication
+                                if 'logs' in run.outputs:
+                                    del run.outputs['logs']
+                                    from sqlalchemy.orm import attributes
+                                    attributes.flag_modified(run, "outputs")
+                                    await db.commit()
+                                    logger.info(f"Run {run.id}: Removed log URLs from outputs field")
 
-                                        query = select(TaskLog).where(
-                                            TaskLog.run_id == run.id,
-                                            TaskLog.name == task_name
-                                        )
-                                        result = await db.execute(query)
-                                        task = result.scalar_one_or_none()
-
-                                        if not task:
-                                            # Create a new task log entry
-                                            logger.info((f"Creating default task log "
-                                                         f"for run {run.id}"))
-                                            task = TaskLog(
-                                                id=f"omics-{omics_run_id}-{task_name}",
-                                                run_id=run.id,
-                                                name=task_name,
-                                                cmd=[],
-                                                start_time=None,
-                                                end_time=datetime.utcnow(),
-                                                exit_code=0,
-                                                stdout_url=log_url,
-                                                system_logs=[f"Task created from log URL: {log_url}"]
-                                            )
-                                            db.add(task)
-                                            await db.commit()
-                                            logger.info(f"Created default task log for run {run.id}")
 
                             run.system_logs.append(f"Workflow completed successfully at "
                                                    f"{run.end_time.isoformat()}")

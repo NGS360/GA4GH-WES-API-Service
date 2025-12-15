@@ -198,16 +198,35 @@ class OmicsExecutor(WorkflowExecutor):
 
                         # Update log URLs in the database
                         if 'logs' in outputs:
-                            if 'run_log' in outputs['logs']:
-                                # Set the stdout_url directly
-                                run.stdout_url = outputs['logs']['run_log']
-                                logger.info(f"Run {run.id}: Set stdout_url to {run.stdout_url}")
-                                # Add debug log to verify stdout_url is being set
-                                run.system_logs.append(f"Set stdout_url to {run.stdout_url}")
+                            # Create a JSON structure with all log URLs
+                            log_urls = {}
 
-                                # Explicitly commit the change to ensure it's saved
-                                await db.commit()
-                                logger.info(f"Run {run.id}: Committed stdout_url to database")
+                            # Add run log URL
+                            if 'run_log' in outputs['logs']:
+                                log_urls['run_log'] = outputs['logs']['run_log']
+
+                            # Add manifest log URL
+                            if 'manifest_log' in outputs['logs']:
+                                log_urls['manifest_log'] = outputs['logs']['manifest_log']
+
+                            # Add task log URLs
+                            if 'task_logs' in outputs['logs']:
+                                log_urls['task_logs'] = outputs['logs']['task_logs']
+
+                            # Store all log URLs as JSON in stdout_url
+                            run.stdout_url = json.dumps(log_urls)
+                            logger.info(f"Run {run.id}: Set stdout_url to JSON structure with all log URLs")
+                            run.system_logs.append(f"Set stdout_url to JSON structure with all log URLs")
+
+                            # Remove log URLs from outputs to avoid duplication
+                            if 'logs' in run.outputs:
+                                del run.outputs['logs']
+                                attributes.flag_modified(run, "outputs")
+                                logger.info(f"Run {run.id}: Removed log URLs from outputs field")
+
+                            # Explicitly commit the change to ensure it's saved
+                            await db.commit()
+                            logger.info(f"Run {run.id}: Committed log URLs to database")
 
                             # Update task log URLs
                             if 'task_logs' in outputs['logs']:
