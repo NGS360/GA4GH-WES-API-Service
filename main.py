@@ -6,8 +6,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.wes_service.api.middleware import add_error_handlers
-from src.wes_service.api.routes import runs, service_info, tasks
+#from src.wes_service.api.middleware import add_error_handlers
+#from src.wes_service.api.routes import runs, tasks
+from api.service_info import router as service_info_router
 
 from core.config import get_settings
 from core.lifespan import lifespan
@@ -76,17 +77,17 @@ def create_app() -> FastAPI:
 
     # Register routers
     app.include_router(
-        service_info.router,
+        service_info_router,
         prefix=settings.api_prefix,
     )
-    app.include_router(
-        runs.router,
-        prefix=settings.api_prefix,
-    )
-    app.include_router(
-        tasks.router,
-        prefix=settings.api_prefix,
-    )
+    #app.include_router(
+    #    runs.router,
+    #    prefix=settings.api_prefix,
+    # )
+    #app.include_router(
+    #    tasks.router,
+    #    prefix=settings.api_prefix,
+    # )
 
     # Health check endpoint
     @app.get("/healthcheck", tags=["Health"])

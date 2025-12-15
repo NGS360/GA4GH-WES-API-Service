@@ -1,6 +1,11 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends
 
-from api.service_info.models import ServiceInfo
+from core.deps import DatabaseSession
+from core.config import Settings, get_settings
+from api.service_info.models import (
+    ServiceInfo, WorkflowTypeVersion, WorkflowEngineVersion
+)
 
 router = APIRouter()
 
@@ -43,7 +48,7 @@ def get_service_info(
 
     # Service creation/update times (static for now)
     created_at = datetime(2024, 1, 1).isoformat() + "Z"
-    updated_at = datetime.utcnow().isoformat() + "Z"
+    updated_at = datetime.now(datetime.timezone.utc).isoformat() + "Z"
 
     return ServiceInfo(
         id="org.ga4gh.wes",
