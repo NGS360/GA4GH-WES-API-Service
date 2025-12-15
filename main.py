@@ -12,6 +12,7 @@ from src.wes_service.api.routes import runs, service_info, tasks
 from core.config import get_settings
 from core.lifespan import lifespan
 
+
 def create_app() -> FastAPI:
     """
     Create and configure the FastAPI application.

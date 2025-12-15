@@ -1,5 +1,3 @@
-"""Service info schemas."""
-
 from pydantic import BaseModel, Field
 
 

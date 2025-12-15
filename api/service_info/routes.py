@@ -1,17 +1,6 @@
-"""Service info endpoint."""
-
-from datetime import datetime
-
 from fastapi import APIRouter, Depends
 
-from src.wes_service.api.deps import DatabaseSession
-from src.wes_service.config import Settings, get_settings
-from src.wes_service.schemas.service_info import (
-    ServiceInfo,
-    WorkflowEngineVersion,
-    WorkflowTypeVersion,
-)
-from src.wes_service.services.run_service import RunService
+from api.service_info.models import ServiceInfo
 
 router = APIRouter()
 
@@ -23,7 +12,7 @@ router = APIRouter()
     summary="GetServiceInfo",
     description="Get information about the workflow execution service",
 )
-async def get_service_info(
+def get_service_info(
     db: DatabaseSession,
     settings: Settings = Depends(get_settings),
 ) -> ServiceInfo:
