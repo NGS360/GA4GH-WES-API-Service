@@ -1,15 +1,9 @@
 """Global error handling middleware."""
-
-import logging
-
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.wes_service.schemas.common import ErrorResponse
-
-logger = logging.getLogger(__name__)
-
+from core.logger import logger
 
 def add_error_handlers(app: FastAPI) -> None:
     """Add global error handlers to the FastAPI application."""
