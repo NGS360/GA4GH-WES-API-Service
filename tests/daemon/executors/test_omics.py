@@ -211,7 +211,7 @@ async def test_get_run_outputs(omics_executor, mock_omics_client):
     }
 
     # Get outputs
-    outputs = omics_executor._get_run_outputs("test-run-789")
+    outputs = await omics_executor._get_run_outputs("test-run-789")
 
     # Verify output structure
     assert outputs["output_location"] == "s3://bucket/output/"
