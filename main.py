@@ -91,13 +91,13 @@ def create_app() -> FastAPI:
 
     # Health check endpoint
     @app.get("/healthcheck", tags=["Health"])
-    async def healthcheck() -> dict[str, str]:
+    def healthcheck() -> dict[str, str]:
         """Health check endpoint."""
         return {"status": "healthy"}
 
     # Root redirect
     @app.get("/", include_in_schema=False)
-    async def root() -> dict[str, str]:
+    def root() -> dict[str, str]:
         """Root endpoint."""
         return {
             "service": settings.service_name,
