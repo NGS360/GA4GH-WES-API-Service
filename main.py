@@ -1,9 +1,6 @@
 """FastAPI application factory."""
 
 import json
-import logging
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -11,35 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.wes_service.api.middleware import add_error_handlers
 from src.wes_service.api.routes import runs, service_info, tasks
-from src.wes_service.config import get_settings
-from src.wes_service.db.session import init_db
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """
-    Application lifespan manager.
-
-    Handles startup and shutdown events.
-    """
-    settings = get_settings()
-    logger.info(f"Starting {settings.service_name}...")
-
-    # Initialize database (create tables if they don't exist)
-    try:
-        await init_db()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
-
-    logger.info(f"Service started on {settings.host}:{settings.port}")
-    logger.info(f"API available at {settings.api_prefix}")
-
-    yield
-
-    logger.info("Shutting down service...")
-
+from core.config import get_settings
+from core.lifespan import lifespan
 
 def create_app() -> FastAPI:
     """
@@ -144,7 +115,7 @@ if __name__ == "__main__":
 
     settings = get_settings()
     uvicorn.run(
-        "src.wes_service.main:app",
+        "main:app",
         host=settings.host,
         port=settings.port,
         reload=True,
