@@ -3,14 +3,18 @@
 import boto3
 from datetime import datetime
 import asyncio
+import json
 import logging
 from typing import Dict, Any, Union, List
+import urllib.parse
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.wes_service.daemon.executors.base import WorkflowExecutor
 from src.wes_service.db.models import TaskLog, WorkflowRun, WorkflowState
 from src.wes_service.config import get_settings
+
+from sqlalchemy.orm import attributes
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,7 @@ class OmicsExecutor(WorkflowExecutor):
         self.output_bucket = settings.omics_output_bucket
 
         self.omics_client = boto3.client('omics', region_name=self.region)
+        self.s3_client = boto3.client('s3', region_name=self.region)
 
     async def execute(self, db: AsyncSession, run: WorkflowRun) -> None:
         """
@@ -96,7 +101,8 @@ class OmicsExecutor(WorkflowExecutor):
                     'parameters': omics_params,
                     'outputUri': output_uri,
                     'name': f"wes-run-{run.id}",
-                    'retentionMode': 'REMOVE'
+                    'retentionMode': 'REMOVE',
+                    'storageType': 'DYNAMIC'
                 }
 
                 # Add tags from the run object
@@ -184,21 +190,43 @@ class OmicsExecutor(WorkflowExecutor):
                     run.exit_code = 0
                     # Get outputs from Omics
                     try:
-                        outputs = self._get_run_outputs(omics_run_id)
+                        outputs = await self._get_run_outputs(omics_run_id)
                         run.outputs = outputs
+                        attributes.flag_modified(run, "outputs")
+                        await db.commit()
+                        logger.info(f"Committed outputs to database for run {run.id}")
 
                         # Update log URLs in the database
                         if 'logs' in outputs:
-                            if 'run_log' in outputs['logs']:
-                                # Set the stdout_url directly
-                                run.stdout_url = outputs['logs']['run_log']
-                                logger.info(f"Run {run.id}: Set stdout_url to {run.stdout_url}")
-                                # Add debug log to verify stdout_url is being set
-                                run.system_logs.append(f"Set stdout_url to {run.stdout_url}")
+                            # Create a JSON structure with all log URLs
+                            log_urls = {}
 
-                                # Explicitly commit the change to ensure it's saved
-                                await db.commit()
-                                logger.info(f"Run {run.id}: Committed stdout_url to database")
+                            # Add run log URL
+                            if 'run_log' in outputs['logs']:
+                                log_urls['run_log'] = outputs['logs']['run_log']
+
+                            # Add manifest log URL
+                            if 'manifest_log' in outputs['logs']:
+                                log_urls['manifest_log'] = outputs['logs']['manifest_log']
+
+                            # Add task log URLs
+                            if 'task_logs' in outputs['logs']:
+                                log_urls['task_logs'] = outputs['logs']['task_logs']
+
+                            # Store all log URLs as JSON in stdout_url
+                            run.stdout_url = json.dumps(log_urls)
+                            logger.info(f"Run {run.id}: Set stdout_url to JSON structure with all log URLs")
+                            run.system_logs.append(f"Set stdout_url to JSON structure with all log URLs")
+
+                            # Remove log URLs from outputs to avoid duplication
+                            if 'logs' in run.outputs:
+                                del run.outputs['logs']
+                                attributes.flag_modified(run, "outputs")
+                                logger.info(f"Run {run.id}: Removed log URLs from outputs field")
+
+                            # Explicitly commit the change to ensure it's saved
+                            await db.commit()
+                            logger.info(f"Run {run.id}: Committed log URLs to database")
 
                             # Update task log URLs
                             if 'task_logs' in outputs['logs']:
@@ -405,6 +433,13 @@ class OmicsExecutor(WorkflowExecutor):
 
                     # Map Omics status to WES status
                     if status == 'COMPLETED':
+                        # Get outputs including output mapping
+                        outputs = await self._get_run_outputs(omics_run_id)
+                        logger.info("checkpoint1:"+str(outputs))
+                        if outputs:
+                            run.outputs.update(outputs)
+                            await db.commit()
+                            logger.info(f"Updated run outputs with output mapping for run {run.id}")
                         return WorkflowState.COMPLETE
                     elif status == 'FAILED':
                         error_message = response.get('message', 'No error message')
@@ -547,7 +582,7 @@ class OmicsExecutor(WorkflowExecutor):
         else:
             return str(obj)
 
-    def _get_run_outputs(self, omics_run_id: str) -> Dict[str, Any]:
+    async def _get_run_outputs(self, omics_run_id: str) -> Dict[str, Any]:
         """
         Get outputs from completed Omics run.
 
@@ -696,6 +731,17 @@ class OmicsExecutor(WorkflowExecutor):
             logger.info(f"Successfully retrieved outputs for Omics run {omics_run_id}")
             # Log the outputs for debugging
             logger.debug(f"Outputs for run {omics_run_id}: {outputs}")
+            # Try to fetch output mapping from S3 if output_location is available
+            if 'output_location' in outputs:
+                try:
+                    output_mapping = await self._fetch_output_mapping(outputs['output_location'], omics_run_id)
+                    if output_mapping:
+                        outputs['output_mapping'] = output_mapping
+                        logger.info(f"Added output mapping to outputs for run {omics_run_id}")
+                        logger.info(f"{outputs['output_mapping']}")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch output mapping for run {omics_run_id}: {str(e)}")
+
             # Ensure all values are JSON serializable
             return self._ensure_json_serializable(outputs)
 
@@ -703,3 +749,79 @@ class OmicsExecutor(WorkflowExecutor):
             error_msg = f"Error getting outputs for Omics run {omics_run_id}: {str(e)}"
             logger.error(error_msg)
             return {"error": error_msg}
+            
+    async def _fetch_output_mapping(self, output_uri: str, omics_run_id: str) -> Dict[str, str]:
+        """
+        Fetch output mapping from S3.
+        
+        Args:
+            output_uri: S3 URI of the output directory
+            omics_run_id: Omics run ID
+            
+        Returns:
+            Dictionary mapping output names to S3 URIs
+        """
+        try:
+            # Parse S3 URI
+            if not output_uri.startswith('s3://'):
+                logger.warning(f"Output URI {output_uri} is not an S3 URI")
+                return {}
+                
+            # Remove s3:// prefix and split into bucket and key
+            path = output_uri[5:]
+            parts = path.split('/', 1)
+            if len(parts) < 2:
+                logger.warning(f"Invalid S3 URI format: {output_uri}")
+                return {}
+                
+            bucket = parts[0]
+            key_prefix = parts[1]
+            
+            # Ensure key prefix ends with a slash
+            if not key_prefix.endswith('/'):
+                key_prefix += '/'
+                
+            # The specific path to the outputs.json file based on the example
+            # s3://bucket/path/to/output/run_id/logs/outputs.json
+            output_json_key = f"{key_prefix}{omics_run_id}/logs/outputs.json"
+            
+            # Try to fetch the output mapping file
+            try:
+                logger.info(f"Attempting to fetch output mapping from s3://{bucket}/{output_json_key}")
+                response = self.s3_client.get_object(Bucket=bucket, Key=output_json_key)
+                content = response['Body'].read().decode('utf-8')
+                mapping = json.loads(content)
+                
+                # Validate mapping format
+                if isinstance(mapping, dict):
+                    # Convert CWL-style output format to a simpler key-value mapping
+                    result = {}
+                    for key, value in mapping.items():
+                        if isinstance(value, dict) and 'location' in value:
+                            # Extract the S3 URI from the location field
+                            result[key] = value['location']
+                        elif isinstance(value, list) and all(isinstance(item, dict) and 'location' in item for item in value):
+                            # For array outputs, extract all locations
+                            result[key] = [item['location'] for item in value]
+                        else:
+                            # For other types, just convert to string
+                            result[key] = str(value)
+                    
+                    logger.info(f"Successfully loaded output mapping with {len(result)} entries")
+                    return result
+                else:
+                    logger.warning(f"Output mapping file s3://{bucket}/{output_json_key} is not a dictionary")
+            except self.s3_client.exceptions.NoSuchKey:
+                logger.info(f"Output mapping file s3://{bucket}/{output_json_key} not found")
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse output mapping file s3://{bucket}/{output_json_key} as JSON")
+            except Exception as e:
+                logger.warning(f"Error accessing s3://{bucket}/{output_json_key}: {str(e)}")
+            
+            # If we get here, we couldn't find a valid output mapping file
+            logger.warning(f"No valid output mapping file found for run {omics_run_id}")
+            return {}
+            
+        except Exception as e:
+            logger.error(f"Error fetching output mapping for run {omics_run_id}: {str(e)}")
+            return {}
