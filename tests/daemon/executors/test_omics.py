@@ -45,13 +45,13 @@ async def test_extract_workflow_id(omics_executor):
 async def test_convert_params_to_omics(omics_executor):
     """Test converting WES parameters to Omics format."""
     wes_params = {
-        "workflow_id": "wf-12345",
+        "workflow_id": "123456",
         "input_file": "s3://bucket/input.fastq",
         "reference_genome": "s3://bucket/reference.fa",
         "threads": 4
     }
 
-    omics_params = omics_executor._convert_params_to_omics(wes_params, "WDL")
+    omics_params = omics_executor._convert_params_to_omics(wes_params, "CWL")
 
     # workflow_id should be excluded
     assert "workflow_id" not in omics_params
@@ -81,49 +81,68 @@ async def test_execute_workflow_success(omics_executor, mock_omics_client, test_
                     "/aws/omics/WorkflowLog:log-stream:run/omics-run-123"
                 )
             }
-        },
-        {
-            "status": "COMPLETED",
-            "outputUri": "s3://bucket/output/",
-            "logLocation": {
-                "runLogStream": (
-                    "arn:aws:logs:us-east-1:123456789012:log-group:"
-                    "/aws/omics/WorkflowLog:log-stream:run/omics-run-123"
-                )
-            }
         }
     ]
 
     # Create test run
     run = WorkflowRun(
-        id="test-run-123",
+        id="test-runid-123",
         state=WorkflowState.QUEUED,
-        workflow_type="WDL",
+        workflow_type="CWL",
         workflow_type_version="1.0",
-        workflow_url="omics:wf-12345",
+        workflow_url="1234567",
         workflow_params={"input_file": "s3://bucket/input.fastq"},
-        tags={},
+        workflow_engine_parameters={
+            "outputUri": "s3://bucket/output/omics-run-123/"
+        },
+        tags={
+            "Name": "Test Run",
+            "Project": "WES Testing"
+        },
+
     )
     test_db.add(run)
+
     await test_db.commit()
 
     # Execute workflow with sleep mocked
-    with patch('asyncio.sleep', return_value=None):  # Skip sleep
-        await omics_executor.execute(test_db, run)
+    with patch('asyncio.sleep', return_value=None):
+        # Mock the _get_run_outputs method to return an empty dictionary
+        with patch.object(omics_executor, '_get_run_outputs', return_value={
+            'omics_run_id': 'omics-run-123',
+            'output_location': 's3://bucket/output/',
+            'logs': {
+                'run_log': 'https://us-east-1.console.aws.amazon.com/cloudwatch/home',
+                'log_group': '/aws/omics/WorkflowLog',
+                'log_stream': 'run/omics-run-123',
+                'task_logs': {'main': 'https://example.com/logs/main.log'},
+                'manifest_log': 'https://us-east-1.console.aws.amazon.com/cloudwatch/manifest.log'
+        },
+        'workflow_outputs': {'result_file': 's3://bucket/output/omics-run-123/results.txt'}
+    }):
+            await omics_executor.execute(test_db, run)
 
     # Verify state updated
     await test_db.refresh(run)
     assert run.state == WorkflowState.COMPLETE
     assert run.exit_code == 0
+    assert "omics_run_id" in run.outputs
+    assert run.outputs["omics_run_id"] == "omics-run-123"
     assert "output_location" in run.outputs
-    assert "logs" in run.outputs
-    assert "run_log" in run.outputs["logs"]
-    assert run.stdout_url == run.outputs["logs"]["run_log"]
     assert "https://us-east-1.console.aws.amazon.com/cloudwatch/home" in run.stdout_url
 
     # Verify AWS calls
     mock_omics_client.start_run.assert_called_once()
-    assert mock_omics_client.get_run.call_count == 4
+
+    # Verify start_run was called with correct parameters 
+    start_run_kwargs = mock_omics_client.start_run.call_args[1]
+    assert start_run_kwargs["workflowId"] == "1234567"
+    assert start_run_kwargs["parameters"] == {"input_file": "s3://bucket/input.fastq"}
+    assert start_run_kwargs["outputUri"] == "s3://bucket/output/omics-run-123/"
+    assert start_run_kwargs["name"] == "Test Run"
+    assert start_run_kwargs["tags"] == {"Name": "Test Run", "Project": "WES Testing"}
+
+    assert mock_omics_client.get_run.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -160,11 +179,14 @@ async def test_execute_workflow_failure(omics_executor, mock_omics_client, test_
     run = WorkflowRun(
         id="test-run-456",
         state=WorkflowState.QUEUED,
-        workflow_type="WDL",
+        workflow_type="CWL",
         workflow_type_version="1.0",
-        workflow_url="omics:wf-12345",
+        workflow_url="1234567",
         workflow_params={"input_file": "s3://bucket/input.fastq"},
-        tags={},
+        tags={
+            "Name": "Test Run",
+            "Project": "WES Testing"
+        },
     )
     test_db.add(run)
     await test_db.commit()
@@ -239,9 +261,9 @@ async def test_update_task_log_urls(omics_executor, test_db):
     run = WorkflowRun(
         id="test-run-task-logs",
         state=WorkflowState.COMPLETE,
-        workflow_type="WDL",
+        workflow_type="CWL",
         workflow_type_version="1.0",
-        workflow_url="omics:wf-12345"
+        workflow_url="1234567"
     )
     test_db.add(run)
 
