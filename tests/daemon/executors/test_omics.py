@@ -117,9 +117,9 @@ async def test_execute_workflow_success(omics_executor, mock_omics_client, test_
                 'log_stream': 'run/omics-run-123',
                 'task_logs': {'main': 'https://example.com/logs/main.log'},
                 'manifest_log': 'https://us-east-1.console.aws.amazon.com/cloudwatch/manifest.log'
-        },
-        'workflow_outputs': {'result_file': 's3://bucket/output/omics-run-123/results.txt'}
-    }):
+            },
+            'workflow_outputs': {'result_file': 's3://bucket/output/omics-run-123/results.txt'}
+        }):
             await omics_executor.execute(test_db, run)
 
     # Verify state updated
@@ -134,7 +134,7 @@ async def test_execute_workflow_success(omics_executor, mock_omics_client, test_
     # Verify AWS calls
     mock_omics_client.start_run.assert_called_once()
 
-    # Verify start_run was called with correct parameters 
+    # Verify start_run was called with correct parameters
     start_run_kwargs = mock_omics_client.start_run.call_args[1]
     assert start_run_kwargs["workflowId"] == "1234567"
     assert start_run_kwargs["parameters"] == {"input_file": "s3://bucket/input.fastq"}
