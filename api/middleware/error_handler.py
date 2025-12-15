@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from core.logger import logger
+from api.middleware.models import ErrorResponse
 
 def add_error_handlers(app: FastAPI) -> None:
     """Add global error handlers to the FastAPI application."""
