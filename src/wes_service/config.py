@@ -10,13 +10,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
-
     # Workflow executor configuration
     workflow_executor: Literal["local", "omics"] = Field(
         default="local",
@@ -260,6 +253,15 @@ class Settings(BaseSettings):
     def max_upload_size_bytes(self) -> int:
         """Get maximum upload size in bytes."""
         return self.max_upload_size_mb * 1024 * 1024
+
+    # Read environment variables from .env file, if it exists
+    # extra='ignore' prevents validation errors from extra env vars
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
 
 @lru_cache
