@@ -14,13 +14,6 @@ from src.wes_service.api.routes import runs, service_info, tasks
 from src.wes_service.config import get_settings
 from src.wes_service.db.session import init_db
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
