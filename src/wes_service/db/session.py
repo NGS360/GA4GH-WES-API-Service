@@ -63,8 +63,30 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Initialize database tables."""
-    from src.wes_service.db.base import Base
+    """Initialize database tables using Alembic migrations."""
+    import asyncio
+    import logging
+    from pathlib import Path
+    from alembic.config import Config
+    from alembic import command
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    logger = logging.getLogger(__name__)
+
+    # Get the project root directory
+    project_root = Path(__file__).parent.parent.parent.parent
+    alembic_ini_path = project_root / "alembic.ini"
+
+    # Create Alembic config
+    alembic_cfg = Config(str(alembic_ini_path))
+
+    # Run migrations in a thread executor to avoid event loop conflicts
+    logger.info("Running Alembic migrations...")
+
+    def run_migrations():
+        """Run Alembic migrations synchronously."""
+        command.upgrade(alembic_cfg, "head")
+
+    # Execute in thread pool to avoid blocking the async event loop
+    await asyncio.to_thread(run_migrations)
+
+    logger.info("Database initialized successfully with Alembic migrations")
