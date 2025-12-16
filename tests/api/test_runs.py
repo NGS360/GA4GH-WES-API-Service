@@ -7,6 +7,224 @@ from fastapi.testclient import TestClient
 from src.wes_service.db.models import WorkflowRun, WorkflowState
 
 
+class TestPAMLFunctions:
+    """Tests endpoint as PAML would do.."""
+
+    async def test_paml_submit_task(self, client: TestClient):
+        """Test submit task through PAML"""
+        # Mimic inputs of PAML submit_task()
+        name = "test_wes_run"
+        project = {
+            "name": "test_project_name",
+            "id": "test_project_id",
+        }
+        workflow = "1234567"
+        parameters = {
+            "input_file": "s3://bucket/input.fastq",
+            "reference_genome": "s3://bucket/reference.fa"
+        }
+        execution_settings = {"cacheId": "12345"}
+
+        # Mock run
+        workflow_engine_parameters = {
+            "cacheId": execution_settings["cacheId"],
+            "name": name
+        }
+        tags = {
+            "Name": name,
+            "Project": project["name"],
+        }
+        response = client.post(
+            "/ga4gh/wes/v1/runs",
+            data={
+                "workflow_url": workflow,
+                "workflow_type": "CWL",
+                "workflow_type_version": "v1.0",
+                "workflow_params": json.dumps(parameters),
+                "workflow_engine_parameters": json.dumps(workflow_engine_parameters),
+                "tags": json.dumps(tags),
+            },
+        )
+
+        # Verify run was created correctly and added to db
+        assert response.status_code == 200
+        data = response.json()
+        assert "run_id" in data
+        assert isinstance(data["run_id"], str)
+
+    async def test_paml_get_task_state(self, client: TestClient, test_db):
+        """Test get task state through PAML"""
+        # Mimic inputs of PAML get_task_state()
+        task = {
+            "id": "test-get-state"
+        }
+
+        # Mock run
+        run = WorkflowRun(
+            id=task["id"],
+            state=WorkflowState.COMPLETE,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="123456",
+            tags={},
+            user_id="test_user",
+        )
+        test_db.add(run)
+        await test_db.commit()
+
+        # Verify task state
+        response = client.get("/ga4gh/wes/v1/runs/"+task["id"]+"/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["run_id"] == task["id"]
+        assert data["state"] == "COMPLETE"
+
+    async def test_paml_get_task_output(self, client: TestClient, test_db):
+        """Test getting specific task outputs as PAML would do."""
+        # Mimic inputs of PAML get_task_output()
+        task = {
+            "id": "test-get-output"
+        }
+        output_name = "output1"
+
+        # Mock run
+        run = WorkflowRun(
+            id=task["id"],
+            state=WorkflowState.COMPLETE,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="123456",
+            outputs={
+                "omics_run_id": "omics-runid-test",
+                "output_location": "s3://bucket/output/",
+                "output_mapping": {
+                    "output1": "s3://bucket/output/output_file1",
+                    "output2": "s3://bucket/output/output_file2",
+                }
+            },
+            user_id="test_user"
+        )
+        test_db.add(run)
+        await test_db.commit()
+
+        response = client.get("/ga4gh/wes/v1/runs/"+task["id"]+'/')
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify run output
+        output_mapping = data["outputs"]["output_mapping"]
+        result_file_output = output_mapping.get(output_name)
+        assert result_file_output == "s3://bucket/output/output_file1"
+
+        # Simulate PAML getting a non-existent output
+        nonexistent_output = output_mapping.get("nonexistent")
+        assert nonexistent_output is None
+
+    async def test_paml_get_task_outputs(self, client: TestClient, test_db):
+        """Test getting specific task outputs as PAML would do."""
+        # Mimic inputs of PAML get_task_outputs()
+        task = {
+            "id": "test-get-outputs"
+        }
+
+        # Mock run
+        run = WorkflowRun(
+            id=task["id"],
+            state=WorkflowState.COMPLETE,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="123456",
+            outputs={
+                "omics_run_id": "omics-runid-test",
+                "output_location": "s3://bucket/output/",
+                "output_mapping": {
+                    "output1": "s3://bucket/output/output_file1",
+                    "output2": "s3://bucket/output/output_file2",
+                    "output3": "s3://bucket/output/output_file3",
+                }
+            },
+            user_id="test_user"
+        )
+        test_db.add(run)
+        await test_db.commit()
+
+        response = client.get("/ga4gh/wes/v1/runs/"+task["id"]+'/')
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify run output
+        output_mapping = data["outputs"]["output_mapping"]
+        task_outputs = list(output_mapping.keys())
+        assert task_outputs == ["output1", "output2", "output3"]
+
+    async def test_paml_get_tasks_by_name(self, client: TestClient, test_db):
+        """Test getting specific task outputs as PAML would do."""
+        # Mimic inputs of PAML get_tasks_by_name()
+        project = {
+            "name": "test_project_name",
+            "id": "test_project_id",
+        }
+        task_name = "test-get-task-name"
+
+        # Mock runs
+        run1 = WorkflowRun(
+            id='test-get-task1',
+            state=WorkflowState.COMPLETE,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="123456",
+            user_id="test_user",
+            tags={
+                "Project": project["name"],
+                "Name": task_name
+            }
+        )
+        test_db.add(run1)
+        run2 = WorkflowRun(
+            id='test-get-task2',
+            state=WorkflowState.COMPLETE,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="123456",
+            user_id="test_user",
+            tags={
+                "Project": "test-other-project-names",
+                "Name": task_name
+            }
+        )
+        test_db.add(run2)
+        run3 = WorkflowRun(
+            id='test-get-task3',
+            state=WorkflowState.COMPLETE,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="123456",
+            user_id="test_user",
+            tags={
+                "Project": project["name"],
+                "Name": "test-other-task-names"
+            }
+        )
+        test_db.add(run3)
+        await test_db.commit()
+
+        response = client.get("/ga4gh/wes/v1/runs")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify runs and tasks
+        assert "runs" in data
+        assert isinstance(data["runs"], list)
+        assert len(data["runs"]) == 3
+        tasks = []
+        for run in data["runs"]:
+            if run["tags"]["Project"] == project["name"]:
+                if run["tags"]["Name"] == task_name:
+                    tasks += [run]
+        assert len(tasks) == 1
+        assert tasks[0]["run_id"] == "test-get-task1"
+
+
 class TestSubmitWorkflow:
     """Tests for POST /runs endpoint."""
 

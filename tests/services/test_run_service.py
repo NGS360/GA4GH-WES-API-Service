@@ -1,6 +1,7 @@
 """Tests for run service."""
 
 import pytest
+import json
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
 from src.wes_service.services.run_service import RunService
@@ -9,6 +10,81 @@ from src.wes_service.services.run_service import RunService
 @pytest.mark.asyncio
 class TestRunService:
     """Tests for RunService."""
+
+    async def test_paml_submit_task(self, test_db, mock_storage):
+        """Test submit task through PAML"""
+        # Mimic inputs of PAML submit_task()
+        name = "test_wes_run"
+        project = {
+            "name": "test_project_name",
+            "id": "test_project_id",
+        }
+        workflow = "1234567"
+        parameters = {
+            "input_file": "s3://bucket/input.fastq",
+            "reference_genome": "s3://bucket/reference.fa"
+        }
+        execution_settings = {"cacheId": "12345"}
+
+        # Mock run service
+        service = RunService(test_db, mock_storage)
+
+        workflow_engine_parameters = {
+            "cacheId": execution_settings["cacheId"],
+            "name": name
+        }
+        run_id = await service.create_run(
+            workflow_params=json.dumps(parameters),
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url=workflow,
+            tags=json.dumps({"Name": name, "Project": project["id"]}),
+            workflow_engine_parameters=json.dumps(
+                workflow_engine_parameters
+            ),
+            workflow_attachments=None,
+            workflow_engine="CWL",
+            workflow_engine_version="v1.0",
+            user_id="ngs360",
+        )
+
+        # Verify run was created correctly and added to db
+        assert run_id is not None
+        assert isinstance(run_id, str)
+        result = await test_db.get(WorkflowRun, run_id)
+        assert result is not None
+        assert result.workflow_type == "CWL"
+        assert result.state == WorkflowState.QUEUED
+
+    async def test_paml_get_task_state(self, test_db, mock_storage):
+        """Test get task state through PAML"""
+        # Mimic inputs of PAML get_task_state()
+        task = {
+            "id": "test-get-state"
+        }
+
+        # Mock run record
+        run = WorkflowRun(
+            id=task["id"],
+            state=WorkflowState.COMPLETE,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="123456",
+            tags={
+                "Name": "test_name",
+                "Project": "test_project"
+            },
+        )
+        test_db.add(run)
+        await test_db.commit()
+
+        service = RunService(test_db, mock_storage)
+
+        # Get task status
+        status = await service.get_run_status(task["id"], None)
+
+        assert status.run_id == "test-get-state"
+        assert status.state.value == "COMPLETE"
 
     async def test_create_run(self, test_db, mock_storage):
         """Test creating a new workflow run."""
