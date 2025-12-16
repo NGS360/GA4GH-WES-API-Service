@@ -113,7 +113,7 @@ class TestPAMLFunctions:
 
         # Verify run output
         output_mapping = data["outputs"]["output_mapping"]
-        result_file_output = output_mapping.get("output1")
+        result_file_output = output_mapping.get(output_name)
         assert result_file_output == "s3://bucket/output/output_file1"
 
         # Simulate PAML getting a non-existent output
@@ -175,8 +175,8 @@ class TestPAMLFunctions:
             workflow_url="123456",
             user_id="test_user",
             tags={
-                "Project": "test_project_name",
-                "Name": "test-get-task-name"
+                "Project": project["name"],
+                "Name": task_name
             }
         )
         test_db.add(run1)
@@ -189,7 +189,7 @@ class TestPAMLFunctions:
             user_id="test_user",
             tags={
                 "Project": "test-other-project-names",
-                "Name": "test-get-task-name"
+                "Name": task_name
             }
         )
         test_db.add(run2)
@@ -201,7 +201,7 @@ class TestPAMLFunctions:
             workflow_url="123456",
             user_id="test_user",
             tags={
-                "Project": "test_project_name",
+                "Project": project["name"],
                 "Name": "test-other-task-names"
             }
         )
@@ -218,11 +218,12 @@ class TestPAMLFunctions:
         assert len(data["runs"]) == 3
         tasks = []
         for run in data["runs"]:
-             if (run["tags"]["Project"] == "test_project_name"
-                 and run["tags"]["Name"] == "test-get-task-name"):
+            if (run["tags"]["Project"] == project["name"]
+                and run["tags"]["Name"] == task_name):
                 tasks+=[run]
         assert len(tasks) == 1
         assert tasks[0]["run_id"] == "test-get-task1"
+
 
 class TestSubmitWorkflow:
     """Tests for POST /runs endpoint."""

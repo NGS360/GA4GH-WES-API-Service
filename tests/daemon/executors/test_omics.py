@@ -23,6 +23,89 @@ def omics_executor(mock_omics_client):
 
 
 @pytest.mark.asyncio
+async def test_execute_workflow_paml(omics_executor, mock_omics_client, test_db):
+    """Test successful workflow execution."""
+    # Mimic Omics workflow settings
+    name = "test_wes_run"
+    project = {
+        "name": "test_project_name",
+        "id": "test_project_id",
+    }
+    workflow = "1234567"
+    parameters = {
+        "input_file": "s3://bucket/input.fastq",
+        "reference_genome": "s3://bucket/reference.fa"
+    }
+    execution_settings = {"cacheId": "12345"}
+
+    # Mock responses
+    mock_omics_client.start_run.return_value = {"id": "omics-run-123"}
+    mock_omics_client.get_run.return_value ={
+        "status": "COMPLETED",
+        "outputUri": "s3://bucket/output/",
+        "logLocation": {
+            "runLogStream": (
+                "arn:aws:logs:us-east-1:123456789012:log-group:"
+                "/aws/omics/WorkflowLog:log-stream:run/omics-run-123"
+            )
+        }
+    }
+    tags = {
+        "Name": name,
+        "Project": project["name"]
+    }
+    run = WorkflowRun(
+        id="test-runid-paml",
+        state=WorkflowState.QUEUED,
+        workflow_type="CWL",
+        workflow_type_version="1.0",
+        workflow_url=workflow,
+        workflow_params=parameters,
+        workflow_engine_parameters={
+            "outputUri": "s3://bucket/output/omics-run-123/"
+        },
+        tags=tags
+    )
+    test_db.add(run)
+    await test_db.commit()
+
+    # Execute workflow with sleep mocked
+    with patch('asyncio.sleep', return_value=None):
+        # Mock the _get_run_outputs method to return an empty dictionary
+        with patch.object(omics_executor, '_get_run_outputs', return_value={
+            'omics_run_id': 'omics-run-123',
+            'output_location': 's3://bucket/output/',
+            'logs': {
+                'run_log': 'https://us-east-1.console.aws.amazon.com/cloudwatch/home',
+            },
+            'workflow_outputs': {'result_file': 's3://bucket/output/omics-run-123/results.txt'}
+        }):
+            await omics_executor.execute(test_db, run)
+
+    # Verify state updated
+    await test_db.refresh(run)
+    assert run.state == WorkflowState.COMPLETE
+    assert run.exit_code == 0
+    assert "omics_run_id" in run.outputs
+    assert run.outputs["omics_run_id"] == "omics-run-123"
+    assert "output_location" in run.outputs
+    assert "https://us-east-1.console.aws.amazon.com/cloudwatch/home" in run.stdout_url
+
+    # Verify AWS calls
+    mock_omics_client.start_run.assert_called_once()
+
+    # Verify start_run was called with correct parameters
+    start_run_kwargs = mock_omics_client.start_run.call_args[1]
+    assert start_run_kwargs["workflowId"] == workflow
+    assert start_run_kwargs["parameters"] == parameters
+    assert start_run_kwargs["outputUri"] == "s3://bucket/output/omics-run-123/"
+    assert start_run_kwargs["name"] == name
+    assert start_run_kwargs["tags"] == tags
+
+    assert mock_omics_client.get_run.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_extract_workflow_id(omics_executor):
     """Test extracting workflow ID from different sources."""
     # From workflow_url with prefix
@@ -68,7 +151,7 @@ async def test_execute_workflow_success(omics_executor, mock_omics_client, test_
     # Mock responses
     mock_omics_client.start_run.return_value = {"id": "omics-run-123"}
 
-    # Mock get_run responses for status checks (3 for monitoring + 1 for _get_run_outputs)
+    # Mock get_run responses for status checks
     mock_omics_client.get_run.side_effect = [
         {"status": "PENDING"},
         {"status": "RUNNING"},
