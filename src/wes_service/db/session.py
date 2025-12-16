@@ -77,4 +77,3 @@ async def init_db() -> None:
     await asyncio.to_thread(run_migrations)
 
     logger.info("Database initialized successfully with Alembic migrations")
-
