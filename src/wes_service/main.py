@@ -32,6 +32,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     logger.info(f"Starting {settings.service_name}...")
 
+    # Print configuration settings (mask sensitive info)
+    logger.info("Configuration Settings:")
+
+    # Helper function to log settings with sensitive value masking
+    def _log_setting(key: str, value):
+        """Log a setting, masking sensitive values like passwords and secrets"""
+        if ("PASSWORD" in key or "SECRET" in key) and value is not None:
+            logger.info("  %s: %s", key, "*****")
+        else:
+            logger.info("  %s: %s", key, value)
+
+    # Log computed fields first (they don't appear in vars())
+    computed_fields = {
+        "SQLALCHEMY_DATABASE_URI": settings.SQLALCHEMY_DATABASE_URI
+    }
+
+    for key, value in computed_fields.items():
+        _log_setting(key, value)
+
+    # Log remaining settings
+    for key, value in vars(settings).items():
+        _log_setting(key, value)
+
     # Initialize database (create tables if they don't exist)
     try:
         await init_db()
