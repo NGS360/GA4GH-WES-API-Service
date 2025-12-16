@@ -51,6 +51,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db() -> None:
     """Initialize database tables using Alembic migrations."""
+    import asyncio
     import logging
     from pathlib import Path
     from alembic.config import Config
@@ -65,7 +66,15 @@ async def init_db() -> None:
     # Create Alembic config
     alembic_cfg = Config(str(alembic_ini_path))
 
-    # Run migrations to latest version (synchronous call)
+    # Run migrations in a thread executor to avoid event loop conflicts
     logger.info("Running Alembic migrations...")
-    command.upgrade(alembic_cfg, "head")
+
+    def run_migrations():
+        """Run Alembic migrations synchronously."""
+        command.upgrade(alembic_cfg, "head")
+
+    # Execute in thread pool to avoid blocking the async event loop
+    await asyncio.to_thread(run_migrations)
+
     logger.info("Database initialized successfully with Alembic migrations")
+
