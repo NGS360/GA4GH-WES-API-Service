@@ -40,7 +40,7 @@ async def test_execute_workflow_paml(omics_executor, mock_omics_client, test_db)
 
     # Mock responses
     mock_omics_client.start_run.return_value = {"id": "omics-run-123"}
-    mock_omics_client.get_run.return_value ={
+    mock_omics_client.get_run.return_value = {
         "status": "COMPLETED",
         "outputUri": "s3://bucket/output/",
         "logLocation": {
@@ -62,7 +62,8 @@ async def test_execute_workflow_paml(omics_executor, mock_omics_client, test_db)
         workflow_url=workflow,
         workflow_params=parameters,
         workflow_engine_parameters={
-            "outputUri": "s3://bucket/output/omics-run-123/"
+            "outputUri": "s3://bucket/output/omics-run-123/",
+            "cacheId": execution_settings["cacheId"]
         },
         tags=tags
     )
@@ -101,7 +102,7 @@ async def test_execute_workflow_paml(omics_executor, mock_omics_client, test_db)
     assert start_run_kwargs["outputUri"] == "s3://bucket/output/omics-run-123/"
     assert start_run_kwargs["name"] == name
     assert start_run_kwargs["tags"] == tags
-
+    assert start_run_kwargs["cacheId"] == execution_settings["cacheId"]
     assert mock_omics_client.get_run.call_count == 1
 
 
