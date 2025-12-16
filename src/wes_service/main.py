@@ -32,6 +32,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     logger.info(f"Starting {settings.service_name}...")
 
+    for key, value in vars(settings).items():
+        logger.info(f"Setting: {key} = {value}")
+
     # Initialize database (create tables if they don't exist)
     try:
         await init_db()
