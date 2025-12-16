@@ -220,7 +220,7 @@ class TestPAMLFunctions:
         for run in data["runs"]:
             if run["tags"]["Project"] == project["name"]:
                 if run["tags"]["Name"] == task_name:
-                    tasks+=[run]
+                    tasks += [run]
         assert len(tasks) == 1
         assert tasks[0]["run_id"] == "test-get-task1"
 
