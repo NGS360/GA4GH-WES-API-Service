@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     )
 
     # Database Configuration
-    database_url: str = Field(
+    SQLALCHEMY_DATABASE_URI: str = Field(
         default="mysql+aiomysql://wes_user:wes_password@localhost:3306/wes_db",
         description="Database connection URL",
     )

@@ -35,7 +35,7 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
 def test_settings() -> Settings:
     """Create test settings."""
     return Settings(
-        database_url=TEST_DATABASE_URL,
+        SQLALCHEMY_DATABASE_URI=TEST_DATABASE_URL,
         storage_backend="local",
         local_storage_path="/tmp/wes_test",
         auth_method="none",
