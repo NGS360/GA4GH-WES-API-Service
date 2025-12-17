@@ -12,7 +12,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.wes_service.api.middleware import add_error_handlers
 from src.wes_service.api.routes import runs, service_info, tasks
 from src.wes_service.config import get_settings
-from src.wes_service.db.session import init_db
 
 # Configure logging
 logging.basicConfig(
@@ -55,10 +54,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         _log_setting(key, value)
 
     # Initialize database (create tables if they don't exist)
-    #try:
+    # try:
     #    await init_db()
     #    logger.info("Database initialized successfully")
-    #except Exception as e:
+    # except Exception as e:
     #    logger.error(f"Failed to initialize database: {e}")
     #    raise
 
