@@ -12,7 +12,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.wes_service.api.middleware import add_error_handlers
 from src.wes_service.api.routes import runs, service_info, tasks
 from src.wes_service.config import get_settings
-from src.wes_service.db.session import init_db
 
 # Configure logging
 logging.basicConfig(
@@ -29,8 +28,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     Handles startup and shutdown events.
     """
-    settings = get_settings()
-    logger.info(f"Starting {settings.service_name}...")
+    logger.info("In lifespan...starting up")
 
     # Print configuration settings (mask sensitive info)
     logger.info("Configuration Settings:")
@@ -40,35 +38,35 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         """Log a setting, masking sensitive values like passwords and secrets"""
         if ("PASSWORD" in key or "SECRET" in key) and value is not None:
             logger.info("  %s: %s", key, "*****")
+        elif "SQLALCHEMY_DATABASE_URI" == key and value is not None:
+            # Mask password in database URI
+            import re
+
+            masked_value = re.sub(r":\/\/(.*?):(.*?)@", r"://\1:*****@", value)
+            logger.info("  %s: %s", key, masked_value)
         else:
             logger.info("  %s: %s", key, value)
 
-    # Log computed fields first (they don't appear in vars())
-    computed_fields = {
-        "SQLALCHEMY_DATABASE_URI": settings.SQLALCHEMY_DATABASE_URI
-    }
-
-    for key, value in computed_fields.items():
-        _log_setting(key, value)
+    settings = get_settings()
 
     # Log remaining settings
     for key, value in vars(settings).items():
         _log_setting(key, value)
 
     # Initialize database (create tables if they don't exist)
+    # try:
+    #    await init_db()
+    #    logger.info("Database initialized successfully")
+    # except Exception as e:
+    #    logger.error(f"Failed to initialize database: {e}")
+    #    raise
+
+    logger.info("In lifespan...yield")
     try:
-        await init_db()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
-
-    logger.info(f"Service started on {settings.host}:{settings.port}")
-    logger.info(f"API available at {settings.api_prefix}")
-
-    yield
-
-    logger.info("Shutting down service...")
+        yield
+    finally:
+        # Shutdown
+        logger.info("In lifespan...shutting down")
 
 
 def create_app() -> FastAPI:

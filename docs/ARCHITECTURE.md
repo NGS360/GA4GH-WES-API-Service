@@ -293,7 +293,7 @@ class LocalExecutor(WorkflowExecutor):
 **Environment Variables**:
 ```bash
 # Database
-DATABASE_URL=mysql+aiomysql://user:pass@localhost/wes_db
+SQLALCHEMY_DATABASE_URI=mysql+aiomysql://user:pass@localhost/wes_db
 
 # Storage
 STORAGE_BACKEND=local  # or 's3'

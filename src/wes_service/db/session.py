@@ -14,7 +14,7 @@ settings = get_settings()
 
 # Create async engine
 engine = create_async_engine(
-    settings.database_url,
+    settings.SQLALCHEMY_DATABASE_URI,
     echo=settings.log_level == "DEBUG",
     pool_pre_ping=True,
     pool_size=10,

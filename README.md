@@ -88,8 +88,8 @@ mysql -u root -p -e "CREATE DATABASE wes_db CHARACTER SET utf8mb4 COLLATE utf8mb
 mysql -u root -p -e "CREATE USER 'wes_user'@'localhost' IDENTIFIED BY 'your_password';"
 mysql -u root -p -e "GRANT ALL PRIVILEGES ON wes_db.* TO 'wes_user'@'localhost';"
 
-# Update DATABASE_URL in .env
-# DATABASE_URL=mysql+aiomysql://wes_user:your_password@localhost:3306/wes_db
+# Update SQLALCHEMY_DATABASE_URI in .env
+# SQLALCHEMY_DATABASE_URI=mysql+aiomysql://wes_user:your_password@localhost:3306/wes_db
 ```
 
 6. **Run database migrations**
@@ -117,7 +117,7 @@ All configuration is managed through environment variables. Copy `.env.example` 
 
 ### Database Configuration
 ```bash
-DATABASE_URL=mysql+aiomysql://wes_user:wes_password@localhost:3306/wes_db
+SQLALCHEMY_DATABASE_URI=mysql+aiomysql://wes_user:wes_password@localhost:3306/wes_db
 ```
 
 ### Storage Configuration
