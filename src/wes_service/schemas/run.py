@@ -11,7 +11,6 @@ class RunId(BaseModel):
     """Workflow run ID response."""
 
     run_id: str = Field(..., description="Workflow run ID")
-    omics_run_id: str | None = Field(None, description="AWS Omics run ID (if available)")
 
 
 class RunStatus(BaseModel):
