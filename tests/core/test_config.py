@@ -66,7 +66,7 @@ def test_get_config_value_from_secrets():
         }
         mock_session.return_value.client.return_value = mock_client
         with patch.dict(
-            'os.environ', 
+            'os.environ',
             {'ENV_SECRETS': 'arn:aws:secretsmanager:us-east-1:123456789012:secret:mysecret'}
         ):
             settings = Settings()
