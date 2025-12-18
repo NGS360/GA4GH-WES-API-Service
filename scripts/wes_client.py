@@ -218,11 +218,11 @@ def main() -> None:
         help="Workflow type version",
     )
     submit_parser.add_argument(
-        "--params",
+        "--workflow-params",
         help="Workflow parameters (JSON string)",
     )
     submit_parser.add_argument(
-        "--params-file",
+        "--workflow-params-file",
         type=Path,
         help="Workflow parameters file (JSON)",
     )
@@ -271,17 +271,17 @@ def main() -> None:
             print(json.dumps(result, indent=2))
 
         elif args.command == "submit":
-            params = None
-            if args.params:
-                params = json.loads(args.params)
-            elif args.params_file:
-                params = json.loads(args.params_file.read_text())
+            workflow_params = None
+            if args.workflow_params:
+                workflow_params = json.loads(args.workflow_params)
+            elif args.workflow_params_file:
+                workflow_params = json.loads(args.workflow_params_file.read_text())
 
             run_id = client.submit_workflow(
                 workflow_url=args.workflow_url,
                 workflow_type=args.workflow_type,
                 workflow_type_version=args.workflow_version,
-                workflow_params=params,
+                workflow_params=workflow_params,
                 workflow_attachments=args.attachments,
             )
             print(f"Submitted workflow run: {run_id}")
