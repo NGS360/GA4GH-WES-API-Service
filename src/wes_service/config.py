@@ -58,7 +58,6 @@ class Settings(BaseSettings):
     def _get_config_value(
         self,
         env_var_name: str,
-        secret_key_name: str | None = None,
         default: str | None = None
     ) -> str | None:
         """
@@ -78,9 +77,6 @@ class Settings(BaseSettings):
             return env_value
 
         # 2. Try to get from AWS Secrets Manager with caching
-        # if secret_key_name is None:
-        #    secret_key_name = env_var_name
-
         # Use cached secret if available
         if self._secret_cache is None:
             env_secret = os.getenv('ENV_SECRETS')
@@ -110,7 +106,7 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
-        """Build database URI from env or secrets, defaults to sqlite://"""
+        """Build database URI from env or secrets, defaults to mysql+aiomysql"""
         return self._get_config_value(
             "SQLALCHEMY_DATABASE_URI",
             default="mysql+aiomysql://wes_user:wes_password@localhost:3306/wes_db"
