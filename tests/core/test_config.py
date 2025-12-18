@@ -3,6 +3,7 @@ import json
 from src.wes_service.config import get_secret, Settings
 from botocore.exceptions import ClientError
 
+
 def test_get_secret_does_not_exist():
     ''' Get that secret does not exist '''
     with patch('boto3.session.Session') as mock_session:
@@ -64,7 +65,10 @@ def test_get_config_value_from_secrets():
             'SecretString': json.dumps(mock_secret)
         }
         mock_session.return_value.client.return_value = mock_client
-        with patch.dict('os.environ', {'ENV_SECRETS': 'arn:aws:secretsmanager:us-east-1:123456789012:secret:mysecret'}):
+        with patch.dict(
+            'os.environ', 
+            {'ENV_SECRETS': 'arn:aws:secretsmanager:us-east-1:123456789012:secret:mysecret'}
+        ):
             settings = Settings()
             value = settings._get_config_value(
                 env_var_name='TEST_ENV_VAR')
