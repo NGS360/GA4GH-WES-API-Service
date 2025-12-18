@@ -38,7 +38,7 @@ RUN_ID=$(python3 scripts/wes_client.py \
     --workflow-url "https://raw.githubusercontent.com/common-workflow-language/cwl-v1.2/main/examples/1st-tool.cwl" \
     --workflow-type CWL \
     --workflow-version v1.0 \
-    --params '{"message": "Hello from WES!"}' \
+    --workflow-params '{"message": "Hello from WES!"}' \
     | grep -oP '(?<=Submitted workflow run: ).*')
 
 echo -e "${GREEN}✓ Workflow submitted: $RUN_ID${NC}\n"
