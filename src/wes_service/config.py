@@ -2,9 +2,43 @@
 
 from functools import lru_cache
 from typing import Literal
+import json
+import os
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, computed_field, PrivateAttr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+import boto3
+from botocore.exceptions import ClientError
+
+
+def get_secret(secret_name: str, region_name: str) -> dict | None:
+    """
+    Retrieve secrets from AWS Secrets Manager
+
+    Args:
+        secret_name: Name of the secret in Secrets Manager
+        region_name: AWS region where secret is stored
+
+    Returns:
+        dict: Parsed secret value or None if secret cannot be retrieved
+    """
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
+    try:
+        secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError:
+        return None
+    # Parse and return the secret
+    secret = secret_value_response['SecretString'].replace('\n', '')
+    return json.loads(
+        secret
+    )
 
 
 class Settings(BaseSettings):
@@ -17,6 +51,47 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # Cache for AWS Secrets Manager to avoid multiple API calls
+    # Note: Must use PrivateAttr for Pydantic v2 private attributes
+    _secret_cache: dict | None = PrivateAttr(default=None)
+
+    def _get_config_value(
+        self,
+        env_var_name: str,
+        default: str | None = None
+    ) -> str | None:
+        """
+        Get configuration value from environment variable or AWS Secrets Manager (with caching).
+
+        Args:
+            env_var_name: Environment variable name to check first
+            secret_key_name: Key name in AWS Secrets (defaults to env_var_name if not provided)
+            default: Default value to return if not found in env or secrets
+
+        Returns:
+            Configuration value, or default value if not found
+        """
+        # 1. Check environment variable first
+        env_value = os.getenv(env_var_name)
+        if env_value:
+            return env_value
+
+        # 2. Try to get from AWS Secrets Manager with caching
+        # Use cached secret if available
+        if self._secret_cache is None:
+            env_secret = os.getenv('ENV_SECRETS')
+            if env_secret:
+                self._secret_cache = get_secret(env_secret,
+                                                os.getenv("AWS_REGION",
+                                                          'us-east-1'))
+        if self._secret_cache:
+            secret_value = self._secret_cache.get(env_var_name)
+            if secret_value is not None:
+                return secret_value
+
+        # 3. Return default value if provided
+        return default
+
     # Workflow executor configuration
     workflow_executor: Literal["local", "omics"] = Field(
         default="local",
@@ -24,10 +99,18 @@ class Settings(BaseSettings):
     )
 
     # Database Configuration
-    SQLALCHEMY_DATABASE_URI: str = Field(
-        default="mysql+aiomysql://wes_user:wes_password@localhost:3306/wes_db",
-        description="Database connection URL",
-    )
+    # SQLALCHEMY_DATABASE_URI: str = Field(
+    #     default="mysql+aiomysql://wes_user:wes_password@localhost:3306/wes_db",
+    #     description="Database connection URL",
+    # )
+    @computed_field
+    @property
+    def SQLALCHEMY_DATABASE_URI(self) -> str:
+        """Build database URI from env or secrets, defaults to mysql+aiomysql"""
+        return self._get_config_value(
+            "SQLALCHEMY_DATABASE_URI",
+            default="mysql+aiomysql://wes_user:wes_password@localhost:3306/wes_db"
+        )
 
     # Storage Configuration
     storage_backend: Literal["local", "s3"] = Field(
@@ -266,3 +349,9 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
+
+
+if __name__ == "__main__":
+    # To use in other modules
+    # from core.config import get_settings
+    print(get_settings().SQLALCHEMY_DATABASE_URI)
