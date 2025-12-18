@@ -105,20 +105,7 @@ async def run_workflow(
         user_id=user,
     )
 
-    # Get the run to check if Omics run ID is available
-    # This will be available immediately if the run was created with an Omics ID
-    # from a previous execution
-    omics_run_id = None
-    try:
-        run = await service._get_run(run_id, user)
-        if run.outputs and "omics_run_id" in run.outputs:
-            omics_run_id = run.outputs["omics_run_id"]
-    except Exception as e:
-        # Log but don't fail if we can't get the Omics run ID
-        import logging
-        logging.error(f"Error getting Omics run ID: {e}")
-
-    return RunId(run_id=run_id, omics_run_id=omics_run_id)
+    return RunId(run_id=run_id)
 
 
 @router.get(
