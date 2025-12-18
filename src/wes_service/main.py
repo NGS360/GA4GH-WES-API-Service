@@ -49,6 +49,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     settings = get_settings()
 
+    # Log computed settings first
+    computed_fields = ['SQLALCHEMY_DATABASE_URI']
+    for key in computed_fields:
+        value = getattr(settings, key)
+        _log_setting(key, value)
+
     # Log remaining settings
     for key, value in vars(settings).items():
         _log_setting(key, value)
