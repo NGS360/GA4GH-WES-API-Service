@@ -2,14 +2,22 @@
 
 from functools import lru_cache
 from typing import Literal
+from pathlib import Path
 import json
 import os
+from dotenv import load_dotenv
 
 from pydantic import Field, field_validator, computed_field, PrivateAttr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 import boto3
 from botocore.exceptions import ClientError
+
+# Load .env file into os.environ so os.getenv() works correctly
+# This must happen before Settings class is instantiated
+env_path = Path(__file__).parent.parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
 
 
 def get_secret(secret_name: str, region_name: str) -> dict | None:
@@ -99,10 +107,6 @@ class Settings(BaseSettings):
     )
 
     # Database Configuration
-    # SQLALCHEMY_DATABASE_URI: str = Field(
-    #     default="mysql+aiomysql://wes_user:wes_password@localhost:3306/wes_db",
-    #     description="Database connection URL",
-    # )
     @computed_field
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
