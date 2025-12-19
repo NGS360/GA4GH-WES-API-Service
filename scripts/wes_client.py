@@ -4,8 +4,13 @@ WES Client - Python client for GA4GH Workflow Execution Service API.
 
 Example usage:
     # Submit a workflow
-    python wes_client.py submit --workflow-url https://example.com/workflow.cwl \
+    python3 wes_client.py submit --workflow-url https://example.com/workflow.cwl \
         --workflow-type CWL --workflow-version v1.0
+    # For Omics
+    python3 wes_client.py submit --workflow-url wf-12345abcdef \
+        --workflow-type CWL --workflow-version v1.0 \
+        --workflow-engine awshealthomics \
+        --workflow-params '{"input_file": "s3://bucket/file.fastq"}'
 
     # List runs
     python wes_client.py list
@@ -183,8 +188,7 @@ class WESClient:
         return response.json()
 
 
-def main() -> None:
-    """Main CLI entry point."""
+def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="WES API Client")
     parser.add_argument(
         "--base-url",
@@ -201,11 +205,13 @@ def main() -> None:
 
     # Submit command
     submit_parser = subparsers.add_parser("submit", help="Submit workflow")
-    submit_parser.add_argument(
+
+    submit_group = submit_parser.add_mutually_exclusive_group()
+    submit_group.add_argument(
         "--workflow-url",
-        required=True,
-        help="Workflow URL",
+        help="Workflow URL or ID (for Omics)",
     )
+
     submit_parser.add_argument(
         "--workflow-type",
         required=True,
@@ -231,6 +237,12 @@ def main() -> None:
         nargs="+",
         type=Path,
         help="Files to attach",
+    )
+    submit_parser.add_argument(
+        "--workflow-engine",
+        choices=["cwltool", "awsbatch", "awshealthomics"],
+        default="cwltool",
+        help="Workflow Engine",
     )
 
     # List command
@@ -259,6 +271,13 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
+    return args
+
+
+def main() -> None:
+    """Main CLI entry point."""
+    args = parse_arguments()
+
     client = WESClient(
         base_url=args.base_url,
         username=args.username,
@@ -283,6 +302,7 @@ def main() -> None:
                 workflow_type_version=args.workflow_version,
                 workflow_params=workflow_params,
                 workflow_attachments=args.attachments,
+                workflow_engine=args.workflow_engine,
             )
             print(f"Submitted workflow run: {run_id}")
 
