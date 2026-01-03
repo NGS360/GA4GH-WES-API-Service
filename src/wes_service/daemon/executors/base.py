@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from src.wes_service.db.models import WorkflowRun
 
@@ -16,7 +16,7 @@ class WorkflowExecutor(ABC):
     """
 
     @abstractmethod
-    async def execute(self, db: AsyncSession, run: WorkflowRun) -> None:
+    def execute(self, db: Session, run: WorkflowRun) -> None:
         """
         Execute a workflow run.
 

@@ -1,18 +1,20 @@
 """Workflow monitoring daemon."""
 
-import asyncio
 import json
 import logging
 from datetime import datetime, timezone
+from time import sleep
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.wes_service.config import get_settings
 from src.wes_service.db.models import WorkflowRun, WorkflowState
-from src.wes_service.db.session import AsyncSessionLocal
-from src.wes_service.daemon.executors.local import LocalExecutor
+#from src.wes_service.daemon.executors.local import LocalExecutor
 from src.wes_service.daemon.executors.omics import OmicsExecutor
+
+# Create sync engine since we don't need async for the daemon
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +37,26 @@ class WorkflowMonitor:
             self.executor = OmicsExecutor()
         else:
             # Default to local executor
-            self.executor = LocalExecutor()
+        #    self.executor = LocalExecutor()
+            raise ValueError("Unsupported workflow executor configured")
 
         self.running = False
         self.active_runs: set[str] = set()
 
-    async def start(self) -> None:
+        if self.settings.SQLALCHEMY_DATABASE_URI.startswith("mysql+aiomysql"):
+            SQLALCHEMY_DATABASE_URI = self.settings.SQLALCHEMY_DATABASE_URI.replace(
+                "mysql+aiomysql", "mysql+pymysql"
+            )
+        # Create GA4GH WES database engine
+        self.engine = create_engine(
+            SQLALCHEMY_DATABASE_URI,
+            echo=self.settings.log_level == "DEBUG",
+            pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+        )
+
+    def start(self) -> None:
         """Start the workflow monitor daemon."""
         logger.info("Starting workflow monitor daemon...")
         logger.info(f"Settings: {self.settings}")
@@ -48,8 +64,8 @@ class WorkflowMonitor:
         self.running = True
         try:
             while self.running:
-                await self._poll_and_execute()
-                await asyncio.sleep(self.settings.daemon_poll_interval)
+                self._poll_and_execute()
+                sleep(self.settings.daemon_poll_interval)
         except Exception as e:
             logger.error(f"Workflow monitor error: {e}")
             raise
@@ -61,9 +77,9 @@ class WorkflowMonitor:
         logger.info("Stopping workflow monitor...")
         self.running = False
 
-    async def _poll_and_execute(self) -> None:
+    def _poll_and_execute(self) -> None:
         """Poll for queued workflows and execute them."""
-        async with AsyncSessionLocal() as db:
+        with Session(bind=self.engine) as db:
             # Find QUEUED workflows
             query = (
                 select(WorkflowRun)
@@ -71,34 +87,34 @@ class WorkflowMonitor:
                 .limit(self.settings.daemon_max_concurrent_runs - len(self.active_runs))
             )
 
-            result = await db.execute(query)
+            result = db.execute(query)
             queued_runs = result.scalars().all()
             logger.debug("Found %d queued runs", len(queued_runs))
 
             for run in queued_runs:
                 if run.id not in self.active_runs:
                     # Start execution in background
-                    asyncio.create_task(self._execute_run(run.id))
+                    self._execute_run(run.id)
                     self.active_runs.add(run.id)
 
             # Check for CANCELING workflows
             query = select(WorkflowRun).where(
                 WorkflowRun.state == WorkflowState.CANCELING
             )
-            result = await db.execute(query)
+            result = db.execute(query)
             canceling_runs = result.scalars().all()
             logger.debug("Found %d canceling runs", len(canceling_runs))
 
             for run in canceling_runs:
-                await self._cancel_run(db, run)
+                self._cancel_run(db, run)
 
             # Check for existing RUNNING or INITIALIZING workflows that might have been
             # submitted before the daemon was started
             if not hasattr(self, '_checked_existing_runs'):
-                await self._check_existing_runs(db)
+                self._check_existing_runs(db)
                 self._checked_existing_runs = True
 
-    async def _execute_run(self, run_id: str) -> None:
+    def _execute_run(self, run_id: str) -> None:
         """
         Execute a workflow run.
 
@@ -106,9 +122,9 @@ class WorkflowMonitor:
             run_id: Run ID to execute
         """
         try:
-            async with AsyncSessionLocal() as db:
+            with Session(bind=self.engine) as db:
                 # Get run
-                result = await db.execute(
+                result = db.execute(
                     select(WorkflowRun).where(WorkflowRun.id == run_id)
                 )
                 run = result.scalar_one_or_none()
@@ -117,20 +133,15 @@ class WorkflowMonitor:
                     logger.error(f"Run {run_id} not found")
                     return
 
-                logger.info(f"Executing run {run_id}")
-
-                # Update state to INITIALIZING
-                run.state = WorkflowState.INITIALIZING
-                await db.commit()
-
                 # Execute workflow
-                await self.executor.execute(db, run)
+                logger.info(f"Executing run {run_id}")
+                self.executor.execute(db, run)
 
         except Exception as e:
             logger.error(f"Error executing run {run_id}: {e}")
             # Create a new session for error handling to avoid transaction conflicts
-            async with AsyncSessionLocal() as error_db:
-                result = await error_db.execute(
+            with Session(bind=self.engine) as error_db:
+                result = error_db.execute(
                     select(WorkflowRun).where(WorkflowRun.id == run_id)
                 )
                 error_run = result.scalar_one_or_none()
@@ -138,11 +149,11 @@ class WorkflowMonitor:
                     error_run.state = WorkflowState.SYSTEM_ERROR
                     error_run.end_time = datetime.now(timezone.utc)
                     error_run.system_logs.append(f"System error: {str(e)}")
-                    await error_db.commit()
+                    error_db.commit()
         finally:
             self.active_runs.discard(run_id)
 
-    async def _cancel_run(self, db: AsyncSession, run: WorkflowRun) -> None:
+    def _cancel_run(self, db: Session, run: WorkflowRun) -> None:
         """
         Cancel a workflow run.
 
@@ -157,10 +168,10 @@ class WorkflowMonitor:
         run.end_time = datetime.now(timezone.utc)
         run.system_logs.append("Workflow canceled by user")
 
-        await db.commit()
+        db.commit()
         self.active_runs.discard(run.id)
 
-    async def _check_existing_runs(self, db: AsyncSession) -> None:
+    def _check_existing_runs(self, db: Session) -> None:
         """
         Check for existing runs in RUNNING or INITIALIZING state.
 
@@ -177,7 +188,7 @@ class WorkflowMonitor:
             (WorkflowRun.state == WorkflowState.INITIALIZING)
         )
 
-        result = await db.execute(query)
+        result = db.execute(query)
         existing_runs = result.scalars().all()
 
         if existing_runs:
@@ -196,7 +207,7 @@ class WorkflowMonitor:
                     if omics_run_id:
                         # Start monitoring the run with a new database session
                         # Don't pass the current db session to avoid transaction conflicts
-                        asyncio.create_task(self._monitor_existing_run(run.id, omics_run_id))
+                        self._monitor_existing_run(run.id, omics_run_id)
                         self.active_runs.add(run.id)
                     else:
                         # No Omics run ID found, mark as CANCELED
@@ -205,11 +216,11 @@ class WorkflowMonitor:
                         run.state = WorkflowState.CANCELED
                         run.end_time = datetime.now(timezone.utc)
                         run.system_logs.append("Run marked as CANCELED: No Omics run ID found")
-                        await db.commit()
+                        db.commit()
         else:
             logger.info("No existing runs found to monitor")
 
-    async def _monitor_existing_run(self, run_id: str, omics_run_id: str) -> None:
+    def _monitor_existing_run(self, run_id: str, omics_run_id: str) -> None:
         """
         Monitor an existing run that was submitted before the daemon was started.
 
@@ -221,9 +232,9 @@ class WorkflowMonitor:
             logger.info(f"Monitoring existing run {run_id} with Omics run ID {omics_run_id}")
 
             # Create a new database session for this task
-            async with AsyncSessionLocal() as db:
+            with Session(bind=self.engine) as db:
                 # Get the run from the database
-                result = await db.execute(
+                result = db.execute(
                     select(WorkflowRun).where(WorkflowRun.id == run_id)
                 )
                 run = result.scalar_one_or_none()
@@ -249,12 +260,12 @@ class WorkflowMonitor:
                         run.system_logs.append((f"Run marked as CANCELED: Omics run {omics_run_id} "
                                                 f"not found in AWS HealthOmics"))
                         run.exit_code = 1
-                        await db.commit()
+                        db.commit()
                         self.active_runs.discard(run_id)
                         return
 
                     # Monitor the run until completion
-                    final_state = await self.executor._monitor_omics_run(db, run, omics_run_id)
+                    final_state = self.executor._monitor_omics_run(db, run, omics_run_id)
 
                     # Update run state based on Omics result
                     run.state = final_state
@@ -266,7 +277,7 @@ class WorkflowMonitor:
                         try:
                             outputs = self.executor._get_run_outputs(omics_run_id)
                             run.outputs = outputs
-                            await db.commit()
+                            db.commit()
                             logger.info(f"Committed outputs to database for run {run.id}")
 
                             # Update log URLs in the database
@@ -288,7 +299,7 @@ class WorkflowMonitor:
 
                                 # Store all log URLs as JSON in stdout_url
                                 run.stdout_url = json.dumps(log_urls)
-                                await db.commit()
+                                db.commit()
                                 logger.info(f"Run {run.id}: Set stdout_url to JSON structure "
                                             f"with all log URLs")
                                 run.system_logs.append("Set stdout_url to JSON structure "
@@ -296,7 +307,7 @@ class WorkflowMonitor:
 
                                 # Still update individual task log entries
                                 if 'task_logs' in outputs['logs']:
-                                    await self.executor._update_task_log_urls(
+                                    self.executor._update_task_log_urls(
                                         db, run.id, outputs['logs']['task_logs']
                                     )
 
@@ -305,7 +316,7 @@ class WorkflowMonitor:
                                     del run.outputs['logs']
                                     from sqlalchemy.orm import attributes
                                     attributes.flag_modified(run, "outputs")
-                                    await db.commit()
+                                    db.commit()
                                     logger.info(f"Run {run.id}: Removed log URLs from outputs field")
 
                             run.system_logs.append(f"Workflow completed successfully at "
@@ -325,7 +336,7 @@ class WorkflowMonitor:
                         logger.error(f"Run {run.id}: {log_msg}")
 
                     # Make sure to commit the changes to the database
-                    await db.commit()
+                    db.commit()
                     logger.info(f"Committed state update for run {run.id} to database: {run.state}")
                 else:
                     logger.warning((f"Executor is not OmicsExecutor, "
@@ -335,9 +346,9 @@ class WorkflowMonitor:
             logger.error(f"Error monitoring existing run {run_id}: {e}")
             try:
                 # Create a new session in case the previous one was closed or in an error state
-                async with AsyncSessionLocal() as error_db:
+                with Session(bind=self.engine) as error_db:
                     # Get the run again to update its state
-                    result = await error_db.execute(
+                    result = error_db.execute(
                         select(WorkflowRun).where(WorkflowRun.id == run_id)
                     )
                     error_run = result.scalar_one_or_none()
@@ -348,7 +359,7 @@ class WorkflowMonitor:
                             f"System error monitoring existing run: {str(e)}"
                         )
                         error_run.exit_code = 1
-                        await error_db.commit()
+                        error_db.commit()
                         logger.info(f"Updated run {run_id} to SYSTEM_ERROR state due to exception")
             except Exception as inner_e:
                 logger.error(f"Failed to update error state for run {run_id}: {inner_e}")
@@ -357,13 +368,13 @@ class WorkflowMonitor:
             logger.info(f"Removed run {run_id} from active runs")
 
 
-async def main() -> None:
+def main() -> None:
     """Main entry point for daemon."""
     monitor = WorkflowMonitor()
     try:
-        await monitor.start()
+        monitor.start()
     except KeyboardInterrupt:
-        await monitor.stop()
+        monitor.stop()
 
 
 if __name__ == "__main__":
@@ -383,7 +394,7 @@ if __name__ == "__main__":
     logger.info("Starting WES workflow monitor daemon...")
 
     try:
-        asyncio.run(main())
+        main()
     except KeyboardInterrupt:
         logger.info("Workflow monitor stopped by user")
     except Exception as e:

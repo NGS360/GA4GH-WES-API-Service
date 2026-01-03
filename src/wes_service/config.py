@@ -110,6 +110,12 @@ class Settings(BaseSettings):
             default="mysql+aiomysql://wes_user:wes_password@localhost:3306/wes_db"
         )
 
+    # NGS360 API Endpoint
+    ngs360_api_url: str = Field(
+        default="http://localhost:8000",
+        description="NGS360 API base URL",
+    )
+
     # Storage Configuration
     storage_backend: Literal["local", "s3"] = Field(
         default="local",
