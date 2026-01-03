@@ -1,7 +1,7 @@
 """AWS Omics workflow executor implementation."""
 
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 import json
 import logging
@@ -47,7 +47,7 @@ class OmicsExecutor(WorkflowExecutor):
         try:
             # Update state to INITIALIZING
             run.state = WorkflowState.INITIALIZING
-            timestamp = datetime.utcnow().isoformat()
+            timestamp = datetime.now(timezone.utc).isoformat()
             run.system_logs.append(f"Initializing AWS Omics workflow at {timestamp}")
             await db.commit()
             logger.info(f"Run {run.id}: Initializing AWS Omics workflow")
@@ -61,7 +61,7 @@ class OmicsExecutor(WorkflowExecutor):
                 logger.error(f"Run {run.id}: {error_msg}")
                 run.system_logs.append(error_msg)
                 run.state = WorkflowState.SYSTEM_ERROR
-                run.end_time = datetime.utcnow()
+                run.end_time = datetime.now(timezone.utc)
                 run.exit_code = 1
                 await db.commit()
                 return
@@ -77,7 +77,7 @@ class OmicsExecutor(WorkflowExecutor):
 
             # Update state to RUNNING
             run.state = WorkflowState.RUNNING
-            run.start_time = datetime.utcnow()
+            run.start_time = datetime.now(timezone.utc)
             run.system_logs.append(f"Started execution at {run.start_time.isoformat()}")
             await db.commit()
             logger.info(f"Run {run.id}: Starting workflow execution")
@@ -172,7 +172,7 @@ class OmicsExecutor(WorkflowExecutor):
                 logger.error(f"Run {run.id}: {error_msg}")
                 run.system_logs.append(error_msg)
                 run.state = WorkflowState.SYSTEM_ERROR
-                run.end_time = datetime.utcnow()
+                run.end_time = datetime.now(timezone.utc)
                 run.exit_code = 1
                 await db.commit()
                 return
@@ -183,7 +183,7 @@ class OmicsExecutor(WorkflowExecutor):
 
                 # Update run state based on Omics result
                 run.state = final_state
-                run.end_time = datetime.utcnow()
+                run.end_time = datetime.now(timezone.utc)
 
                 if final_state == WorkflowState.COMPLETE:
                     run.exit_code = 0
@@ -255,7 +255,7 @@ class OmicsExecutor(WorkflowExecutor):
                 logger.error(f"Run {run.id}: {error_msg}")
                 run.system_logs.append(error_msg)
                 run.state = WorkflowState.SYSTEM_ERROR
-                run.end_time = datetime.utcnow()
+                run.end_time = datetime.now(timezone.utc)
                 run.exit_code = 1
                 await db.commit()
                 return
@@ -286,7 +286,7 @@ class OmicsExecutor(WorkflowExecutor):
 
             # Handle errors
             run.state = WorkflowState.SYSTEM_ERROR
-            run.end_time = datetime.utcnow()
+            run.end_time = datetime.now(timezone.utc)
             run.system_logs.append(error_msg)
             run.exit_code = 1
 
