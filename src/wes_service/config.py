@@ -100,12 +100,6 @@ class Settings(BaseSettings):
         # 3. Return default value if provided
         return default
 
-    # Workflow executor configuration
-    workflow_executor: Literal["local", "omics"] = Field(
-        default="local",
-        description="Workflow executor to use",
-    )
-
     # Database Configuration
     @computed_field
     @property
@@ -142,6 +136,12 @@ class Settings(BaseSettings):
         description="AWS secret access key",
     )
 
+    # Workflow executor configuration
+    workflow_executor: Literal["local", "omics"] = Field(
+        default="local",
+        description="Workflow executor to use",
+    )
+
     # AWS Omics Configuration
     omics_region: str = Field(
         default="us-east-1",
@@ -152,9 +152,11 @@ class Settings(BaseSettings):
         description="AWS IAM role ARN for Omics workflow execution",
     )
     omics_output_bucket: str = Field(
-        default="",
+        default="s3://omics-outputs",
         description="S3 bucket URI for Omics workflow outputs",
     )
+
+    # Daemon Configuration
     daemon_poll_interval: int = Field(
         default=30,
         description="Interval in seconds between workflow status polling",
@@ -226,16 +228,6 @@ class Settings(BaseSettings):
         description="Port to bind to",
     )
 
-    # Daemon Configuration
-    daemon_poll_interval: int = Field(
-        default=5,
-        description="Daemon polling interval in seconds",
-    )
-    daemon_max_concurrent_runs: int = Field(
-        default=10,
-        description="Maximum concurrent workflow runs",
-    )
-
     # Logging Configuration
     log_level: str = Field(
         default="INFO",
@@ -244,20 +236,6 @@ class Settings(BaseSettings):
     log_format: Literal["json", "text"] = Field(
         default="json",
         description="Log output format",
-    )
-
-    # AWS Omics Configuration
-    omics_region: str = Field(
-        default="us-east-1",
-        description="AWS region for Omics",
-    )
-    omics_role_arn: str = Field(
-        default="",
-        description="IAM role ARN for Omics workflow execution",
-    )
-    omics_output_bucket: str = Field(
-        default="s3://omics-outputs",
-        description="S3 bucket for Omics workflow outputs",
     )
 
     # Supported Workflow Types
