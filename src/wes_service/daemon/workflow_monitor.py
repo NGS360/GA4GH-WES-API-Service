@@ -43,8 +43,9 @@ class WorkflowMonitor:
     async def start(self) -> None:
         """Start the workflow monitor daemon."""
         logger.info("Starting workflow monitor daemon...")
-        self.running = True
+        logger.info(f"Settings: {self.settings}")
 
+        self.running = True
         try:
             while self.running:
                 await self._poll_and_execute()
@@ -67,6 +68,7 @@ class WorkflowMonitor:
             query = (
                 select(WorkflowRun)
                 .where(WorkflowRun.state == WorkflowState.QUEUED)
+                .where(WorkflowRun.workflow_engine == "AWSHealthOmics")
                 .limit(self.settings.daemon_max_concurrent_runs - len(self.active_runs))
             )
 
