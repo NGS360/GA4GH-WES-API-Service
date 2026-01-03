@@ -68,7 +68,6 @@ class WorkflowMonitor:
             query = (
                 select(WorkflowRun)
                 .where(WorkflowRun.state == WorkflowState.QUEUED)
-                .where(WorkflowRun.workflow_engine == "AWSHealthOmics")
                 .limit(self.settings.daemon_max_concurrent_runs - len(self.active_runs))
             )
 
