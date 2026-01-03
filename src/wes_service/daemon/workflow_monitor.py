@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -137,7 +137,7 @@ class WorkflowMonitor:
                 error_run = result.scalar_one_or_none()
                 if error_run:
                     error_run.state = WorkflowState.SYSTEM_ERROR
-                    error_run.end_time = datetime.utcnow()
+                    error_run.end_time = datetime.now(timezone.utc)
                     error_run.system_logs.append(f"System error: {str(e)}")
                     await error_db.commit()
         finally:
@@ -155,7 +155,7 @@ class WorkflowMonitor:
 
         # Update state to CANCELED
         run.state = WorkflowState.CANCELED
-        run.end_time = datetime.utcnow()
+        run.end_time = datetime.now(timezone.utc)
         run.system_logs.append("Workflow canceled by user")
 
         await db.commit()
@@ -204,7 +204,7 @@ class WorkflowMonitor:
                         logger.warning((f"No Omics run ID found for run {run.id}, "
                                         f"marking as CANCELED"))
                         run.state = WorkflowState.CANCELED
-                        run.end_time = datetime.utcnow()
+                        run.end_time = datetime.now(timezone.utc)
                         run.system_logs.append("Run marked as CANCELED: No Omics run ID found")
                         await db.commit()
         else:
@@ -246,7 +246,7 @@ class WorkflowMonitor:
                         # Run not found in Omics, mark as CANCELED
                         logger.warning(f"Omics run {omics_run_id} not found in AWS HealthOmics: {e}")
                         run.state = WorkflowState.CANCELED
-                        run.end_time = datetime.utcnow()
+                        run.end_time = datetime.now(timezone.utc)
                         run.system_logs.append((f"Run marked as CANCELED: Omics run {omics_run_id} "
                                                 f"not found in AWS HealthOmics"))
                         run.exit_code = 1
@@ -259,7 +259,7 @@ class WorkflowMonitor:
 
                     # Update run state based on Omics result
                     run.state = final_state
-                    run.end_time = datetime.utcnow()
+                    run.end_time = datetime.now(timezone.utc)
 
                     if final_state == WorkflowState.COMPLETE:
                         run.exit_code = 0
@@ -344,7 +344,7 @@ class WorkflowMonitor:
                     error_run = result.scalar_one_or_none()
                     if error_run:
                         error_run.state = WorkflowState.SYSTEM_ERROR
-                        error_run.end_time = datetime.utcnow()
+                        error_run.end_time = datetime.now(timezone.utc)
                         error_run.system_logs.append(
                             f"System error monitoring existing run: {str(e)}"
                         )
