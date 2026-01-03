@@ -56,7 +56,7 @@ class WorkflowMonitor:
         finally:
             logger.info("Workflow monitor stopped")
 
-    async def stop(self) -> None:
+    def stop(self) -> None:
         """Stop the workflow monitor daemon."""
         logger.info("Stopping workflow monitor...")
         self.running = False
@@ -74,6 +74,7 @@ class WorkflowMonitor:
 
             result = await db.execute(query)
             queued_runs = result.scalars().all()
+            logger.debug("Found %d queued runs", len(queued_runs))
 
             for run in queued_runs:
                 if run.id not in self.active_runs:
@@ -87,6 +88,7 @@ class WorkflowMonitor:
             )
             result = await db.execute(query)
             canceling_runs = result.scalars().all()
+            logger.debug("Found %d canceling runs", len(canceling_runs))
 
             for run in canceling_runs:
                 await self._cancel_run(db, run)
