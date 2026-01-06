@@ -485,6 +485,7 @@ class OmicsExecutor(WorkflowExecutor):
                     log_msg = f"Omics status update: {status}"
                     logger.info(f"Run {run.id}: {log_msg}")
                     run.system_logs.append(log_msg)
+                    attributes.flag_modified(run, "system_logs")
                     db.commit()
 
                     # Update task logs if available
@@ -498,6 +499,7 @@ class OmicsExecutor(WorkflowExecutor):
                         logger.info("checkpoint1:"+str(outputs))
                         if outputs:
                             run.outputs.update(outputs)
+                            attributes.flag_modified(run, "outputs")
                             db.commit()
                             logger.info(f"Updated run outputs with output mapping for run {run.id}")
                         return WorkflowState.COMPLETE
@@ -829,9 +831,9 @@ class OmicsExecutor(WorkflowExecutor):
                 )
                 logger.warning(warn_msg)
 
-            # Include actual workflow outputs if available
-            if 'outputs' in response:
-                outputs['workflow_outputs'] = response['outputs']
+            # Include actual workflow outputs if available (TBD: This chunk is useless because output_location below is used instead...delete these two lines)
+            # if 'outputs' in response:
+            #    outputs['workflow_outputs'] = response['outputs']
 
             # Add error message if there was an error
             if 'message' in response and response['status'] != 'COMPLETED':
