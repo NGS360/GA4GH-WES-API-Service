@@ -92,7 +92,7 @@ class OmicsExecutor(WorkflowExecutor):
                     'roleArn': self.role_arn,
                     'parameters': omics_params,
                     'outputUri': output_uri,
-                    'name': f"wes-run-{workflow_id}",
+                    'name': f"{run.tags['ProjectName']}---{run.tags['TaskName']}",
                     'retentionMode': 'REMOVE',
                     'storageType': 'DYNAMIC'
                 }
