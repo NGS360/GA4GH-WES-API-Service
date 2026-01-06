@@ -49,6 +49,7 @@ class OmicsExecutor(WorkflowExecutor):
             run.state = WorkflowState.INITIALIZING
             timestamp = datetime.now(timezone.utc).isoformat()
             run.system_logs.append(f"Initializing AWS Omics workflow at {timestamp}")
+            attributes.flag_modified(run, "system_logs")
             db.commit()
             logger.info(f"Run {run.id}: Initializing AWS Omics workflow")
 
@@ -63,6 +64,7 @@ class OmicsExecutor(WorkflowExecutor):
                 run.state = WorkflowState.SYSTEM_ERROR
                 run.end_time = datetime.now(timezone.utc)
                 run.exit_code = 1
+                attributes.flag_modified(run, "system_logs")
                 db.commit()
                 return
 
@@ -73,6 +75,7 @@ class OmicsExecutor(WorkflowExecutor):
             # Convert WES parameters to Omics format
             omics_params = self._convert_params_to_omics(input_params, run.workflow_type)
             run.system_logs.append(f"Omics parameters: {omics_params}")
+            attributes.flag_modified(run, "system_logs")
             db.commit()
 
             # Start the Omics workflow run
