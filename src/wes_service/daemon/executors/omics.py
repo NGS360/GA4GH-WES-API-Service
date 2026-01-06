@@ -75,13 +75,6 @@ class OmicsExecutor(WorkflowExecutor):
             run.system_logs.append(f"Omics parameters: {omics_params}")
             db.commit()
 
-            # Update state to RUNNING
-            run.state = WorkflowState.RUNNING
-            run.start_time = datetime.now(timezone.utc)
-            run.system_logs.append(f"Started execution at {run.start_time.isoformat()}")
-            db.commit()
-            logger.info(f"Run {run.id}: Starting workflow execution")
-
             # Start the Omics workflow run
             try:
                 # Set default output URI if not provided in workflow_engine_parameters
@@ -171,7 +164,13 @@ class OmicsExecutor(WorkflowExecutor):
                 run.outputs['output_location'] = complete_output_uri
                 logger.info(f"Set output_location to {complete_output_uri} for run {run.id}")
 
+                # Update state to RUNNING
+                run.state = WorkflowState.RUNNING
+                run.start_time = datetime.now(timezone.utc)
+                run.system_logs.append(f"Started execution at {run.start_time.isoformat()}")
+
                 db.commit()
+                logger.info(f"Run {run.id}: Starting workflow execution")
             except Exception as e:
                 error_msg = f"Failed to start Omics workflow: {str(e)}"
                 logger.error(f"Run {run.id}: {error_msg}")
