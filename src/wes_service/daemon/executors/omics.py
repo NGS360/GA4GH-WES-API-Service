@@ -333,6 +333,40 @@ class OmicsExecutor(WorkflowExecutor):
             # Return original params to avoid breaking the workflow
             return wes_params
 
+
+    def monitor_run(self, db: Session, run: WorkflowRun) -> WorkflowState:
+        """
+        Get the current state of the workflow run.
+
+        Args:
+            db: Database session
+            run: The workflow run
+
+        Returns:
+            Current workflow state
+        """
+        omics_run_id = None
+        if run.outputs and 'omics_run_id' in run.outputs:
+            omics_run_id = run.outputs['omics_run_id']
+        else:
+            logger.error(f"Run {run.id}: No Omics run ID found in outputs")
+            return WorkflowState.SYSTEM_ERROR
+
+        # Monitor the run status
+        final_state = self._monitor_omics_run(db, run, omics_run_id)
+
+        # Update run state if changed
+        if final_state != run.state:
+            run.state = final_state
+            if final_state in [WorkflowState.COMPLETE, WorkflowState.EXECUTOR_ERROR,
+                               WorkflowState.CANCELED, WorkflowState.SYSTEM_ERROR]:
+                run.end_time = datetime.now(timezone.utc)
+            db.commit()
+            logger.info(f"Run {run.id}: Updated state to {final_state}")
+
+        return final_state
+
+
     def _monitor_run(self, db: Session, run: WorkflowRun, omics_run_id) -> None:
         try:
             final_state = self._monitor_omics_run(db, run, omics_run_id)

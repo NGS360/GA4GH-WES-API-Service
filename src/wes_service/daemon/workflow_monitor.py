@@ -28,6 +28,7 @@ class WorkflowMonitor:
     like cwltool, Cromwell, or Nextflow.
     """
 
+
     def __init__(self):
         """Initialize workflow monitor."""
         self.settings = get_settings()
@@ -55,6 +56,7 @@ class WorkflowMonitor:
             max_overflow=20,
         )
 
+
     def start(self) -> None:
         """Start the workflow monitor daemon."""
         logger.info("Starting workflow monitor daemon...")
@@ -71,10 +73,12 @@ class WorkflowMonitor:
         finally:
             logger.info("Workflow monitor stopped")
 
+
     def stop(self) -> None:
         """Stop the workflow monitor daemon."""
         logger.info("Stopping workflow monitor...")
         self.running = False
+
 
     def _poll_and_execute(self) -> None:
         """Poll for queued workflows and execute them."""
@@ -121,6 +125,7 @@ class WorkflowMonitor:
                 self._monitor_run(db, run)
             # self._check_existing_runs(db)
 
+
     def _execute_run(self, run_id: str) -> None:
         """
         Execute a workflow run.
@@ -158,6 +163,7 @@ class WorkflowMonitor:
                     error_run.system_logs.append(f"System error: {str(e)}")
                     error_db.commit()
 
+
     def _cancel_run(self, db: Session, run: WorkflowRun) -> None:
         """
         Cancel a workflow run.
@@ -174,6 +180,21 @@ class WorkflowMonitor:
         run.system_logs.append("Workflow canceled by user")
 
         db.commit()
+
+
+    def _monitor_run(self, db: Session, run: WorkflowRun) -> None:
+        """
+        Monitor a workflow run.
+
+        Args:
+            db: Database session
+            run: WorkflowRun to monitor
+        """
+        logger.info(f"Checking run {run.id}")
+
+        run_state = self.executor.monitor_run(db, run)
+        logger.info(f"Run {run.id} is in state {run_state}")
+
 
     def _check_existing_runs(self, db: Session) -> None:
         """
@@ -209,6 +230,7 @@ class WorkflowMonitor:
                     db.commit()
         else:
             logger.info("No existing runs found to monitor")
+
 
     def _monitor_existing_run(self, run_id: str, omics_run_id: str) -> None:
         """
