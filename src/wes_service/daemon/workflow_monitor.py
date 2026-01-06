@@ -41,7 +41,6 @@ class WorkflowMonitor:
             raise ValueError("Unsupported workflow executor configured")
 
         self.running = False
-        self.active_runs: set[str] = set()
 
         if self.settings.SQLALCHEMY_DATABASE_URI.startswith("mysql+aiomysql"):
             SQLALCHEMY_DATABASE_URI = self.settings.SQLALCHEMY_DATABASE_URI.replace(
@@ -80,11 +79,11 @@ class WorkflowMonitor:
     def _poll_and_execute(self) -> None:
         """Poll for queued workflows and execute them."""
         with Session(bind=self.engine) as db:
+            #######################
             # Find QUEUED workflows
             query = (
                 select(WorkflowRun)
                 .where(WorkflowRun.state == WorkflowState.QUEUED)
-                .limit(self.settings.daemon_max_concurrent_runs - len(self.active_runs))
             )
 
             result = db.execute(query)
@@ -92,11 +91,10 @@ class WorkflowMonitor:
             logger.debug("Found %d queued runs", len(queued_runs))
 
             for run in queued_runs:
-                if run.id not in self.active_runs:
-                    # Start execution in background
-                    self._execute_run(run.id)
-                    self.active_runs.add(run.id)
+                # Start execution in background
+                self._execute_run(run.id)
 
+            #######################
             # Check for CANCELING workflows
             query = select(WorkflowRun).where(
                 WorkflowRun.state == WorkflowState.CANCELING
@@ -108,11 +106,20 @@ class WorkflowMonitor:
             for run in canceling_runs:
                 self._cancel_run(db, run)
 
-            # Check for existing RUNNING or INITIALIZING workflows that might have been
+            #######################
             # submitted before the daemon was started
-            if not hasattr(self, '_checked_existing_runs'):
-                self._check_existing_runs(db)
-                self._checked_existing_runs = True
+            # Find runs in RUNNING or INITIALIZING state
+            query = select(WorkflowRun).where(
+                (WorkflowRun.state == WorkflowState.RUNNING) |
+                (WorkflowRun.state == WorkflowState.INITIALIZING)
+            )
+            result = db.execute(query)
+            existing_runs = result.scalars().all()
+            logger.debug(f"Found {len(existing_runs)} existing runs to check")
+
+            for run in existing_runs:
+                self._monitor_run(db, run)
+            # self._check_existing_runs(db)
 
     def _execute_run(self, run_id: str) -> None:
         """
@@ -150,8 +157,6 @@ class WorkflowMonitor:
                     error_run.end_time = datetime.now(timezone.utc)
                     error_run.system_logs.append(f"System error: {str(e)}")
                     error_db.commit()
-        finally:
-            self.active_runs.discard(run_id)
 
     def _cancel_run(self, db: Session, run: WorkflowRun) -> None:
         """
@@ -169,7 +174,6 @@ class WorkflowMonitor:
         run.system_logs.append("Workflow canceled by user")
 
         db.commit()
-        self.active_runs.discard(run.id)
 
     def _check_existing_runs(self, db: Session) -> None:
         """
@@ -182,41 +186,27 @@ class WorkflowMonitor:
         """
         logger.info("Checking for existing runs in RUNNING or INITIALIZING state...")
 
-        # Find runs in RUNNING or INITIALIZING state
-        query = select(WorkflowRun).where(
-            (WorkflowRun.state == WorkflowState.RUNNING) |
-            (WorkflowRun.state == WorkflowState.INITIALIZING)
-        )
-
-        result = db.execute(query)
-        existing_runs = result.scalars().all()
 
         if existing_runs:
-            logger.info(f"Found {len(existing_runs)} existing runs to monitor")
 
             for run in existing_runs:
-                if run.id not in self.active_runs:
-                    logger.info(f"Monitoring existing run {run.id} in state {run.state}")
+                logger.info(f"Monitoring existing run {run.id} in state {run.state}")
 
-                    # Check if the run has an Omics run ID
-                    omics_run_id = None
-                    if run.outputs and "omics_run_id" in run.outputs:
-                        omics_run_id = run.outputs["omics_run_id"]
-                        logger.info(f"Found Omics run ID {omics_run_id} for run {run.id}")
+                # TBD: Monitoring existing runs shoud be done in the executor, not here.
+                # Check if the run has an Omics run ID
+                omics_run_id = None
+                if run.outputs and "omics_run_id" in run.outputs:
+                    omics_run_id = run.outputs["omics_run_id"]
+                    logger.info(f"Found Omics run ID {omics_run_id} for run {run.id}")
 
-                    if omics_run_id:
-                        # Start monitoring the run with a new database session
-                        # Don't pass the current db session to avoid transaction conflicts
-                        self._monitor_existing_run(run.id, omics_run_id)
-                        self.active_runs.add(run.id)
-                    else:
-                        # No Omics run ID found, mark as CANCELED
-                        logger.warning((f"No Omics run ID found for run {run.id}, "
-                                        f"marking as CANCELED"))
-                        run.state = WorkflowState.CANCELED
-                        run.end_time = datetime.now(timezone.utc)
-                        run.system_logs.append("Run marked as CANCELED: No Omics run ID found")
-                        db.commit()
+                if not omics_run_id:
+                    # No Omics run ID found, mark as CANCELED
+                    logger.warning((f"No Omics run ID found for run {run.id}, "
+                                    f"marking as CANCELED"))
+                    run.state = WorkflowState.CANCELED
+                    run.end_time = datetime.now(timezone.utc)
+                    run.system_logs.append("Run marked as CANCELED: No Omics run ID found")
+                    db.commit()
         else:
             logger.info("No existing runs found to monitor")
 
@@ -241,7 +231,6 @@ class WorkflowMonitor:
 
                 if not run:
                     logger.error(f"Run {run_id} not found")
-                    self.active_runs.discard(run_id)
                     return
 
                 # Use the executor to monitor the run
@@ -261,7 +250,6 @@ class WorkflowMonitor:
                                                 f"not found in AWS HealthOmics"))
                         run.exit_code = 1
                         db.commit()
-                        self.active_runs.discard(run_id)
                         return
 
                     # Monitor the run until completion
@@ -363,9 +351,6 @@ class WorkflowMonitor:
                         logger.info(f"Updated run {run_id} to SYSTEM_ERROR state due to exception")
             except Exception as inner_e:
                 logger.error(f"Failed to update error state for run {run_id}: {inner_e}")
-        finally:
-            self.active_runs.discard(run_id)
-            logger.info(f"Removed run {run_id} from active runs")
 
 
 def main() -> None:
