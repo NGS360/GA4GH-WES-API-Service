@@ -83,7 +83,7 @@ class OmicsExecutor(WorkflowExecutor):
                     output_uri = run.workflow_engine_parameters['outputUri']
                     logger.info(f"Using output URI from workflow_engine_parameters: {output_uri}")
                 else:
-                    output_uri = f"s3://{self.output_bucket}/runs/"  # Omics adds the run id as a subfolder
+                    output_uri = f"s3://{self.output_bucket}"  # Omics adds the run id as a subfolder
                     logger.info(f"Using default output URI: {output_uri}")
 
                 # Set default parameters for the API call
