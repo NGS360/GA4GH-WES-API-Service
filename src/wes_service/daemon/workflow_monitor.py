@@ -28,7 +28,6 @@ class WorkflowMonitor:
     like cwltool, Cromwell, or Nextflow.
     """
 
-
     def __init__(self):
         """Initialize workflow monitor."""
         self.settings = get_settings()
@@ -56,7 +55,6 @@ class WorkflowMonitor:
             max_overflow=20,
         )
 
-
     def start(self) -> None:
         """Start the workflow monitor daemon."""
         logger.info("Starting workflow monitor daemon...")
@@ -73,12 +71,10 @@ class WorkflowMonitor:
         finally:
             logger.info("Workflow monitor stopped")
 
-
     def stop(self) -> None:
         """Stop the workflow monitor daemon."""
         logger.info("Stopping workflow monitor...")
         self.running = False
-
 
     def _poll_and_execute(self) -> None:
         """Poll for queued workflows and execute them."""
@@ -96,7 +92,7 @@ class WorkflowMonitor:
 
             for run in queued_runs:
                 # Start execution in background
-                self._execute_run(run.id)
+                self._execute_run(db, run.id)
 
             #######################
             # Check for CANCELING workflows
@@ -122,11 +118,9 @@ class WorkflowMonitor:
             logger.debug(f"Found {len(existing_runs)} existing runs to check")
 
             for run in existing_runs:
-                self._monitor_run(db, run)
-            # self._check_existing_runs(db)
+                self._check_run(db, run)
 
-
-    def _execute_run(self, run_id: str) -> None:
+    def _execute_run(self, db: Session, run_id: str) -> None:
         """
         Execute a workflow run.
 
@@ -134,20 +128,19 @@ class WorkflowMonitor:
             run_id: Run ID to execute
         """
         try:
-            with Session(bind=self.engine) as db:
-                # Get run
-                result = db.execute(
-                    select(WorkflowRun).where(WorkflowRun.id == run_id)
-                )
-                run = result.scalar_one_or_none()
+            # Get run
+            result = db.execute(
+                select(WorkflowRun).where(WorkflowRun.id == run_id)
+            )
+            run = result.scalar_one_or_none()
 
-                if not run:
-                    logger.error(f"Run {run_id} not found")
-                    return
+            if not run:
+                logger.error(f"Run {run_id} not found")
+                return
 
-                # Execute workflow
-                logger.info(f"Executing run {run_id}")
-                self.executor.execute(db, run)
+            # Execute workflow
+            logger.info(f"Executing run {run_id}")
+            self.executor.execute(db, run)
 
         except Exception as e:
             logger.error(f"Error executing run {run_id}: {e}")
@@ -163,7 +156,6 @@ class WorkflowMonitor:
                     error_run.system_logs.append(f"System error: {str(e)}")
                     error_db.commit()
 
-
     def _cancel_run(self, db: Session, run: WorkflowRun) -> None:
         """
         Cancel a workflow run.
@@ -173,6 +165,7 @@ class WorkflowMonitor:
             run: WorkflowRun to cancel
         """
         logger.info(f"Canceling run {run.id}")
+        self.executor.cancel(db, run)
 
         # Update state to CANCELED
         run.state = WorkflowState.CANCELED
@@ -181,20 +174,18 @@ class WorkflowMonitor:
 
         db.commit()
 
-
-    def _monitor_run(self, db: Session, run: WorkflowRun) -> None:
+    def _check_run(self, db: Session, run: WorkflowRun) -> None:
         """
-        Monitor a workflow run.
+        Check a workflow run.
 
         Args:
             db: Database session
-            run: WorkflowRun to monitor
+            run: WorkflowRun to check
         """
         logger.info(f"Checking run {run.id}")
 
-        run_state = self.executor.monitor_run(db, run)
+        run_state = self.executor.check_run(db, run)
         logger.info(f"Run {run.id} is in state {run_state}")
-
 
     def _check_existing_runs(self, db: Session) -> None:
         """
@@ -230,7 +221,6 @@ class WorkflowMonitor:
                     db.commit()
         else:
             logger.info("No existing runs found to monitor")
-
 
     def _monitor_existing_run(self, run_id: str, omics_run_id: str) -> None:
         """
