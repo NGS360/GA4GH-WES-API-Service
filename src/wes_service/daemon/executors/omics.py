@@ -1,5 +1,6 @@
 """AWS Omics workflow executor implementation."""
 
+import os
 import boto3
 from datetime import datetime, timezone
 import time
@@ -34,6 +35,8 @@ class OmicsExecutor(WorkflowExecutor):
 
         self.omics_client = boto3.client('omics', region_name=self.region)
         self.s3_client = boto3.client('s3', region_name=self.region)
+
+        self.ngs360_api_url = settings.ngs360_api_url
 
     def cancel(self, db, run):
         return super().cancel(db, run)
@@ -130,7 +133,7 @@ class OmicsExecutor(WorkflowExecutor):
                     'roleArn': self.role_arn,
                     'parameters': omics_params,
                     'outputUri': output_uri,
-                    'name': f"{run.tags['ProjectName']}---{run.tags['TaskName']}",
+                    'name': f"{run.tags['ProjectId']}---{run.tags['TaskName']}",
                     'retentionMode': 'REMOVE',
                     'storageType': 'DYNAMIC'
                 }
@@ -304,6 +307,19 @@ class OmicsExecutor(WorkflowExecutor):
         workflow_engine_id = response.json().get("engine_id")
         return workflow_engine_id
 
+    def ngs360_fileid_to_s3path(self, ngs360_file_id: str) -> str:
+        '''
+        Query NGS360 DB to get S3 path for given NGS360 file ID.
+        '''
+        file_id = ngs360_file_id.replace("ngs360://", "")
+        query = f"{self.ngs360_api_url}/api/v1/files/{file_id}"
+        response = requests.get(query)
+        response_json = response.json()
+        s3_path = response_json.get('file_path')
+        if not s3_path:
+            raise ValueError(f"Failed to get S3 path for NGS360 file ID {file_id}")
+        return s3_path
+
     def _convert_params_to_omics(
         self, wes_params: Dict[str, Any], workflow_type: str
     ) -> Dict[str, Any]:
@@ -350,6 +366,9 @@ class OmicsExecutor(WorkflowExecutor):
                 elif isinstance(value, dict) and value.get("class") == "File" and "path" in value:
                     # For CWL workflows, preserve the File object structure
                     if workflow_type == "CWL":
+                        if value["path"].startswith("ngs360://"):
+                            # Convert ngs360:// to s3://
+                            value["path"] = self.ngs360_fileid_to_s3path(value["path"])
                         omics_params[key] = value
                     else:
                         # For other workflow types, extract just the path

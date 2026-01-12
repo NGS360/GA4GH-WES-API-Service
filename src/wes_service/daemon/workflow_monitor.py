@@ -1,5 +1,6 @@
 """Workflow monitoring daemon."""
 
+# To debug: PYTHONPATH=. python3 -m pudb -m src.wes_service.daemon.workflow_monitor
 import json
 import logging
 from datetime import datetime, timezone
@@ -37,7 +38,7 @@ class WorkflowMonitor:
             self.executor = OmicsExecutor()
         else:
             # Default to local executor
-        #    self.executor = LocalExecutor()
+            # self.executor = LocalExecutor()
             raise ValueError("Unsupported workflow executor configured")
 
         self.running = False
