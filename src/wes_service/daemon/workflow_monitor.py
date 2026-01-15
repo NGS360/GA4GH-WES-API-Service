@@ -81,19 +81,31 @@ class WorkflowMonitor:
         """Poll for queued workflows and execute them."""
         with Session(bind=self.engine) as db:
             #######################
+            # Find runs in RUNNING or INITIALIZING state
+            query = select(WorkflowRun).where(
+                (WorkflowRun.state == WorkflowState.RUNNING) |
+                (WorkflowRun.state == WorkflowState.INITIALIZING)
+            )
+            result = db.execute(query)
+            existing_runs = result.scalars().all()
+            logger.debug(f"Found {len(existing_runs)} existing runs to check")
+
+            for run in existing_runs:
+                self._check_run(db, run)
+
+            #######################
             # Find QUEUED workflows
             query = (
                 select(WorkflowRun)
                 .where(WorkflowRun.state == WorkflowState.QUEUED)
             )
-
             result = db.execute(query)
             queued_runs = result.scalars().all()
             logger.debug("Found %d queued runs", len(queued_runs))
 
             for run in queued_runs:
                 # Start execution in background
-                self._execute_run(db, run.id)
+                self._execute_run(db, run)
 
             #######################
             # Check for CANCELING workflows
@@ -107,48 +119,26 @@ class WorkflowMonitor:
             for run in canceling_runs:
                 self._cancel_run(db, run)
 
-            #######################
-            # submitted before the daemon was started
-            # Find runs in RUNNING or INITIALIZING state
-            query = select(WorkflowRun).where(
-                (WorkflowRun.state == WorkflowState.RUNNING) |
-                (WorkflowRun.state == WorkflowState.INITIALIZING)
-            )
-            result = db.execute(query)
-            existing_runs = result.scalars().all()
-            logger.debug(f"Found {len(existing_runs)} existing runs to check")
 
-            for run in existing_runs:
-                self._check_run(db, run)
-
-    def _execute_run(self, db: Session, run_id: str) -> None:
+    def _execute_run(self, db: Session, run: WorkflowRun) -> None:
         """
         Execute a workflow run.
 
         Args:
-            run_id: Run ID to execute
+            run: WorkflowRun to execute
         """
         try:
             # Get run
-            result = db.execute(
-                select(WorkflowRun).where(WorkflowRun.id == run_id)
-            )
-            run = result.scalar_one_or_none()
-
-            if not run:
-                logger.error(f"Run {run_id} not found")
-                return
-
             # Execute workflow
-            logger.info(f"Executing run {run_id}")
+            logger.info(f"Executing run {run.id}")
             self.executor.execute(db, run)
 
         except Exception as e:
-            logger.error(f"Error executing run {run_id}: {e}")
+            logger.error(f"Error executing run {run.id}: {e}")
             # Create a new session for error handling to avoid transaction conflicts
             with Session(bind=self.engine) as error_db:
                 result = error_db.execute(
-                    select(WorkflowRun).where(WorkflowRun.id == run_id)
+                    select(WorkflowRun).where(WorkflowRun.id == run.id)
                 )
                 error_run = result.scalar_one_or_none()
                 if error_run:
@@ -177,7 +167,7 @@ class WorkflowMonitor:
 
     def _check_run(self, db: Session, run: WorkflowRun) -> None:
         """
-        Check a workflow run.
+        Check the status of a workflow run.
 
         Args:
             db: Database session
@@ -185,10 +175,20 @@ class WorkflowMonitor:
         """
         logger.info(f"Checking run {run.id}")
 
-        run_state = self.executor.check_run(db, run)
-        logger.info(f"Run {run.id} is in state {run_state}")
+        try:
+            new_state = self.executor.get_run_state(db, run)
+            if new_state != run.state:
+                run.state = new_state
 
-    def _check_existing_runs(self, db: Session) -> None:
+            if run.state in [WorkflowState.COMPLETE, WorkflowState.EXECUTOR_ERROR,
+                             WorkflowState.CANCELED, WorkflowState.SYSTEM_ERROR]:
+                run.end_time = datetime.now(timezone.utc)
+
+            db.commit()
+        except Exception as e:
+            logger.error(f"Error checking run {run.id}: {e}")
+
+    def X_check_existing_runs(self, db: Session) -> None:
         """
         Check for existing runs in RUNNING or INITIALIZING state.
 
@@ -223,7 +223,7 @@ class WorkflowMonitor:
         else:
             logger.info("No existing runs found to monitor")
 
-    def _monitor_existing_run(self, run_id: str, omics_run_id: str) -> None:
+    def X_monitor_existing_run(self, run_id: str, omics_run_id: str) -> None:
         """
         Monitor an existing run that was submitted before the daemon was started.
 

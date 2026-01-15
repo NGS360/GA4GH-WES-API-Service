@@ -48,7 +48,7 @@ class WorkflowExecutor(ABC):
         """
 
     @abstractmethod
-    def check_run(self, db: Session, run: WorkflowRun) -> WorkflowState:
+    def get_run_state(self, db: Session, run: WorkflowRun) -> WorkflowState:
         """        Get the current state of the workflow run and update the database.
         Args:
             db: Database session

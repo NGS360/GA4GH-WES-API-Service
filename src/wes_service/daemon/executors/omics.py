@@ -21,6 +21,21 @@ logger = logging.getLogger(__name__)
 
 class OmicsExecutor(WorkflowExecutor):
     """Executor for AWS Omics workflows."""
+    _map_omics_status_to_workflow_state = {
+        'COMPLETED': WorkflowState.COMPLETE,
+        'FAILED': WorkflowState.EXECUTOR_ERROR,
+        'CANCELLED': WorkflowState.CANCELED,
+        'CANCELLED_RUNNING': WorkflowState.CANCELED,
+        'CANCELLED_STARTING': WorkflowState.CANCELED,
+        'STARTING': WorkflowState.RUNNING,
+        'RUNNING': WorkflowState.RUNNING,
+        'PENDING': WorkflowState.RUNNING,
+        'QUEUED': WorkflowState.RUNNING,
+        'STOPPING': WorkflowState.RUNNING,
+        'TERMINATING': WorkflowState.RUNNING,
+        'UNKNOWN': WorkflowState.SYSTEM_ERROR
+    }
+
     def __init__(self, region_name=None):
         """
         Initialize with AWS region.
@@ -41,7 +56,7 @@ class OmicsExecutor(WorkflowExecutor):
     def cancel(self, db, run):
         return super().cancel(db, run)
 
-    def check_run(self, db: Session, run: WorkflowRun) -> WorkflowState:
+    def get_run_state(self, db: Session, run: WorkflowRun) -> WorkflowState:
         """
         Get the current state of the workflow run.
 
@@ -56,22 +71,9 @@ class OmicsExecutor(WorkflowExecutor):
         if run.outputs and 'omics_run_id' in run.outputs:
             omics_run_id = run.outputs['omics_run_id']
         else:
-            logger.error(f"Run {run.id}: No Omics run ID found in outputs")
-            return WorkflowState.SYSTEM_ERROR
+            raise ValueError("Omics run ID not found in run outputs")
 
-        # Monitor the run status
-        final_state = self._fetch_omics_run(db, run, omics_run_id)
-
-        # Update run state if changed
-        if final_state != run.state:
-            run.state = final_state
-            if final_state in [WorkflowState.COMPLETE, WorkflowState.EXECUTOR_ERROR,
-                               WorkflowState.CANCELED, WorkflowState.SYSTEM_ERROR]:
-                run.end_time = datetime.now(timezone.utc)
-            db.commit()
-            logger.info(f"Run {run.id}: Updated state to {final_state}")
-
-        return final_state
+        return self._fetch_omics_run(db, run, omics_run_id)
 
     def execute(self, db: Session, run: WorkflowRun) -> None:
         """
@@ -482,6 +484,41 @@ class OmicsExecutor(WorkflowExecutor):
             return
 
     def _fetch_omics_run(
+        self, db: Session, run: WorkflowRun, omics_run_id: str
+    ) -> WorkflowState:
+        """
+        Monitor Omics run until completion.
+
+        Args:
+            db: Database session
+            run: The workflow run
+            omics_run_id: Omics run ID
+
+        Returns:
+            Final workflow state
+        """
+        response = self.omics_client.get_run(id=omics_run_id)
+        status = response.get('status', 'UNKNOWN')
+
+        # Log status update
+        log_msg = f"Omics status update: {status}"
+        logger.info(f"Run {run.id}: {log_msg}")
+        run.system_logs.append(log_msg)
+        attributes.flag_modified(run, "system_logs")
+        db.commit()
+
+        if status == 'FAILED':
+            failure_reason = response.get('failureReason')
+            status_message = response.get('statusMessage')
+            run.system_logs.append(
+                f"Omics workflow failed: {failure_reason}, {status_message}"
+            )
+            attributes.flag_modified(run, "system_logs")
+            db.commit()
+
+        return self._map_omics_status_to_workflow_state.get(status, WorkflowState.SYSTEM_ERROR)
+
+    def X_fetch_omics_run(
         self, db: Session, run: WorkflowRun, omics_run_id: str
     ) -> WorkflowState:
         """
