@@ -73,7 +73,23 @@ class OmicsExecutor(WorkflowExecutor):
         else:
             raise ValueError("Omics run ID not found in run outputs")
 
-        return self._fetch_omics_run(db, run, omics_run_id)
+        run_state = self._fetch_omics_run(db, run, omics_run_id)
+        # Log status update
+        log_msg = f"Omics status update: {run_state['status']}"
+        logger.info(f"Run {run.id}: {log_msg}")
+        run.system_logs.append(log_msg)
+        attributes.flag_modified(run, "system_logs")
+        db.commit()
+
+        if run_state['status'] == 'FAILED':
+            failure_reason = run_state.get('failure_reason')
+            status_message = run_state.get('status_message')
+            run.system_logs.append(
+                f"Omics workflow failed: {failure_reason}, {status_message}"
+            )
+            attributes.flag_modified(run, "system_logs")
+            db.commit()
+        return run_state['status']
 
     def execute(self, db: Session, run: WorkflowRun) -> None:
         """
@@ -496,27 +512,19 @@ class OmicsExecutor(WorkflowExecutor):
 
         Returns:
             Final workflow state
+            Dict of {
+                'status':
+                'message':
+            }
         """
         response = self.omics_client.get_run(id=omics_run_id)
-        status = response.get('status', 'UNKNOWN')
+        ret_val = {
+            'status': response.get('status', 'UNKNOWN'),
+            'failure_reason': response.get('failureReason'),
+            'status_message': response.get('statusMessage')
 
-        # Log status update
-        log_msg = f"Omics status update: {status}"
-        logger.info(f"Run {run.id}: {log_msg}")
-        run.system_logs.append(log_msg)
-        attributes.flag_modified(run, "system_logs")
-        db.commit()
-
-        if status == 'FAILED':
-            failure_reason = response.get('failureReason')
-            status_message = response.get('statusMessage')
-            run.system_logs.append(
-                f"Omics workflow failed: {failure_reason}, {status_message}"
-            )
-            attributes.flag_modified(run, "system_logs")
-            db.commit()
-
-        return self._map_omics_status_to_workflow_state.get(status, WorkflowState.SYSTEM_ERROR)
+        }
+        return ret_val
 
     def X_fetch_omics_run(
         self, db: Session, run: WorkflowRun, omics_run_id: str

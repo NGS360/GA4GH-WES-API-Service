@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from time import sleep
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session, attributes
 
 from src.wes_service.config import get_settings
 from src.wes_service.db.models import WorkflowRun, WorkflowState
@@ -178,7 +179,14 @@ class WorkflowMonitor:
         try:
             new_state = self.executor.get_run_state(db, run)
             if new_state != run.state:
+                # Log status update
+                log_msg = f"Run state update: {run.state} -> {new_state}"
                 run.state = new_state
+
+                logger.info(f"Run {run.id}: {log_msg}")
+                run.system_logs.append(log_msg)
+                attributes.flag_modified(run, "system_logs")
+                db.commit()
 
             if run.state in [WorkflowState.COMPLETE, WorkflowState.EXECUTOR_ERROR,
                              WorkflowState.CANCELED, WorkflowState.SYSTEM_ERROR]:
