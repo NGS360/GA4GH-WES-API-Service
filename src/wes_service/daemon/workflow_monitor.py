@@ -66,6 +66,7 @@ class WorkflowMonitor:
         try:
             while self.running:
                 self._poll_and_execute()
+                logger.info(f"Sleeping for {self.settings.daemon_poll_interval} seconds...")
                 sleep(self.settings.daemon_poll_interval)
         except Exception as e:
             logger.error(f"Workflow monitor error: {e}")
@@ -83,9 +84,11 @@ class WorkflowMonitor:
         with Session(bind=self.engine) as db:
             #######################
             # Find runs in RUNNING or INITIALIZING state
+            logger.info("Checking for existing runs...")
             query = select(WorkflowRun).where(
                 (WorkflowRun.state == WorkflowState.RUNNING) |
-                (WorkflowRun.state == WorkflowState.INITIALIZING)
+                (WorkflowRun.state == WorkflowState.INITIALIZING) |
+                (WorkflowRun.state == '')
             )
             result = db.execute(query)
             existing_runs = result.scalars().all()
@@ -96,6 +99,7 @@ class WorkflowMonitor:
 
             #######################
             # Find QUEUED workflows
+            logger.info("Checking for queued runs...")
             query = (
                 select(WorkflowRun)
                 .where(WorkflowRun.state == WorkflowState.QUEUED)
@@ -110,6 +114,7 @@ class WorkflowMonitor:
 
             #######################
             # Check for CANCELING workflows
+            logger.info("Checking for canceling runs...")
             query = select(WorkflowRun).where(
                 WorkflowRun.state == WorkflowState.CANCELING
             )
@@ -181,7 +186,8 @@ class WorkflowMonitor:
             if new_state != run.state:
                 # Log status update
                 log_msg = f"Run state update: {run.state} -> {new_state}"
-                run.state = new_state
+                if new_state == 'COMPLETED':
+                    run.state = WorkflowState.COMPLETE
 
                 logger.info(f"Run {run.id}: {log_msg}")
                 run.system_logs.append(log_msg)
