@@ -74,6 +74,7 @@ class OmicsExecutor(WorkflowExecutor):
             raise ValueError("Omics run ID not found in run outputs")
 
         run_state = self._fetch_omics_run(db, run, omics_run_id)
+
         # Log status update
         log_msg = f"Omics status update: {run_state['status']}"
         logger.info(f"Run {run.id}: {log_msg}")
@@ -89,7 +90,7 @@ class OmicsExecutor(WorkflowExecutor):
             )
             attributes.flag_modified(run, "system_logs")
             db.commit()
-        return run_state['status']
+        return self._map_omics_status_to_workflow_state[run_state['status']]
 
     def execute(self, db: Session, run: WorkflowRun) -> None:
         """

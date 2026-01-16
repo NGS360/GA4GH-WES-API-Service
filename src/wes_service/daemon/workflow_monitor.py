@@ -186,19 +186,17 @@ class WorkflowMonitor:
             if new_state != run.state:
                 # Log status update
                 log_msg = f"Run state update: {run.state} -> {new_state}"
-                if new_state == 'COMPLETED':
-                    run.state = WorkflowState.COMPLETE
 
                 logger.info(f"Run {run.id}: {log_msg}")
                 run.system_logs.append(log_msg)
                 attributes.flag_modified(run, "system_logs")
+
+                if new_state in [WorkflowState.COMPLETE, WorkflowState.EXECUTOR_ERROR,
+                                 WorkflowState.CANCELED, WorkflowState.SYSTEM_ERROR]:
+                    run.state = new_state
+                    run.end_time = datetime.now(timezone.utc)
+
                 db.commit()
-
-            if run.state in [WorkflowState.COMPLETE, WorkflowState.EXECUTOR_ERROR,
-                             WorkflowState.CANCELED, WorkflowState.SYSTEM_ERROR]:
-                run.end_time = datetime.now(timezone.utc)
-
-            db.commit()
         except Exception as e:
             logger.error(f"Error checking run {run.id}: {e}")
 
