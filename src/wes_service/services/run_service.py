@@ -306,7 +306,6 @@ class RunService:
 
     async def get_system_state_counts(self) -> dict[str, int]:
         """Get count of runs in each state."""
-        breakpoint()
         query = select(
             WorkflowRun.state,
             func.count(WorkflowRun.id),
