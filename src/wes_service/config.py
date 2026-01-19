@@ -332,6 +332,25 @@ class Settings(BaseSettings):
         """Get maximum upload size in bytes."""
         return self.max_upload_size_mb * 1024 * 1024
 
+    # Callback Endpoint Configuration
+    enable_callback_endpoint: bool = Field(
+        default=False,
+        description="Enable internal callback endpoint for event-driven updates",
+    )
+
+    @computed_field
+    @property
+    def INTERNAL_CALLBACK_API_KEY(self) -> str:
+        """Get internal callback API key from env or secrets"""
+        return self._get_config_value(
+            "INTERNAL_CALLBACK_API_KEY",
+            default=""
+        )
+
+    callback_timeout_seconds: int = Field(
+        default=30,
+        description="Timeout for callback endpoint processing",
+    )
 
 @lru_cache
 def get_settings() -> Settings:
