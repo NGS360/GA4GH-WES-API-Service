@@ -325,6 +325,41 @@ class TestListRuns:
         )
         assert response.status_code == 200
 
+    async def test_list_runs_filter_by_tag(self, client: TestClient, test_db):
+        """Test listing runs filtered by tags."""
+        # Create test runs with different tags
+        run1 = WorkflowRun(
+            id="run1",
+            state=WorkflowState.QUEUED,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="https://example.com/workflow1.cwl",
+            tags={"project": "test", "type": "A"},
+            user_id="test_user",
+        )
+        test_db.add(run1)
+        run2 = WorkflowRun(
+            id="run2",
+            state=WorkflowState.RUNNING,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="https://example.com/workflow2.cwl",
+            tags={"project": "test", "type": "B"},
+            user_id="test_user",
+        )
+        test_db.add(run2)
+        await test_db.commit()
+
+        # Filter by tag type=A
+        response = client.get(
+            "/ga4gh/wes/v1/runs",
+            params={"tags": json.dumps({"type": "A"})},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["runs"]) == 1
+        assert data["runs"][0]["run_id"] == "run1"
+
 
 class TestGetRunStatus:
     """Tests for GET /runs/{run_id}/status endpoint."""

@@ -165,12 +165,12 @@ class RunService:
 
         # Filter by tags if specified
         if tag_filters and isinstance(tag_filters, dict):
-            from sqlalchemy import text
             for tag_key, tag_value in tag_filters.items():
-                # Use JSON containment operator to check if the tags JSON contains the key-value pair
-                # This creates a condition like: tags @> {"project": "testproject"}
-                json_condition = text(f"JSON_EXTRACT(tags, '$.{tag_key}') = '{tag_value}'")
-                query = query.where(json_condition)
+                # Use SQLAlchemy's JSON operators for database-agnostic querying
+                # This works with both MySQL and SQLite
+                query = query.where(
+                    WorkflowRun.tags[tag_key].as_string() == tag_value
+                )
 
         # Apply pagination
         query = query.offset(offset).limit(page_size + 1)
