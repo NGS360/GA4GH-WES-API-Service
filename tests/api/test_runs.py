@@ -348,6 +348,16 @@ class TestListRuns:
             user_id="test_user",
         )
         test_db.add(run2)
+        run3 = WorkflowRun(
+            id="run3",
+            state=WorkflowState.RUNNING,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="https://example.com/workflow2.cwl",
+            tags={"project": "another_test", "type": "B"},
+            user_id="test_user",
+        )
+        test_db.add(run3)
         await test_db.commit()
 
         # Filter by tag type=A
@@ -359,6 +369,27 @@ class TestListRuns:
         data = response.json()
         assert len(data["runs"]) == 1
         assert data["runs"][0]["run_id"] == "run1"
+
+        # Filter by tag project=test
+        response = client.get(
+            "/ga4gh/wes/v1/runs",
+            params={"tags": json.dumps({"project": "test"})},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["runs"]) == 2
+        run_ids = {run["run_id"] for run in data["runs"]}
+        assert run_ids == {"run1", "run2"}
+
+        # Filter by 2 tags, project=test and type=B
+        response = client.get(
+            "/ga4gh/wes/v1/runs",
+            params={"tags": json.dumps({"project": "test", "type": "B"})},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["runs"]) == 1
+        assert data["runs"][0]["run_id"] == "run2"
 
 
 class TestGetRunStatus:
