@@ -1,6 +1,7 @@
 """Service layer for workflow run operations."""
 
 import json
+import logging
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
@@ -24,6 +25,8 @@ from src.wes_service.schemas.run import (
     RunStatus,
     RunSummary,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class RunService:
@@ -161,16 +164,27 @@ class RunService:
 
         # Filter by user if specified
         if user_id:
+            logger.info(f"Filtering runs for user_id: {user_id}")
             query = query.where(WorkflowRun.user_id == user_id)
 
         # Filter by tags if specified
         if tag_filters and isinstance(tag_filters, dict):
+            logger.info(
+                f"Applying tag filters: {tag_filters}"
+            )
             for tag_key, tag_value in tag_filters.items():
-                # Use SQLAlchemy's JSON operators for database-agnostic querying
+                logger.info(
+                    f"Filtering by tag: {tag_key}={tag_value}"
+                )
+                # Use SQLAlchemy's JSON operators
                 # This works with both MySQL and SQLite
                 query = query.where(
                     WorkflowRun.tags[tag_key].as_string() == tag_value
                 )
+        else:
+            logger.info(
+                f"No tag filters applied. tag_filters={tag_filters}"
+            )
 
         # Apply pagination
         query = query.offset(offset).limit(page_size + 1)
@@ -178,6 +192,7 @@ class RunService:
         # Execute query
         result = await self.db.execute(query)
         runs = result.scalars().all()
+        logger.info(f"Retrieved {len(runs)} runs from database")
 
         # Check if there are more results
         has_more = len(runs) > page_size
