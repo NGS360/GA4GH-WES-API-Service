@@ -1,6 +1,7 @@
 """Workflow runs endpoints."""
 
 import json
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
@@ -15,6 +16,7 @@ from src.wes_service.schemas.run import (
 from src.wes_service.services.run_service import RunService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get(
@@ -41,12 +43,18 @@ async def list_runs(
     Supports filtering by tags using a JSON string in the 'tags' parameter, e.g.:
     ?tags={"project":"testproject","name":"sampleA"}
     """
+    # Log raw request parameters for debugging
+    logger.info(f"list_runs called with tags parameter: {tags!r}")
+    logger.info(f"list_runs called with page_size: {page_size}, page_token: {page_token}")
+
     # Parse tags if provided
     tag_filters = {}
     if tags:
         try:
             tag_filters = json.loads(tags)
-        except json.JSONDecodeError:
+            logger.info(f"Parsed tag_filters: {tag_filters}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse tags JSON: {e}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid JSON format for tags parameter",
