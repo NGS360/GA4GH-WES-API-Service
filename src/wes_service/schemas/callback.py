@@ -50,7 +50,7 @@ class OmicsStateChangeCallback(BaseModel):
         max_length=2000,
     )
     
-    outputs: Optional[dict[str, Any]] = Field(
+    output_mapping: Optional[dict[str, Any]] = Field(
         None,
         description="Workflow outputs if status is COMPLETED",
     )
@@ -62,6 +62,10 @@ class OmicsStateChangeCallback(BaseModel):
         max_length=100,
     )
 
+    log_urls: Optional[dict[str, Any]] = Field(
+        None,
+        description="URLs to access workflow logs",
+    )
 
 class CallbackResponse(BaseModel):
     """Response from callback endpoint."""

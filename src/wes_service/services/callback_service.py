@@ -165,12 +165,18 @@ class CallbackService:
             if not run.end_time:
                 run.end_time = datetime.now(timezone.utc)
 
+            # Store log urls if provided
+            if payload.log_urls:
+                run.outputs = run.outputs or {}
+                run.outputs["log_urls"] = payload.log_urls
+                attributes.flag_modified(run, "outputs")
+
             if new_state == WorkflowState.COMPLETE:
                 run.exit_code = 0
-                # Store outputs if provided
-                if payload.outputs:
+                # Store output mapping if provided
+                if payload.output_mapping:
                     run.outputs = run.outputs or {}
-                    run.outputs.update(payload.outputs)
+                    run.outputs["output_mapping"] = payload.output_mapping
                     attributes.flag_modified(run, "outputs")
             else:
                 run.exit_code = 1

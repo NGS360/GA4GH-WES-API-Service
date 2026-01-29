@@ -334,7 +334,7 @@ class Settings(BaseSettings):
 
     # Callback Endpoint Configuration
     enable_callback_endpoint: bool = Field(
-        default=False,
+        default=True,
         description="Enable internal callback endpoint for event-driven updates",
     )
 
