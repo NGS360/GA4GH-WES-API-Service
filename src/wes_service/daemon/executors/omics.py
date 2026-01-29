@@ -159,7 +159,9 @@ class OmicsExecutor(WorkflowExecutor):
 
                 # Add tags from the run object
                 if run.tags and len(run.tags) > 0:
-                    kwargs['tags'] = run.tags
+                    tag_dict = run.tags
+                    tag_dict["WESRunId"] = run.id
+                    kwargs['tags'] = tag_dict
                     tag_info = f"Adding tags to Omics run: {run.tags}"
                     logger.info(tag_info)
 
