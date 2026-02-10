@@ -1,7 +1,10 @@
 """Service layer for workflow run operations."""
 
+import asyncio
+import boto3
 import json
 import logging
+import os
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
@@ -37,6 +40,13 @@ class RunService:
         self.db = db
         self.storage = storage
         self.settings = get_settings()
+
+        # Initialize Lambda client for workflow submission using environment variables
+        lambda_region = os.environ.get('LAMBDA_REGION', 'us-east-1')
+        self.lambda_client = boto3.client('lambda', region_name=lambda_region)
+
+        # Get Lambda function name from environment variable
+        self.lambda_function_name = os.environ.get('LAMBDA_FUNCTION_NAME')
 
     async def create_run(
         self,
@@ -130,6 +140,31 @@ class RunService:
                 self.db.add(attachment_record)
 
         await self.db.commit()
+
+        # Call Lambda function to submit workflow to Omics
+        try:
+            logger.info(f"Submitting workflow {run_id} to Lambda function")
+            lambda_response = await self._submit_to_lambda(run)
+
+            # Update run with Omics run ID but keep QUEUED state
+            if lambda_response.get('omics_run_id'):
+                if not run.outputs:
+                    run.outputs = {}
+                run.outputs['omics_run_id'] = lambda_response['omics_run_id']
+
+                # Keep state as QUEUED - EventBridge events will update status and outputs
+                run.system_logs.append(f"Successfully submitted to Omics via Lambda. Omics run ID: {lambda_response['omics_run_id']}")
+                await self.db.commit()
+                logger.info(f"Successfully submitted workflow {run_id} to Omics via Lambda - run remains QUEUED until EventBridge status update")
+            else:
+                raise Exception("Lambda response did not contain omics_run_id")
+
+        except Exception as e:
+            logger.error(f"Failed to submit workflow {run_id} to Lambda: {str(e)}")
+            run.state = WorkflowState.SYSTEM_ERROR
+            run.system_logs.append(f"Failed to submit to Omics via Lambda: {str(e)}")
+            await self.db.commit()
+
         return run_id
 
     async def list_runs(
@@ -399,3 +434,63 @@ class RunService:
             tags=run.tags,
             name=name,
         )
+
+    async def _submit_to_lambda(self, run: WorkflowRun) -> dict:
+        """
+        Submit workflow to Lambda function for Omics execution.
+
+        Args:
+            run: WorkflowRun to submit
+
+        Returns:
+            Lambda response containing omics_run_id
+        """
+        try:
+            # Extract workflow ID - for now use workflow_url directly
+            # In the future this could call NGS360 API to get engine_id
+            workflow_id = run.workflow_url
+
+            # Prepare Lambda payload
+            lambda_payload = {
+                'action': 'submit_workflow',
+                'wes_run_id': run.id,
+                'workflow_id': workflow_id,
+                'workflow_version': run.workflow_params.get('workflow_version') if run.workflow_params else None,
+                'workflow_type': run.workflow_type,
+                'parameters': run.workflow_params or {},
+                'workflow_engine_parameters': run.workflow_engine_parameters or {},
+                'tags': {
+                    **(run.tags or {}),
+                    'WESRunId': run.id
+                }
+            }
+
+            logger.info(f"Lambda payload for run {run.id}: {json.dumps(lambda_payload, default=str)}")
+
+            # Call Lambda function asynchronously
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.lambda_client.invoke(
+                    FunctionName=self.lambda_function_name,
+                    InvocationType='RequestResponse',
+                    Payload=json.dumps(lambda_payload)
+                )
+            )
+
+            # Parse response
+            response_payload = json.loads(response['Payload'].read())
+
+            # Check for errors
+            if response['StatusCode'] != 200:
+                raise Exception(f"Lambda invocation failed with status {response['StatusCode']}: {response_payload}")
+
+            if response_payload.get('statusCode') != 200:
+                error_msg = response_payload.get('message', 'Unknown error')
+                raise Exception(f"Workflow submission failed: {error_msg}")
+
+            return response_payload
+
+        except Exception as e:
+            logger.error(f"Error calling Lambda function {self.lambda_function_name}: {str(e)}")
+            raise
