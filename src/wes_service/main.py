@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.wes_service.api.middleware import add_error_handlers
-from src.wes_service.api.routes import runs, service_info, tasks
+from src.wes_service.api.routes import callbacks, runs, service_info, tasks
 from src.wes_service.config import get_settings
 
 # Configure logging
@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Helper function to log settings with sensitive value masking
     def _log_setting(key: str, value):
         """Log a setting, masking sensitive values like passwords and secrets"""
-        if ("PASSWORD" in key or "SECRET" in key) and value is not None:
+        if ("PASSWORD" in key or "SECRET" in key or "KEY" in key) and value is not None:
             logger.info("  %s: %s", key, "*****")
         elif "SQLALCHEMY_DATABASE_URI" == key and value is not None:
             # Mask password in database URI
@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
 
     # Log computed settings first
-    computed_fields = ['SQLALCHEMY_DATABASE_URI']
+    computed_fields = ['SQLALCHEMY_DATABASE_URI', 'INTERNAL_CALLBACK_API_KEY']
     for key in computed_fields:
         value = getattr(settings, key)
         _log_setting(key, value)
@@ -148,6 +148,11 @@ def create_app() -> FastAPI:
     app.include_router(
         tasks.router,
         prefix=settings.api_prefix,
+    )
+    app.include_router(
+        callbacks.router,
+        prefix="/internal",
+        include_in_schema=True,  # Include in OpenAPI docs but clearly marked as internal
     )
 
     # Health check endpoint

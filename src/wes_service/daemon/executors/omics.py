@@ -1,25 +1,40 @@
 """AWS Omics workflow executor implementation."""
 
 import boto3
-from datetime import datetime
-import asyncio
+from datetime import datetime, timezone
+import time
 import json
 import logging
+import requests
 from typing import Dict, Any, Union, List
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session, attributes
 
 from src.wes_service.daemon.executors.base import WorkflowExecutor
 from src.wes_service.db.models import TaskLog, WorkflowRun, WorkflowState
 from src.wes_service.config import get_settings
 
-from sqlalchemy.orm import attributes
 
 logger = logging.getLogger(__name__)
 
 
 class OmicsExecutor(WorkflowExecutor):
     """Executor for AWS Omics workflows."""
+    _map_omics_status_to_workflow_state = {
+        'COMPLETED': WorkflowState.COMPLETE,
+        'FAILED': WorkflowState.EXECUTOR_ERROR,
+        'CANCELLED': WorkflowState.CANCELED,
+        'CANCELLED_RUNNING': WorkflowState.CANCELED,
+        'CANCELLED_STARTING': WorkflowState.CANCELED,
+        'STARTING': WorkflowState.RUNNING,
+        'RUNNING': WorkflowState.RUNNING,
+        'PENDING': WorkflowState.RUNNING,
+        'QUEUED': WorkflowState.RUNNING,
+        'STOPPING': WorkflowState.RUNNING,
+        'TERMINATING': WorkflowState.RUNNING,
+        'UNKNOWN': WorkflowState.SYSTEM_ERROR
+    }
+
     def __init__(self, region_name=None):
         """
         Initialize with AWS region.
@@ -35,7 +50,48 @@ class OmicsExecutor(WorkflowExecutor):
         self.omics_client = boto3.client('omics', region_name=self.region)
         self.s3_client = boto3.client('s3', region_name=self.region)
 
-    async def execute(self, db: AsyncSession, run: WorkflowRun) -> None:
+        self.ngs360_api_url = settings.ngs360_api_url
+
+    def cancel(self, db, run):
+        return super().cancel(db, run)
+
+    def get_run_state(self, db: Session, run: WorkflowRun) -> WorkflowState:
+        """
+        Get the current state of the workflow run.
+
+        Args:
+            db: Database session
+            run: The workflow run
+
+        Returns:
+            Current workflow state
+        """
+        omics_run_id = None
+        if run.outputs and 'omics_run_id' in run.outputs:
+            omics_run_id = run.outputs['omics_run_id']
+        else:
+            raise ValueError("Omics run ID not found in run outputs")
+
+        run_state = self._fetch_omics_run(db, run, omics_run_id)
+
+        # Log status update
+        log_msg = f"Omics status update: {run_state['status']}"
+        logger.info(f"Run {run.id}: {log_msg}")
+        run.system_logs.append(log_msg)
+        attributes.flag_modified(run, "system_logs")
+        db.commit()
+
+        if run_state['status'] == 'FAILED':
+            failure_reason = run_state.get('failure_reason')
+            status_message = run_state.get('status_message')
+            run.system_logs.append(
+                f"Omics workflow failed: {failure_reason}, {status_message}"
+            )
+            attributes.flag_modified(run, "system_logs")
+            db.commit()
+        return self._map_omics_status_to_workflow_state[run_state['status']]
+
+    def execute(self, db: Session, run: WorkflowRun) -> None:
         """
         Execute a workflow run on AWS Omics.
 
@@ -47,9 +103,10 @@ class OmicsExecutor(WorkflowExecutor):
         try:
             # Update state to INITIALIZING
             run.state = WorkflowState.INITIALIZING
-            timestamp = datetime.utcnow().isoformat()
+            timestamp = datetime.now(timezone.utc).isoformat()
             run.system_logs.append(f"Initializing AWS Omics workflow at {timestamp}")
-            await db.commit()
+            attributes.flag_modified(run, "system_logs")
+            db.commit()
             logger.info(f"Run {run.id}: Initializing AWS Omics workflow")
 
             # Extract workflow ID from workflow_url or params
@@ -61,9 +118,10 @@ class OmicsExecutor(WorkflowExecutor):
                 logger.error(f"Run {run.id}: {error_msg}")
                 run.system_logs.append(error_msg)
                 run.state = WorkflowState.SYSTEM_ERROR
-                run.end_time = datetime.utcnow()
+                run.end_time = datetime.now(timezone.utc)
                 run.exit_code = 1
-                await db.commit()
+                attributes.flag_modified(run, "system_logs")
+                db.commit()
                 return
 
             # Extract and convert input parameters
@@ -73,14 +131,8 @@ class OmicsExecutor(WorkflowExecutor):
             # Convert WES parameters to Omics format
             omics_params = self._convert_params_to_omics(input_params, run.workflow_type)
             run.system_logs.append(f"Omics parameters: {omics_params}")
-            await db.commit()
-
-            # Update state to RUNNING
-            run.state = WorkflowState.RUNNING
-            run.start_time = datetime.utcnow()
-            run.system_logs.append(f"Started execution at {run.start_time.isoformat()}")
-            await db.commit()
-            logger.info(f"Run {run.id}: Starting workflow execution")
+            attributes.flag_modified(run, "system_logs")
+            db.commit()
 
             # Start the Omics workflow run
             try:
@@ -90,7 +142,7 @@ class OmicsExecutor(WorkflowExecutor):
                     output_uri = run.workflow_engine_parameters['outputUri']
                     logger.info(f"Using output URI from workflow_engine_parameters: {output_uri}")
                 else:
-                    output_uri = f"{self.output_bucket}/runs/{run.id}/output/"
+                    output_uri = self.output_bucket  # Omics adds the run id as a subfolder
                     logger.info(f"Using default output URI: {output_uri}")
 
                 # Set default parameters for the API call
@@ -99,17 +151,18 @@ class OmicsExecutor(WorkflowExecutor):
                     'roleArn': self.role_arn,
                     'parameters': omics_params,
                     'outputUri': output_uri,
-                    'name': f"wes-run-{run.id}",
+                    'name': f"{run.tags['ProjectId']}---{run.tags['TaskName']}",
                     'retentionMode': 'REMOVE',
                     'storageType': 'DYNAMIC'
                 }
 
                 # Add tags from the run object
                 if run.tags and len(run.tags) > 0:
-                    kwargs['tags'] = run.tags
-                    logger.info(f"Adding tags to Omics run: {run.tags}")
-                    if "Name" in run.tags:
-                        kwargs['name'] = run.tags.get("Name")
+                    tag_dict = run.tags
+                    tag_dict["WESRunId"] = run.id
+                    kwargs['tags'] = tag_dict
+                    tag_info = f"Adding tags to Omics run: {run.tags}"
+                    logger.info(tag_info)
 
                 # Extract and add Omics-specific parameters from workflow_engine_parameters
                 if run.workflow_engine_parameters:
@@ -121,12 +174,14 @@ class OmicsExecutor(WorkflowExecutor):
                     # Add run group ID if specified
                     if 'runGroupId' in engine_params:
                         kwargs['runGroupId'] = engine_params['runGroupId']
-                        logger.info(f"Using run group ID: {engine_params['runGroupId']}")
+                        group_id = engine_params['runGroupId']
+                        logger.info(f"Using run group ID: {group_id}")
 
                     # Add cache ID for reusing previous runs
                     if 'cacheId' in engine_params:
                         kwargs['cacheId'] = engine_params['cacheId']
-                        logger.info(f"Using cached run ID: {engine_params['cacheId']}")
+                        cache_id = engine_params['cacheId']
+                        logger.info(f"Using cached run ID: {cache_id}")
 
                     # Add tags if provided
                     if 'tags' in engine_params:
@@ -134,7 +189,8 @@ class OmicsExecutor(WorkflowExecutor):
 
                     # Add other supported parameters
                     omics_params = [
-                        'priority', 'storageCapacity', 'accelerators', 'logLevel', 'storageType'
+                        'priority', 'storageCapacity', 'accelerators',
+                        'logLevel', 'storageType'
                     ]
                     for param in omics_params:
                         if param in engine_params:
@@ -148,7 +204,10 @@ class OmicsExecutor(WorkflowExecutor):
 
                 # Store the Omics run ID
                 omics_run_id = response['id']
-                log_msg = f"Started AWS Omics run: {omics_run_id}, output will be in: {output_uri}"
+                log_msg = (
+                    f"Started AWS Omics run: {omics_run_id}, "
+                    f"output will be in: {output_uri}"
+                )
                 run.system_logs.append(log_msg)
                 logger.info(f"Run {run.id}: {log_msg}")
 
@@ -166,119 +225,48 @@ class OmicsExecutor(WorkflowExecutor):
                 run.outputs['output_location'] = complete_output_uri
                 logger.info(f"Set output_location to {complete_output_uri} for run {run.id}")
 
-                await db.commit()
+                # Update state to RUNNING
+                run.state = WorkflowState.RUNNING
+                run.start_time = datetime.now(timezone.utc)
+                run.system_logs.append(f"Started execution at {run.start_time.isoformat()}")
+
+                db.commit()
+                logger.info(f"Run {run.id}: Starting workflow execution")
             except Exception as e:
                 error_msg = f"Failed to start Omics workflow: {str(e)}"
                 logger.error(f"Run {run.id}: {error_msg}")
                 run.system_logs.append(error_msg)
                 run.state = WorkflowState.SYSTEM_ERROR
-                run.end_time = datetime.utcnow()
+                run.end_time = datetime.now(timezone.utc)
                 run.exit_code = 1
-                await db.commit()
+                db.commit()
                 return
 
             # Monitor the run until completion
-            try:
-                final_state = await self._monitor_omics_run(db, run, omics_run_id)
-
-                # Update run state based on Omics result
-                run.state = final_state
-                run.end_time = datetime.utcnow()
-
-                if final_state == WorkflowState.COMPLETE:
-                    run.exit_code = 0
-                    # Get outputs from Omics
-                    try:
-                        outputs = await self._get_run_outputs(omics_run_id)
-                        run.outputs = outputs
-                        attributes.flag_modified(run, "outputs")
-                        await db.commit()
-                        logger.info(f"Committed outputs to database for run {run.id}")
-
-                        # Update log URLs in the database
-                        if 'logs' in outputs:
-                            # Create a JSON structure with all log URLs
-                            log_urls = {}
-
-                            # Add run log URL
-                            if 'run_log' in outputs['logs']:
-                                log_urls['run_log'] = outputs['logs']['run_log']
-
-                            # Add manifest log URL
-                            if 'manifest_log' in outputs['logs']:
-                                log_urls['manifest_log'] = outputs['logs']['manifest_log']
-
-                            # Add task log URLs
-                            if 'task_logs' in outputs['logs']:
-                                log_urls['task_logs'] = outputs['logs']['task_logs']
-
-                            # Store all log URLs as JSON in stdout_url
-                            run.stdout_url = json.dumps(log_urls)
-                            logger.info(f"Run {run.id}: Set stdout_url to "
-                                        f"JSON structure with all log URLs")
-                            run.system_logs.append("Set stdout_url to "
-                                                   "JSON structure with all log URLs")
-
-                            # Remove log URLs from outputs to avoid duplication
-                            if 'logs' in run.outputs:
-                                del run.outputs['logs']
-                                attributes.flag_modified(run, "outputs")
-                                logger.info(f"Run {run.id}: Removed log URLs from outputs field")
-
-                            # Explicitly commit the change to ensure it's saved
-                            await db.commit()
-                            logger.info(f"Run {run.id}: Committed log URLs to database")
-
-                            # Update task log URLs
-                            if 'task_logs' in outputs['logs']:
-                                task_logs = outputs['logs']['task_logs']
-                                await self._update_task_log_urls(db, run.id, task_logs)
-
-                        log_msg = f"Workflow completed successfully at {run.end_time.isoformat()}"
-                        run.system_logs.append(log_msg)
-                        logger.info(f"Run {run.id}: {log_msg}")
-                    except Exception as e:
-                        error_msg = f"Workflow completed but failed to retrieve outputs: {str(e)}"
-                        logger.warning(f"Run {run.id}: {error_msg}")
-                        run.system_logs.append(error_msg)
-                        # Still mark as complete even if we couldn't get outputs
-                else:
-                    run.exit_code = 1
-                    end_time = run.end_time.isoformat()
-                    log_msg = f"Workflow failed with state {final_state} at {end_time}"
-                    run.system_logs.append(log_msg)
-                    logger.error(f"Run {run.id}: {log_msg}")
-
-                await db.commit()
-            except Exception as e:
-                error_msg = f"Error monitoring workflow: {str(e)}"
-                logger.error(f"Run {run.id}: {error_msg}")
-                run.system_logs.append(error_msg)
-                run.state = WorkflowState.SYSTEM_ERROR
-                run.end_time = datetime.utcnow()
-                run.exit_code = 1
-                await db.commit()
-                return
+            # self._monitor_run(db, run, omics_run_id)
 
             # Double check the AWS status if we marked as error
-            error_states = [WorkflowState.EXECUTOR_ERROR, WorkflowState.SYSTEM_ERROR]
-            if run.state in error_states and omics_run_id:
-                try:
-                    aws_status = self.omics_client.get_run(id=omics_run_id).get('status')
-                    if aws_status == 'COMPLETED':
-                        # AWS shows completed but we marked as error - override to completed
-                        log_msg = (
-                            f"AWS reports workflow as COMPLETED but WES had error state "
-                            f"{run.state}. Setting to COMPLETE.")
-                        logger.warning(f"Run {run.id}: {log_msg}")
-                        run.system_logs.append(log_msg)
-                        run.state = WorkflowState.COMPLETE
-                        run.exit_code = 0
-                        await db.commit()
-                except Exception as aws_check_error:
-                    log_msg = f"Failed to double-check AWS run status: {str(aws_check_error)}"
-                    run.system_logs.append(log_msg)
-                    logger.error(f"Run {run.id}: {log_msg}")
+            # error_states = [WorkflowState.EXECUTOR_ERROR, WorkflowState.SYSTEM_ERROR]
+            # if run.state in error_states and omics_run_id:
+            #    try:
+            #        aws_status = self.omics_client.get_run(id=omics_run_id).get('status')
+            #        if aws_status == 'COMPLETED':
+            #            # AWS shows completed but we marked as error
+            #            # Override to completed
+            #            log_msg = (
+            #                f"AWS reports workflow as COMPLETED but WES "
+            #                f"had error state {run.state}. "
+            #                f"Setting to COMPLETE."
+            #            )
+            #            logger.warning(f"Run {run.id}: {log_msg}")
+            #            run.system_logs.append(log_msg)
+            #            run.state = WorkflowState.COMPLETE
+            #            run.exit_code = 0
+            #            db.commit()
+            #    except Exception as aws_check_error:
+            #        log_msg = f"Failed to double-check AWS run status: {str(aws_check_error)}"
+            #        run.system_logs.append(log_msg)
+            #        logger.error(f"Run {run.id}: {log_msg}")
 
         except Exception as e:
             error_msg = f"Unhandled error executing Omics run: {str(e)}"
@@ -286,7 +274,7 @@ class OmicsExecutor(WorkflowExecutor):
 
             # Handle errors
             run.state = WorkflowState.SYSTEM_ERROR
-            run.end_time = datetime.utcnow()
+            run.end_time = datetime.now(timezone.utc)
             run.system_logs.append(error_msg)
             run.exit_code = 1
 
@@ -299,9 +287,12 @@ class OmicsExecutor(WorkflowExecutor):
                     run.system_logs.append(status_msg)
 
                     if aws_status == 'COMPLETED':
-                        # If AWS shows completed but we got an error, override to completed
-                        override_msg = ("AWS reports workflow as COMPLETED despite error. "
-                                        "Setting state to COMPLETE.")
+                        # If AWS shows completed but we got an error,
+                        # override to completed
+                        override_msg = (
+                            "AWS reports workflow as COMPLETED despite error. "
+                            "Setting state to COMPLETE."
+                        )
                         logger.warning(f"Run {run.id}: {override_msg}")
                         run.system_logs.append(override_msg)
                         run.state = WorkflowState.COMPLETE
@@ -309,7 +300,7 @@ class OmicsExecutor(WorkflowExecutor):
                 except Exception as aws_check_error:
                     run.system_logs.append(f"Failed to check AWS status: {str(aws_check_error)}")
 
-            await db.commit()
+            db.commit()
 
     def _extract_workflow_id(self, run: WorkflowRun) -> str:
         """
@@ -320,15 +311,34 @@ class OmicsExecutor(WorkflowExecutor):
             Omics workflow ID
         """
         # Option 1: Extract from workflow_url if it contains the ID
-        if run.workflow_url and run.workflow_url.startswith("omics:"):
-            return run.workflow_url.split(":")[-1]
+        # if run.workflow_url and run.workflow_url.startswith("omics:"):
+        #    return run.workflow_url.split(":")[-1]
 
         # Option 2: Look for workflow_id in parameters
-        if run.workflow_params and "workflow_id" in run.workflow_params:
-            return run.workflow_params["workflow_id"]
+        # if run.workflow_params and "workflow_id" in run.workflow_params:
+        #     return run.workflow_params["workflow_id"]
 
         # Option 3: Use the workflow_url directly if it looks like an ID
-        return run.workflow_url
+        # return run.workflow_url
+
+        # Look up the workflow id from NGS360
+        ngs360_api_url = get_settings().ngs360_api_url + "/api/v1/workflows/" + run.workflow_url
+        response = requests.get(ngs360_api_url)
+        workflow_engine_id = response.json().get("engine_id")
+        return workflow_engine_id
+
+    def ngs360_fileid_to_s3path(self, ngs360_file_id: str) -> str:
+        '''
+        Query NGS360 DB to get S3 path for given NGS360 file ID.
+        '''
+        file_id = ngs360_file_id.replace("ngs360://", "")
+        query = f"{self.ngs360_api_url}/api/v1/files/{file_id}"
+        response = requests.get(query)
+        response_json = response.json()
+        s3_path = response_json.get('file_path')
+        if not s3_path:
+            raise ValueError(f"Failed to get S3 path for NGS360 file ID {file_id}")
+        return s3_path
 
     def _convert_params_to_omics(
         self, wes_params: Dict[str, Any], workflow_type: str
@@ -376,6 +386,9 @@ class OmicsExecutor(WorkflowExecutor):
                 elif isinstance(value, dict) and value.get("class") == "File" and "path" in value:
                     # For CWL workflows, preserve the File object structure
                     if workflow_type == "CWL":
+                        if value["path"].startswith("ngs360://"):
+                            # Convert ngs360:// to s3://
+                            value["path"] = self.ngs360_fileid_to_s3path(value["path"])
                         omics_params[key] = value
                     else:
                         # For other workflow types, extract just the path
@@ -397,8 +410,126 @@ class OmicsExecutor(WorkflowExecutor):
             # Return original params to avoid breaking the workflow
             return wes_params
 
-    async def _monitor_omics_run(
-        self, db: AsyncSession, run: WorkflowRun, omics_run_id: str
+    def old_monitor_run(self, db: Session, run: WorkflowRun, omics_run_id) -> None:
+        try:
+            final_state = self._monitor_omics_run(db, run, omics_run_id)
+
+            # Update run state based on Omics result
+            run.state = final_state
+            run.end_time = datetime.now(timezone.utc)
+
+            if final_state == WorkflowState.COMPLETE:
+                run.exit_code = 0
+                # Get outputs from Omics
+                try:
+                    outputs = self._get_run_outputs(omics_run_id)
+                    run.outputs = outputs
+                    attributes.flag_modified(run, "outputs")
+                    db.commit()
+                    logger.info(f"Committed outputs to database for run {run.id}")
+
+                    # Update log URLs in the database
+                    if 'logs' in outputs:
+                        # Create a JSON structure with all log URLs
+                        log_urls = {}
+
+                        # Add run log URL
+                        if 'run_log' in outputs['logs']:
+                            log_urls['run_log'] = outputs['logs']['run_log']
+
+                        # Add manifest log URL
+                        if 'manifest_log' in outputs['logs']:
+                            log_urls['manifest_log'] = outputs['logs']['manifest_log']
+
+                        # Add task log URLs
+                        if 'task_logs' in outputs['logs']:
+                            log_urls['task_logs'] = outputs['logs']['task_logs']
+
+                        # Store all log URLs as JSON in stdout_url
+                        run.stdout_url = json.dumps(log_urls)
+                        stdout_msg = (
+                            f"Run {run.id}: Set stdout_url to "
+                            f"JSON structure with all log URLs"
+                        )
+                        logger.info(stdout_msg)
+                        run.system_logs.append(
+                            "Set stdout_url to "
+                            "JSON structure with all log URLs"
+                        )
+
+                        # Remove log URLs from outputs to avoid duplication
+                        if 'logs' in run.outputs:
+                            del run.outputs['logs']
+                            attributes.flag_modified(run, "outputs")
+                            logger.info(f"Run {run.id}: Removed log URLs from outputs field")
+
+                        # Explicitly commit the change to ensure it's saved
+                        db.commit()
+                        logger.info(f"Run {run.id}: Committed log URLs to database")
+
+                        # Update task log URLs
+                        if 'task_logs' in outputs['logs']:
+                            task_logs = outputs['logs']['task_logs']
+                            self._update_task_log_urls(db, run.id, task_logs)
+
+                    log_msg = f"Workflow completed successfully at {run.end_time.isoformat()}"
+                    run.system_logs.append(log_msg)
+                    logger.info(f"Run {run.id}: {log_msg}")
+                except Exception as e:
+                    error_msg = (
+                        f"Workflow completed but failed to "
+                        f"retrieve outputs: {str(e)}"
+                    )
+                    logger.warning(f"Run {run.id}: {error_msg}")
+                    run.system_logs.append(error_msg)
+                    # Still mark as complete even if we couldn't get outputs
+            else:
+                run.exit_code = 1
+                end_time = run.end_time.isoformat()
+                log_msg = f"Workflow failed with state {final_state} at {end_time}"
+                run.system_logs.append(log_msg)
+                logger.error(f"Run {run.id}: {log_msg}")
+
+            db.commit()
+        except Exception as e:
+            error_msg = f"Error monitoring workflow: {str(e)}"
+            logger.error(f"Run {run.id}: {error_msg}")
+            run.system_logs.append(error_msg)
+            run.state = WorkflowState.SYSTEM_ERROR
+            run.end_time = datetime.now(timezone.utc)
+            run.exit_code = 1
+            db.commit()
+            return
+
+    def _fetch_omics_run(
+        self, db: Session, run: WorkflowRun, omics_run_id: str
+    ) -> WorkflowState:
+        """
+        Monitor Omics run until completion.
+
+        Args:
+            db: Database session
+            run: The workflow run
+            omics_run_id: Omics run ID
+
+        Returns:
+            Final workflow state
+            Dict of {
+                'status':
+                'message':
+            }
+        """
+        response = self.omics_client.get_run(id=omics_run_id)
+        ret_val = {
+            'status': response.get('status', 'UNKNOWN'),
+            'failure_reason': response.get('failureReason'),
+            'status_message': response.get('statusMessage')
+
+        }
+        return ret_val
+
+    def X_fetch_omics_run(
+        self, db: Session, run: WorkflowRun, omics_run_id: str
     ) -> WorkflowState:
         """
         Monitor Omics run until completion.
@@ -424,61 +555,64 @@ class OmicsExecutor(WorkflowExecutor):
                     log_msg = f"Omics status update: {status}"
                     logger.info(f"Run {run.id}: {log_msg}")
                     run.system_logs.append(log_msg)
-                    await db.commit()
+                    attributes.flag_modified(run, "system_logs")
+                    db.commit()
 
                     # Update task logs if available
                     if 'tasks' in response:
-                        await self._update_task_logs(db, run, response['tasks'])
+                        self._update_task_logs(db, run, response['tasks'])
 
                     # Map Omics status to WES status
                     if status == 'COMPLETED':
                         # Get outputs including output mapping
-                        outputs = await self._get_run_outputs(omics_run_id)
+                        outputs = self._get_run_outputs(omics_run_id)
                         logger.info("checkpoint1:"+str(outputs))
                         if outputs:
                             run.outputs.update(outputs)
-                            await db.commit()
+                            attributes.flag_modified(run, "outputs")
+                            db.commit()
                             logger.info(f"Updated run outputs with output mapping for run {run.id}")
                         return WorkflowState.COMPLETE
                     elif status == 'FAILED':
                         error_message = response.get('message', 'No error message')
                         log_msg = f"Omics workflow failed: {error_message}"
                         run.system_logs.append(log_msg)
-                        await db.commit()
+                        db.commit()
                         return WorkflowState.EXECUTOR_ERROR
-                    elif status in ['CANCELLED', 'CANCELLED_RUNNING', 'CANCELLED_STARTING']:
+                    elif status in ['CANCELLED', 'CANCELLED_RUNNING',
+                                    'CANCELLED_STARTING']:
                         return WorkflowState.CANCELED
                     elif status in ['STARTING', 'RUNNING', 'PENDING', 'QUEUED']:
                         # Still running, wait and check again
-                        await asyncio.sleep(poll_interval)
+                        time.sleep(poll_interval)
                     elif status in ['STOPPING', 'TERMINATING']:
                         # Workflow is in transition state, continue monitoring
                         log_msg = f"Omics workflow in transition state: {status}"
                         run.system_logs.append(log_msg)
-                        await db.commit()
-                        await asyncio.sleep(poll_interval)
+                        db.commit()
+                        time.sleep(poll_interval)
                     else:
                         # Unknown status
                         log_msg = f"Unknown Omics status: {status}"
                         run.system_logs.append(log_msg)
-                        await db.commit()
+                        db.commit()
                         return WorkflowState.SYSTEM_ERROR
 
                 except Exception as e:
                     error_msg = f"Error monitoring Omics run: {str(e)}"
                     logger.error(f"Run {run.id}: {error_msg}")
                     run.system_logs.append(error_msg)
-                    await db.commit()
+                    db.commit()
                     return WorkflowState.SYSTEM_ERROR
 
         except Exception as e:
             error_msg = f"Unexpected error in monitor_omics_run: {str(e)}"
             logger.error(f"Run {run.id}: {error_msg}")
             run.system_logs.append(error_msg)
-            await db.commit()
+            db.commit()
             return WorkflowState.SYSTEM_ERROR
 
-    async def _update_task_logs(self, db: AsyncSession, run: WorkflowRun, tasks: list) -> None:
+    def _update_task_logs(self, db: Session, run: WorkflowRun, tasks: list) -> None:
         """
         Update task logs from Omics tasks.
 
@@ -495,16 +629,18 @@ class OmicsExecutor(WorkflowExecutor):
             start_time = None
             if 'startTime' in task_data:
                 try:
-                    start_time = datetime.fromisoformat(
-                        task_data['startTime'].replace('Z', '+00:00')
+                    start_time_str = task_data['startTime'].replace(
+                        'Z', '+00:00'
                     )
+                    start_time = datetime.fromisoformat(start_time_str)
                 except (ValueError, TypeError):
                     pass
 
             end_time = None
             if 'stopTime' in task_data:
                 try:
-                    end_time = datetime.fromisoformat(task_data['stopTime'].replace('Z', '+00:00'))
+                    end_time_str = task_data['stopTime'].replace('Z', '+00:00')
+                    end_time = datetime.fromisoformat(end_time_str)
                 except (ValueError, TypeError):
                     pass
 
@@ -516,16 +652,20 @@ class OmicsExecutor(WorkflowExecutor):
                 cmd=[],  # Omics doesn't expose the command
                 start_time=start_time,
                 end_time=end_time,
-                exit_code=0 if task_data.get('status') == 'COMPLETED' else 1,
-                system_logs=[f"Omics task status: {task_data.get('status')}"]
+                exit_code=(
+                    0 if task_data.get('status') == 'COMPLETED' else 1
+                ),
+                system_logs=[
+                    f"Omics task status: {task_data.get('status')}"
+                ]
             )
 
             db.add(task)
 
-        await db.commit()
+        db.commit()
 
-    async def _update_task_log_urls(
-        self, db: AsyncSession, run_id: str, task_logs: Dict[str, str]
+    def _update_task_log_urls(
+        self, db: Session, run_id: str, task_logs: Dict[str, str]
     ) -> None:
         """
         Update task log URLs in the database.
@@ -544,23 +684,33 @@ class OmicsExecutor(WorkflowExecutor):
                 TaskLog.run_id == run_id,
                 TaskLog.name == task_name
             )
-            result = await db.execute(query)
+            result = db.execute(query)
             task = result.scalar_one_or_none()
 
             if task:
                 # Update task log URL
                 task.stdout_url = log_url
-                logger.info(f"Task {task.id}: Set stdout_url to {log_url}")
+                stdout_msg = f"Task {task.id}: Set stdout_url to {log_url}"
+                logger.info(stdout_msg)
                 # Add debug log to verify task stdout_url is being set
                 task.system_logs.append(f"Set stdout_url to {log_url}")
             else:
-                logger.warning(f"Task with name '{task_name}' not found for run {run_id}")
+                warn_msg = (
+                    f"Task with name '{task_name}' not found "
+                    f"for run {run_id}"
+                )
+                logger.warning(warn_msg)
 
         # Explicitly commit changes
-        await db.commit()
-        logger.info(f"Committed task log URLs to database for run {run_id}")
+        db.commit()
+        commit_msg = (
+            f"Committed task log URLs to database for run {run_id}"
+        )
+        logger.info(commit_msg)
 
-    def _ensure_json_serializable(self, obj: Any) -> Union[Dict, List, str, int, float, bool, None]:
+    def _ensure_json_serializable(
+        self, obj: Any
+    ) -> Union[Dict, List, str, int, float, bool, None]:
         """
         Ensure an object is JSON serializable by converting non-serializable types.
 
@@ -571,17 +721,22 @@ class OmicsExecutor(WorkflowExecutor):
             JSON serializable version of the object
         """
         if isinstance(obj, dict):
-            return {k: self._ensure_json_serializable(v) for k, v in obj.items()}
+            return {
+                k: self._ensure_json_serializable(v)
+                for k, v in obj.items()
+            }
         elif isinstance(obj, list):
             return [self._ensure_json_serializable(item) for item in obj]
-        elif isinstance(obj, (datetime, )):
-            return obj.isoformat() if hasattr(obj, 'isoformat') else str(obj)
+        elif isinstance(obj, (datetime,)):
+            return (
+                obj.isoformat() if hasattr(obj, 'isoformat') else str(obj)
+            )
         elif isinstance(obj, (int, float, str, bool, type(None))):
             return obj
         else:
             return str(obj)
 
-    async def _get_run_outputs(self, omics_run_id: str) -> Dict[str, Any]:
+    def _get_run_outputs(self, omics_run_id: str) -> Dict[str, Any]:
         """
         Get outputs from completed Omics run.
 
@@ -605,14 +760,23 @@ class OmicsExecutor(WorkflowExecutor):
             if 'outputUri' in response:
                 output_uri = response['outputUri']
                 outputs['output_location'] = output_uri
-                logger.info(f"Set output_location to {output_uri} for run {omics_run_id}")
+                output_msg = (
+                    f"Set output_location to {output_uri} "
+                    f"for run {omics_run_id}"
+                )
+                logger.info(output_msg)
 
             # Log the full response for debugging
-            logger.debug(f"Full AWS Omics response for run {omics_run_id}: {response}")
+            debug_msg = (
+                f"Full AWS Omics response for run {omics_run_id}: "
+                f"{response}"
+            )
+            logger.debug(debug_msg)
 
             # Handle CloudWatch Logs format in logLocation
             if 'logLocation' in response:
-                logger.info(f"Found logLocation in response: {response['logLocation']}")
+                log_location = response['logLocation']
+                logger.info(f"Found logLocation in response: {log_location}")
 
                 # Extract CloudWatch log information
                 if 'runLogStream' in response['logLocation']:
@@ -631,19 +795,30 @@ class OmicsExecutor(WorkflowExecutor):
                             # Extract the actual run ID from the ARN
                             arn_parts = run_log_stream.split(':log-stream:')
                             if len(arn_parts) == 2:
-                                log_stream = arn_parts[1]  # This should be "run/5721106"
-                                logger.info(f"Extracted log stream from ARN: {log_stream}")
+                                # This should be "run/5721106"
+                                log_stream = arn_parts[1]
+                                stream_msg = (
+                                    f"Extracted log stream from ARN: "
+                                    f"{log_stream}"
+                                )
+                                logger.info(stream_msg)
                             else:
                                 # Fallback to the old method if the format is different
                                 log_stream_parts = parts[7:]
                                 log_stream = ':'.join(log_stream_parts)
-                                logger.info(f"Fallback log stream extraction: {log_stream}")
+                                fallback_msg = (
+                                    f"Fallback log stream extraction: "
+                                    f"{log_stream}"
+                                )
+                                logger.info(fallback_msg)
 
                             # Log the extracted values for debugging
-                            logger.info(
-                                (f"Extracted region: {region}, log_group: {log_group}, "
-                                 f"log_stream: {log_stream}")
+                            extract_msg = (
+                                f"Extracted region: {region}, "
+                                f"log_group: {log_group}, "
+                                f"log_stream: {log_stream}"
                             )
+                            logger.info(extract_msg)
 
                             # Construct CloudWatch log URL with proper URL encoding
                             cloudwatch_url = (
@@ -708,51 +883,73 @@ class OmicsExecutor(WorkflowExecutor):
                                     'main': cloudwatch_url
                                 }
                     else:
-                        logger.warning(
-                            (f"runLogStream doesn't match expected CloudWatch ARN format: "
-                             f"{run_log_stream}")
+                        warn_msg = (
+                            f"runLogStream doesn't match expected "
+                            f"CloudWatch ARN format: {run_log_stream}"
                         )
+                        logger.warning(warn_msg)
                 else:
-                    logger.warning(
-                        f"No runLogStream found in logLocation: {response['logLocation']}"
+                    warn_msg = (
+                        f"No runLogStream found in logLocation: "
+                        f"{response['logLocation']}"
                     )
+                    logger.warning(warn_msg)
             else:
-                logger.warning(f"No logLocation found in response for run {omics_run_id}")
+                warn_msg = (
+                    f"No logLocation found in response for run "
+                    f"{omics_run_id}"
+                )
+                logger.warning(warn_msg)
 
-            # Include actual workflow outputs if available
-            if 'outputs' in response:
-                outputs['workflow_outputs'] = response['outputs']
+            # Include actual workflow outputs if available (TBD: This chunk is useless because
+            # output_location below is used instead...delete these two lines)
+            # if 'outputs' in response:
+            #    outputs['workflow_outputs'] = response['outputs']
 
             # Add error message if there was an error
             if 'message' in response and response['status'] != 'COMPLETED':
                 outputs['error_message'] = response['message']
 
-            logger.info(f"Successfully retrieved outputs for Omics run {omics_run_id}")
+            success_msg = (
+                f"Successfully retrieved outputs for Omics run "
+                f"{omics_run_id}"
+            )
+            logger.info(success_msg)
             # Log the outputs for debugging
             logger.debug(f"Outputs for run {omics_run_id}: {outputs}")
             # Try to fetch output mapping from S3 if output_location is available
             if 'output_location' in outputs:
                 try:
-                    output_mapping = await self._fetch_output_mapping(
-                                            outputs['output_location'], omics_run_id
+                    output_mapping = self._fetch_output_mapping(
+                        outputs['output_location'], omics_run_id
                     )
                     if output_mapping:
                         outputs['output_mapping'] = output_mapping
-                        logger.info(f"Added output mapping to outputs for run {omics_run_id}")
+                        mapping_msg = (
+                            f"Added output mapping to outputs for run "
+                            f"{omics_run_id}"
+                        )
+                        logger.info(mapping_msg)
                         logger.info(f"{outputs['output_mapping']}")
                 except Exception as e:
-                    logger.warning(f"Failed to fetch output mapping for run "
-                                   f"{omics_run_id}: {str(e)}")
+                    warn_msg = (
+                        f"Failed to fetch output mapping for run "
+                        f"{omics_run_id}: {str(e)}"
+                    )
+                    logger.warning(warn_msg)
 
             # Ensure all values are JSON serializable
             return self._ensure_json_serializable(outputs)
 
         except Exception as e:
-            error_msg = f"Error getting outputs for Omics run {omics_run_id}: {str(e)}"
+            error_msg = (
+                f"Error getting outputs for Omics run "
+                f"{omics_run_id}: {str(e)}"
+            )
             logger.error(error_msg)
             return {"error": error_msg}
 
-    async def _fetch_output_mapping(self, output_uri: str, omics_run_id: str) -> Dict[str, str]:
+    def _fetch_output_mapping(self, output_uri: str, omics_run_id: str) -> Dict[str, str]:
         """
         Fetch output mapping from S3.
 
@@ -789,8 +986,11 @@ class OmicsExecutor(WorkflowExecutor):
 
             # Try to fetch the output mapping file
             try:
-                logger.info(f"Attempting to fetch output mapping from "
-                            f"s3://{bucket}/{output_json_key}")
+                fetch_msg = (
+                    f"Attempting to fetch output mapping from "
+                    f"s3://{bucket}/{output_json_key}"
+                )
+                logger.info(fetch_msg)
                 response = self.s3_client.get_object(Bucket=bucket, Key=output_json_key)
                 content = response['Body'].read().decode('utf-8')
                 mapping = json.loads(content)
@@ -800,34 +1000,63 @@ class OmicsExecutor(WorkflowExecutor):
                     # Convert CWL-style output format to a simpler key-value mapping
                     result = {}
                     for key, value in mapping.items():
-                        if isinstance(value, dict) and 'location' in value:
+                        if (isinstance(value, dict) and
+                                'location' in value):
                             # Extract the S3 URI from the location field
                             result[key] = value['location']
-                        elif (isinstance(value, list) and
-                              all(isinstance(item, dict) and 'location' in item for item in value)):
+                        elif (isinstance(value, list) and all(
+                                isinstance(item, dict) and 'location' in item
+                                for item in value)):
                             # For array outputs, extract all locations
                             result[key] = [item['location'] for item in value]
                         else:
                             # For other types, just convert to string
                             result[key] = str(value)
 
-                    logger.info(f"Successfully loaded output mapping with {len(result)} entries")
+                    success_msg = (
+                        f"Successfully loaded output mapping with "
+                        f"{len(result)} entries"
+                    )
+                    logger.info(success_msg)
                     return result
                 else:
-                    logger.warning(f"Output mapping file s3://{bucket}/{output_json_key} "
-                                   f"is not a dictionary")
+                    warn_msg = (
+                        f"Output mapping file "
+                        f"s3://{bucket}/{output_json_key} "
+                        f"is not a dictionary"
+                    )
+                    logger.warning(warn_msg)
             except self.s3_client.exceptions.NoSuchKey:
-                logger.info(f"Output mapping file s3://{bucket}/{output_json_key} not found")
+                info_msg = (
+                    f"Output mapping file "
+                    f"s3://{bucket}/{output_json_key} not found"
+                )
+                logger.info(info_msg)
             except json.JSONDecodeError:
-                logger.warning(f"Failed to parse output mapping file "
-                               f"s3://{bucket}/{output_json_key} as JSON")
+                warn_msg = (
+                    f"Failed to parse output mapping file "
+                    f"s3://{bucket}/{output_json_key} as JSON"
+                )
+                logger.warning(warn_msg)
             except Exception as e:
-                logger.warning(f"Error accessing s3://{bucket}/{output_json_key}: {str(e)}")
+                warn_msg = (
+                    f"Error accessing s3://{bucket}/{output_json_key}: "
+                    f"{str(e)}"
+                )
+                logger.warning(warn_msg)
 
             # If we get here, we couldn't find a valid output mapping file
-            logger.warning(f"No valid output mapping file found for run {omics_run_id}")
+            no_file_msg = (
+                f"No valid output mapping file found for run "
+                f"{omics_run_id}"
+            )
+            logger.warning(no_file_msg)
             return {}
 
         except Exception as e:
-            logger.error(f"Error fetching output mapping for run {omics_run_id}: {str(e)}")
+            error_msg = (
+                f"Error fetching output mapping for run "
+                f"{omics_run_id}: {str(e)}"
+            )
+            logger.error(error_msg)
             return {}
