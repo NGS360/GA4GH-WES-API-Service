@@ -1,6 +1,5 @@
 """AWS Omics workflow executor implementation."""
 
-import os
 import boto3
 from datetime import datetime, timezone
 import time
@@ -902,7 +901,8 @@ class OmicsExecutor(WorkflowExecutor):
                 )
                 logger.warning(warn_msg)
 
-            # Include actual workflow outputs if available (TBD: This chunk is useless because output_location below is used instead...delete these two lines)
+            # Include actual workflow outputs if available (TBD: This chunk is useless because
+            # output_location below is used instead...delete these two lines)
             # if 'outputs' in response:
             #    outputs['workflow_outputs'] = response['outputs']
 

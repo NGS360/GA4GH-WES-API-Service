@@ -16,7 +16,6 @@ from src.wes_service.daemon.executors.omics import OmicsExecutor
 
 # Create sync engine since we don't need async for the daemon
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +124,6 @@ class WorkflowMonitor:
             for run in canceling_runs:
                 self._cancel_run(db, run)
 
-
     def _execute_run(self, db: Session, run: WorkflowRun) -> None:
         """
         Execute a workflow run.
@@ -210,7 +208,6 @@ class WorkflowMonitor:
             db: Database session
         """
         logger.info("Checking for existing runs in RUNNING or INITIALIZING state...")
-
 
         if existing_runs:
 
