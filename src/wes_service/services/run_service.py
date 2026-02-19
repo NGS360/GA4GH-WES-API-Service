@@ -453,6 +453,7 @@ class RunService:
             # Prepare Lambda payload
             lambda_payload = {
                 'action': 'submit_workflow',
+                'source': 'ga4ghwes',
                 'wes_run_id': run.id,
                 'workflow_id': workflow_id,
                 'workflow_version': run.workflow_params.get('workflow_version') if run.workflow_params else None,
