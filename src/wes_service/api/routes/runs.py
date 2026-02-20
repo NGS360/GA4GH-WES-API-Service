@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
-from src.wes_service.api.deps import CurrentUser, DatabaseSession, Storage
+from src.wes_service.api.deps import CurrentUser, DatabaseSession, Storage, WorkflowSubmission
 from src.wes_service.schemas.run import (
     RunId,
     RunListResponse,
@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 )
 async def list_runs(
     db: DatabaseSession,
+    storage: Storage,
+    workflow_submission: WorkflowSubmission,
     user: CurrentUser,
     page_size: int | None = None,
     page_token: str | None = None,
@@ -60,7 +62,7 @@ async def list_runs(
                 detail="Invalid JSON format for tags parameter",
             )
 
-    service = RunService(db, None)  # type: ignore
+    service = RunService(db, storage, workflow_submission)
     return await service.list_runs(page_size, page_token, user, tag_filters)
 
 
@@ -75,6 +77,7 @@ async def list_runs(
 async def run_workflow(
     db: DatabaseSession,
     storage: Storage,
+    workflow_submission: WorkflowSubmission,
     user: CurrentUser,
     workflow_params: Annotated[str | None, Form()] = None,
     workflow_type: Annotated[str, Form()] = ...,
@@ -99,7 +102,7 @@ async def run_workflow(
     The workflow_params JSON object specifies input parameters.
     The exact format depends on the workflow language conventions.
     """
-    service = RunService(db, storage)
+    service = RunService(db, storage, workflow_submission)
     run_id = await service.create_run(
         workflow_params=workflow_params,
         workflow_type=workflow_type,
@@ -126,6 +129,8 @@ async def run_workflow(
 async def get_run_log(
     run_id: str,
     db: DatabaseSession,
+    storage: Storage,
+    workflow_submission: WorkflowSubmission,
     user: CurrentUser,
 ) -> RunLog:
     """
@@ -134,7 +139,7 @@ async def get_run_log(
     Returns information about outputs, logs for stderr/stdout,
     task logs, and overall workflow state.
     """
-    service = RunService(db, None)  # type: ignore
+    service = RunService(db, storage, workflow_submission)
     return await service.get_run_log(run_id, user)
 
 
@@ -148,6 +153,8 @@ async def get_run_log(
 async def get_run_status(
     run_id: str,
     db: DatabaseSession,
+    storage: Storage,
+    workflow_submission: WorkflowSubmission,
     user: CurrentUser,
 ) -> RunStatus:
     """
@@ -156,7 +163,7 @@ async def get_run_status(
     Provides a fast, abbreviated status check returning only the
     workflow state without detailed logs.
     """
-    service = RunService(db, None)  # type: ignore
+    service = RunService(db, storage, workflow_submission)
     return await service.get_run_status(run_id, user)
 
 
@@ -170,6 +177,8 @@ async def get_run_status(
 async def cancel_run(
     run_id: str,
     db: DatabaseSession,
+    storage: Storage,
+    workflow_submission: WorkflowSubmission,
     user: CurrentUser,
 ) -> RunId:
     """
@@ -178,6 +187,6 @@ async def cancel_run(
     Updates the workflow state to CANCELING and then CANCELED.
     Cannot cancel workflows that are already in a terminal state.
     """
-    service = RunService(db, None)  # type: ignore
+    service = RunService(db, storage, workflow_submission)
     canceled_id = await service.cancel_run(run_id, user)
     return RunId(run_id=canceled_id)
