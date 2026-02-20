@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
-from src.wes_service.api.deps import CurrentUser, DatabaseSession, Storage, WorkflowSubmission
+from src.wes_service.api.deps import CurrentUser, DatabaseSession, Storage
 from src.wes_service.schemas.run import (
     RunId,
     RunListResponse,
@@ -14,6 +14,7 @@ from src.wes_service.schemas.run import (
     RunStatus,
 )
 from src.wes_service.services.run_service import RunService
+from src.wes_service.services.workflow_submission_service import LambdaWorkflowSubmissionService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -75,7 +76,6 @@ async def list_runs(
 async def run_workflow(
     db: DatabaseSession,
     storage: Storage,
-    workflow_submission: WorkflowSubmission,
     user: CurrentUser,
     workflow_params: Annotated[str | None, Form()] = None,
     workflow_type: Annotated[str, Form()] = ...,
@@ -100,6 +100,7 @@ async def run_workflow(
     The workflow_params JSON object specifies input parameters.
     The exact format depends on the workflow language conventions.
     """
+    workflow_submission = LambdaWorkflowSubmissionService()
     service = RunService(db, storage, workflow_submission)
     run_id = await service.create_run(
         workflow_params=workflow_params,
@@ -135,7 +136,7 @@ async def get_run_log(
     Returns information about outputs, logs for stderr/stdout,
     task logs, and overall workflow state.
     """
-    service = RunService(db, None)
+    service = RunService(db, None)  # type: ignore
     return await service.get_run_log(run_id, user)
 
 
@@ -157,7 +158,7 @@ async def get_run_status(
     Provides a fast, abbreviated status check returning only the
     workflow state without detailed logs.
     """
-    service = RunService(db, None)
+    service = RunService(db, None)  # type: ignore
     return await service.get_run_status(run_id, user)
 
 
@@ -179,6 +180,6 @@ async def cancel_run(
     Updates the workflow state to CANCELING and then CANCELED.
     Cannot cancel workflows that are already in a terminal state.
     """
-    service = RunService(db, None)
+    service = RunService(db, None)  # type: ignore
     canceled_id = await service.cancel_run(run_id, user)
     return RunId(run_id=canceled_id)
