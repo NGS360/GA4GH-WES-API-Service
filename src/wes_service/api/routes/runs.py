@@ -28,8 +28,6 @@ logger = logging.getLogger(__name__)
 )
 async def list_runs(
     db: DatabaseSession,
-    storage: Storage,
-    workflow_submission: WorkflowSubmission,
     user: CurrentUser,
     page_size: int | None = None,
     page_token: str | None = None,
@@ -62,7 +60,7 @@ async def list_runs(
                 detail="Invalid JSON format for tags parameter",
             )
 
-    service = RunService(db, storage, workflow_submission)
+    service = RunService(db, None)
     return await service.list_runs(page_size, page_token, user, tag_filters)
 
 
@@ -129,8 +127,6 @@ async def run_workflow(
 async def get_run_log(
     run_id: str,
     db: DatabaseSession,
-    storage: Storage,
-    workflow_submission: WorkflowSubmission,
     user: CurrentUser,
 ) -> RunLog:
     """
@@ -139,7 +135,7 @@ async def get_run_log(
     Returns information about outputs, logs for stderr/stdout,
     task logs, and overall workflow state.
     """
-    service = RunService(db, storage, workflow_submission)
+    service = RunService(db, None)
     return await service.get_run_log(run_id, user)
 
 
@@ -153,8 +149,6 @@ async def get_run_log(
 async def get_run_status(
     run_id: str,
     db: DatabaseSession,
-    storage: Storage,
-    workflow_submission: WorkflowSubmission,
     user: CurrentUser,
 ) -> RunStatus:
     """
@@ -163,7 +157,7 @@ async def get_run_status(
     Provides a fast, abbreviated status check returning only the
     workflow state without detailed logs.
     """
-    service = RunService(db, storage, workflow_submission)
+    service = RunService(db, None)
     return await service.get_run_status(run_id, user)
 
 
@@ -177,8 +171,6 @@ async def get_run_status(
 async def cancel_run(
     run_id: str,
     db: DatabaseSession,
-    storage: Storage,
-    workflow_submission: WorkflowSubmission,
     user: CurrentUser,
 ) -> RunId:
     """
@@ -187,6 +179,6 @@ async def cancel_run(
     Updates the workflow state to CANCELING and then CANCELED.
     Cannot cancel workflows that are already in a terminal state.
     """
-    service = RunService(db, storage, workflow_submission)
+    service = RunService(db, None)
     canceled_id = await service.cancel_run(run_id, user)
     return RunId(run_id=canceled_id)

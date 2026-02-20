@@ -54,7 +54,7 @@ class TestRunService:
         execution_settings = {"cacheId": "12345"}
 
         # Mock run service
-        service = RunService(test_db, mock_storage, mock_workflow_submission)
+        service = RunService(test_db, mock_storage)
 
         workflow_engine_parameters = {
             "cacheId": execution_settings["cacheId"],
@@ -83,7 +83,7 @@ class TestRunService:
         assert result.workflow_type == "CWL"
         assert result.state == WorkflowState.QUEUED
 
-    async def test_paml_get_task_state(self, test_db, mock_storage, mock_workflow_submission):
+    async def test_paml_get_task_state(self, test_db, mock_storage):
         """Test get task state through PAML"""
         # Mimic inputs of PAML get_task_state()
         task = {
@@ -115,7 +115,7 @@ class TestRunService:
 
     async def test_create_run(self, test_db, mock_storage, mock_workflow_submission):
         """Test creating a new workflow run."""
-        service = RunService(test_db, mock_storage, mock_workflow_submission)
+        service = RunService(test_db, mock_storage)
 
         run_id = await service.create_run(
             workflow_params='{"input": "value"}',
@@ -139,9 +139,9 @@ class TestRunService:
         assert result.workflow_type == "CWL"
         assert result.state == WorkflowState.QUEUED
 
-    async def test_list_runs_empty(self, test_db, mock_storage, mock_workflow_submission):
+    async def test_list_runs_empty(self, test_db, mock_storage):
         """Test listing runs when none exist."""
-        service = RunService(test_db, mock_storage, mock_workflow_submission)
+        service = RunService(test_db, mock_storage)
 
         result = await service.list_runs(
             page_size=10,
@@ -152,7 +152,7 @@ class TestRunService:
         assert result.runs == []
         assert result.next_page_token == ""
 
-    async def test_get_run_status(self, test_db, mock_storage, mock_workflow_submission):
+    async def test_get_run_status(self, test_db, mock_storage):
         """Test getting run status."""
         run = WorkflowRun(
             id="test-status",
@@ -165,13 +165,13 @@ class TestRunService:
         test_db.add(run)
         await test_db.commit()
 
-        service = RunService(test_db, mock_storage, mock_workflow_submission)
+        service = RunService(test_db, mock_storage)
         status = await service.get_run_status("test-status", None)
 
         assert status.run_id == "test-status"
         assert status.state.value == "RUNNING"
 
-    async def test_cancel_run(self, test_db, mock_storage, mock_workflow_submission):
+    async def test_cancel_run(self, test_db, mock_storage):
         """Test canceling a run."""
         run = WorkflowRun(
             id="test-cancel",
@@ -184,7 +184,7 @@ class TestRunService:
         test_db.add(run)
         await test_db.commit()
 
-        service = RunService(test_db, mock_storage, mock_workflow_submission)
+        service = RunService(test_db, mock_storage)
         result = await service.cancel_run("test-cancel", None)
 
         assert result == "test-cancel"
@@ -193,7 +193,7 @@ class TestRunService:
         await test_db.refresh(run)
         assert run.state == WorkflowState.CANCELING
 
-    async def test_get_system_state_counts(self, test_db, mock_storage, mock_workflow_submission):
+    async def test_get_system_state_counts(self, test_db, mock_storage):
         """Test getting system state counts."""
         # Create runs in different states
         runs = [
