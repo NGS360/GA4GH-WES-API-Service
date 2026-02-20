@@ -61,7 +61,7 @@ async def list_runs(
                 detail="Invalid JSON format for tags parameter",
             )
 
-    service = RunService(db, None)
+    service = RunService(db, None)  # type: ignore
     return await service.list_runs(page_size, page_token, user, tag_filters)
 
 
