@@ -5,8 +5,10 @@ import boto3
 import json
 import logging
 import os
+import requests
 from abc import ABC, abstractmethod
 
+from src.wes_service.config import get_settings
 from src.wes_service.db.models import WorkflowRun
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,10 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         # Get Lambda function name from environment variable
         self.lambda_function_name = os.environ.get('LAMBDA_FUNCTION_NAME')
 
+        # Get NGS360 API URL from settings (same pattern as omics.py)
+        settings = get_settings()
+        self.ngs360_api_url = settings.ngs360_api_url
+
     async def submit_workflow(self, run: WorkflowRun) -> dict:
         """
         Submit workflow to Lambda function for Omics execution.
@@ -58,16 +64,15 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             Exception: If Lambda invocation or workflow submission fails
         """
         try:
-            # Extract workflow ID - for now use workflow_url directly
-            # In the future this could call NGS360 API to get engine_id
-            workflow_id = run.workflow_url
+            # Get engine_id from NGS360 API using the workflow_url as the workflow ID
+            engine_id = await self._get_engine_id_from_ngs360(run.workflow_url)
 
-            # Prepare Lambda payload
+            # Prepare Lambda payload using the engine_id instead of workflow_id
             lambda_payload = {
                 'action': 'submit_workflow',
                 'source': 'ga4ghwes',
                 'wes_run_id': run.id,
-                'workflow_id': workflow_id,
+                'workflow_id': engine_id,  # Use engine_id from NGS360 API
                 'workflow_version': run.workflow_params.get('workflow_version') if run.workflow_params else None,
                 'workflow_type': run.workflow_type,
                 'parameters': run.workflow_params or {},
@@ -77,7 +82,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                     'WESRunId': run.id
                 }
             }
-            logger.info('checkpoint1')
+
             logger.info(f"Lambda payload for run {run.id}: {json.dumps(lambda_payload, default=str)}")
 
             # Call Lambda function asynchronously
@@ -106,4 +111,45 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
         except Exception as e:
             logger.error(f"Error calling Lambda function {self.lambda_function_name}: {str(e)}")
+            raise
+
+    async def _get_engine_id_from_ngs360(self, workflow_id: str) -> str:
+        """
+        Query NGS360 API to get the engine_id for a given workflow ID.
+
+        Args:
+            workflow_id: The workflow ID to look up
+
+        Returns:
+            The engine_id from the NGS360 API
+
+        Raises:
+            Exception: If API call fails or engine_id not found
+        """
+        try:
+            # Construct the API URL
+            api_url = f"{self.ngs360_api_url}/api/v1/workflows/{workflow_id}"
+            logger.info(f"Querying NGS360 API for workflow {workflow_id}: {api_url}")
+
+            # Make async HTTP request
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: requests.get(api_url)
+            )
+
+            if response.status_code != 200:
+                raise Exception(f"NGS360 API returned status {response.status_code}: {response.text}")
+
+            workflow_data = response.json()
+            engine_id = workflow_data.get("engine_id")
+
+            if not engine_id:
+                raise Exception(f"engine_id not found for workflow {workflow_id} in NGS360 API response")
+
+            logger.info(f"Successfully retrieved engine_id '{engine_id}' for workflow {workflow_id}")
+            return engine_id
+
+        except Exception as e:
+            logger.error(f"Failed to get engine_id for workflow {workflow_id} from NGS360 API: {str(e)}")
             raise

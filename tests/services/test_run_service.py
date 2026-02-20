@@ -2,7 +2,7 @@
 
 import pytest
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
 from src.wes_service.services.run_service import RunService
@@ -12,9 +12,20 @@ from src.wes_service.services.workflow_submission_service import WorkflowSubmiss
 class MockWorkflowSubmissionService(WorkflowSubmissionService):
     """Mock workflow submission service for testing."""
 
+    def __init__(self):
+        """Initialize mock service without requiring real settings."""
+        # Mock the settings dependency to avoid real configuration requirements
+        self.ngs360_api_url = "http://mock-ngs360-api.test"
+
     async def submit_workflow(self, run) -> dict:
         """Mock workflow submission that returns a fake omics_run_id."""
+        # Mock the NGS360 API call within submit_workflow
+        engine_id = await self._get_engine_id_from_ngs360(run.workflow_url)
         return {"omics_run_id": f"omics-{run.id}", "statusCode": 200}
+
+    async def _get_engine_id_from_ngs360(self, workflow_id: str) -> str:
+        """Mock NGS360 API call that returns a fake engine_id."""
+        return f"mock-engine-{workflow_id}"
 
 
 @pytest.fixture
