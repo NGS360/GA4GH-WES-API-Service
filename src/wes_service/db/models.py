@@ -112,6 +112,20 @@ class WorkflowRun(Base):
         cascade="all, delete-orphan",
     )
 
+    # Callback tracking
+    last_callback_time: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+        index=True,
+        comment="Last time a callback updated this run",
+    )
+    last_event_id: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        index=True,
+        comment="Last EventBridge event ID processed (for idempotency)",
+    )
+
     def __repr__(self) -> str:
         """String representation."""
         return f"<WorkflowRun(id={self.id}, state={self.state})>"
