@@ -19,12 +19,7 @@ class MockWorkflowSubmissionService(WorkflowSubmissionService):
     async def submit_workflow(self, run) -> dict:
         """Mock workflow submission that returns a fake omics_run_id."""
         # Mock the NGS360 API call within submit_workflow
-        engine_id = await self._get_engine_id_from_ngs360(run.workflow_url)
         return {"omics_run_id": f"omics-{run.id}", "statusCode": 200}
-
-    async def _get_engine_id_from_ngs360(self, workflow_id: str) -> str:
-        """Mock NGS360 API call that returns a fake engine_id."""
-        return f"mock-engine-{workflow_id}"
 
 
 @pytest.fixture

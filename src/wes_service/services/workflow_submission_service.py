@@ -73,7 +73,10 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                 'source': 'ga4ghwes',
                 'wes_run_id': run.id,
                 'workflow_id': engine_id,  # Use engine_id from NGS360 API
-                'workflow_version': run.workflow_params.get('workflow_version') if run.workflow_params else None,
+                'workflow_version': (
+                    run.workflow_params.get('workflow_version')
+                    if run.workflow_params else None,
+                )
                 'workflow_type': run.workflow_type,
                 'parameters': run.workflow_params or {},
                 'workflow_engine_parameters': run.workflow_engine_parameters or {},
@@ -83,7 +86,10 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                 }
             }
 
-            logger.info(f"Lambda payload for run {run.id}: {json.dumps(lambda_payload, default=str)}")
+            logger.info(
+                f"Lambda payload for run {run.id}: "
+                f"{json.dumps(lambda_payload, default=str)}"
+            )
 
             # Call Lambda function asynchronously
             loop = asyncio.get_event_loop()
@@ -101,7 +107,10 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
             # Check for errors
             if response['StatusCode'] != 200:
-                raise Exception(f"Lambda invocation failed with status {response['StatusCode']}: {response_payload}")
+                raise Exception(
+                    f"Lambda invocation failed with status {response['StatusCode']}: "
+                    f"{response_payload}"
+                )
 
             if response_payload.get('statusCode') != 200:
                 error_msg = response_payload.get('message', 'Unknown error')
@@ -139,17 +148,23 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             )
 
             if response.status_code != 200:
-                raise Exception(f"NGS360 API returned status {response.status_code}: {response.text}")
+                raise Exception(
+                    f"NGS360 API returned status {response.status_code}: {response.text}"
+                )
 
             workflow_data = response.json()
             engine_id = workflow_data.get("engine_id")
 
             if not engine_id:
-                raise Exception(f"engine_id not found for workflow {workflow_id} in NGS360 API response")
+                raise Exception(
+                    f"engine_id not found for workflow {workflow_id} in NGS360 API response"
+                )
 
             logger.info(f"Successfully retrieved engine_id '{engine_id}' for workflow {workflow_id}")
             return engine_id
 
         except Exception as e:
-            logger.error(f"Failed to get engine_id for workflow {workflow_id} from NGS360 API: {str(e)}")
+            logger.error(
+                f"Failed to get engine_id for workflow {workflow_id} from NGS360 API: {str(e)}"
+            )
             raise

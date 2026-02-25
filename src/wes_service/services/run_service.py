@@ -33,7 +33,12 @@ logger = logging.getLogger(__name__)
 class RunService:
     """Service for managing workflow runs."""
 
-    def __init__(self, db: AsyncSession, storage: StorageBackend, workflow_submission: WorkflowSubmissionService = None):
+    def __init__(
+            self,
+            db: AsyncSession,
+            storage: StorageBackend,
+            workflow_submission: WorkflowSubmissionService = None
+        ):
         """Initialize run service."""
         self.db = db
         self.storage = storage
@@ -145,9 +150,13 @@ class RunService:
                 run.outputs['omics_run_id'] = submission_response['omics_run_id']
 
                 # Keep state as QUEUED - EventBridge events will update status and outputs
-                run.system_logs.append(f"Successfully submitted for execution. Omics run ID: {submission_response['omics_run_id']}")
+                run.system_logs.append(
+                        f"Successfully submitted for execution. "
+                        f"Omics run ID: {submission_response['omics_run_id']}")
                 await self.db.commit()
-                logger.info(f"Successfully submitted workflow {run_id} for execution - run remains QUEUED until EventBridge status update")
+                logger.info(
+                        f"Successfully submitted workflow {run_id} for execution - "
+                        "run remains QUEUED until EventBridge status update")
             else:
                 raise Exception("Workflow submission response did not contain omics_run_id")
 
@@ -426,4 +435,3 @@ class RunService:
             tags=run.tags,
             name=name,
         )
-

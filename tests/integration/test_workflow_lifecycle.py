@@ -14,9 +14,12 @@ class TestWorkflowLifecycle:
     async def test_complete_workflow_lifecycle(self, client: TestClient, test_db):
         """Test submitting, monitoring, and completing a workflow."""
         # Mock the workflow submission service to avoid real API calls
-        with patch('src.wes_service.api.routes.runs.LambdaWorkflowSubmissionService') as mock_service:
+        with patch(
+			'src.wes_service.api.routes.runs.LambdaWorkflowSubmissionService'
+		) as mock_service:
             # Create mock instance with async support
             mock_instance = MagicMock()
+
             # Make submit_workflow return a coroutine that resolves to the expected value
             async def mock_submit_workflow(run):
                 return {
@@ -80,8 +83,11 @@ class TestWorkflowLifecycle:
     def test_workflow_with_multiple_tasks(self, client: TestClient, test_db):
         """Test workflow with multiple task logs."""
         # Mock the workflow submission service
-        with patch('src.wes_service.api.routes.runs.LambdaWorkflowSubmissionService') as mock_service:
+        with patch(
+			'src.wes_service.api.routes.runs.LambdaWorkflowSubmissionService'
+		) as mock_service:
             mock_instance = MagicMock()
+
             # Make submit_workflow return a coroutine that resolves to the expected value
             async def mock_submit_workflow(run):
                 return {
@@ -130,8 +136,11 @@ class TestWorkflowLifecycle:
     def test_pagination_workflow(self, client: TestClient):
         """Test pagination across multiple workflow runs."""
         # Mock the workflow submission service
-        with patch('src.wes_service.api.routes.runs.LambdaWorkflowSubmissionService') as mock_service:
+        with patch(
+			'src.wes_service.api.routes.runs.LambdaWorkflowSubmissionService'
+		) as mock_service:
             mock_instance = MagicMock()
+
             # Make submit_workflow return a coroutine that resolves to the expected value
             async def mock_submit_workflow(run):
                 return {

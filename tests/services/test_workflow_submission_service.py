@@ -7,7 +7,6 @@ from unittest.mock import patch, MagicMock
 from src.wes_service.db.models import WorkflowRun
 from src.wes_service.services.workflow_submission_service import (
     LambdaWorkflowSubmissionService,
-    WorkflowSubmissionService,
 )
 
 
@@ -84,7 +83,9 @@ class TestWorkflowSubmissionService:
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
     @patch('src.wes_service.services.workflow_submission_service.requests.get')
-    async def test_get_engine_id_from_ngs360_missing_engine_id(self, mock_requests_get, mock_get_settings):
+    async def test_get_engine_id_from_ngs360_missing_engine_id(
+        self, mock_requests_get, mock_get_settings
+    ):
         """Test handling of missing engine_id in response."""
         # Mock settings
         mock_settings = MagicMock()
@@ -107,7 +108,9 @@ class TestWorkflowSubmissionService:
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
     @patch('src.wes_service.services.workflow_submission_service.boto3.client')
     @patch('src.wes_service.services.workflow_submission_service.requests.get')
-    async def test_submit_workflow_success(self, mock_requests_get, mock_boto3_client, mock_get_settings):
+    async def test_submit_workflow_success(
+        self, mock_requests_get, mock_boto3_client, mock_get_settings
+    ):
         """Test successful workflow submission."""
         # Mock settings
         mock_settings = MagicMock()
@@ -162,7 +165,9 @@ class TestWorkflowSubmissionService:
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
     @patch('src.wes_service.services.workflow_submission_service.boto3.client')
     @patch('src.wes_service.services.workflow_submission_service.requests.get')
-    async def test_submit_workflow_ngs360_failure(self, mock_requests_get, mock_boto3_client, mock_get_settings):
+    async def test_submit_workflow_ngs360_failure(
+        self, mock_requests_get, mock_boto3_client, mock_get_settings
+    ):
         """Test workflow submission when NGS360 API fails."""
         # Mock settings
         mock_settings = MagicMock()
