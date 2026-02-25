@@ -25,7 +25,7 @@ class OmicsStateChangeCallback(BaseModel):
         description="Current HealthOmics run status",
         pattern=(
             "^(COMPLETED|FAILED|CANCELLED|CANCELLED_RUNNING|CANCELLED_STARTING"
-            "|RUNNING|STARTING|PENDING|QUEUED|STOPPING|TERMINATING)$",
+            "|RUNNING|STARTING|PENDING|QUEUED|STOPPING|TERMINATING)$"
         )
     )
 

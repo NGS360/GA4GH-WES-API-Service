@@ -75,8 +75,8 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                 'workflow_id': engine_id,  # Use engine_id from NGS360 API
                 'workflow_version': (
                     run.workflow_params.get('workflow_version')
-                    if run.workflow_params else None,
-                )
+                    if run.workflow_params else None
+                ),
                 'workflow_type': run.workflow_type,
                 'parameters': run.workflow_params or {},
                 'workflow_engine_parameters': run.workflow_engine_parameters or {},

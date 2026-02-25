@@ -34,11 +34,11 @@ class RunService:
     """Service for managing workflow runs."""
 
     def __init__(
-            self,
-            db: AsyncSession,
-            storage: StorageBackend,
-            workflow_submission: WorkflowSubmissionService = None
-        ):
+        self,
+        db: AsyncSession,
+        storage: StorageBackend,
+        workflow_submission: WorkflowSubmissionService = None
+    ):
         """Initialize run service."""
         self.db = db
         self.storage = storage
