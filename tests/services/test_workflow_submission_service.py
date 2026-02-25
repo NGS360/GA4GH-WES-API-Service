@@ -2,9 +2,9 @@
 
 import pytest
 import json
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
-from src.wes_service.db.models import WorkflowRun, WorkflowState
+from src.wes_service.db.models import WorkflowRun
 from src.wes_service.services.workflow_submission_service import (
     LambdaWorkflowSubmissionService,
     WorkflowSubmissionService,

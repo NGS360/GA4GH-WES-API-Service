@@ -2,6 +2,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
+from unittest.mock import patch, MagicMock
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
 
@@ -12,19 +13,32 @@ class TestWorkflowLifecycle:
 
     async def test_complete_workflow_lifecycle(self, client: TestClient, test_db):
         """Test submitting, monitoring, and completing a workflow."""
-        # 1. Submit workflow
-        response = client.post(
-            "/ga4gh/wes/v1/runs",
-            data={
-                "workflow_url": "https://example.com/workflow.cwl",
-                "workflow_type": "CWL",
-                "workflow_type_version": "v1.0",
-                "workflow_params": '{"input": "test.txt"}',
-                "tags": '{"env": "test", "user": "tester"}',
-            },
-        )
-        assert response.status_code == 200
-        run_id = response.json()["run_id"]
+        # Mock the workflow submission service to avoid real API calls
+        with patch('src.wes_service.api.routes.runs.LambdaWorkflowSubmissionService') as mock_service:
+            # Create mock instance with async support
+            mock_instance = MagicMock()
+            # Make submit_workflow return a coroutine that resolves to the expected value
+            async def mock_submit_workflow(run):
+                return {
+                    "omics_run_id": "mock-omics-123",
+                    "statusCode": 200
+                }
+            mock_instance.submit_workflow = mock_submit_workflow
+            mock_service.return_value = mock_instance
+
+            # 1. Submit workflow
+            response = client.post(
+                "/ga4gh/wes/v1/runs",
+                data={
+                    "workflow_url": "https://example.com/workflow.cwl",
+                    "workflow_type": "CWL",
+                    "workflow_type_version": "v1.0",
+                    "workflow_params": '{"input": "test.txt"}',
+                    "tags": '{"env": "test", "user": "tester"}',
+                },
+            )
+            assert response.status_code == 200
+            run_id = response.json()["run_id"]
 
         # 2. Check run appears in list
         response = client.get("/ga4gh/wes/v1/runs")
@@ -65,16 +79,28 @@ class TestWorkflowLifecycle:
 
     def test_workflow_with_multiple_tasks(self, client: TestClient, test_db):
         """Test workflow with multiple task logs."""
-        # Submit workflow
-        response = client.post(
-            "/ga4gh/wes/v1/runs",
-            data={
-                "workflow_url": "https://example.com/workflow.cwl",
-                "workflow_type": "CWL",
-                "workflow_type_version": "v1.0",
-            },
-        )
-        run_id = response.json()["run_id"]
+        # Mock the workflow submission service
+        with patch('src.wes_service.api.routes.runs.LambdaWorkflowSubmissionService') as mock_service:
+            mock_instance = MagicMock()
+            # Make submit_workflow return a coroutine that resolves to the expected value
+            async def mock_submit_workflow(run):
+                return {
+                    "omics_run_id": "mock-omics-456",
+                    "statusCode": 200
+                }
+            mock_instance.submit_workflow = mock_submit_workflow
+            mock_service.return_value = mock_instance
+
+            # Submit workflow
+            response = client.post(
+                "/ga4gh/wes/v1/runs",
+                data={
+                    "workflow_url": "https://example.com/workflow.cwl",
+                    "workflow_type": "CWL",
+                    "workflow_type_version": "v1.0",
+                },
+            )
+            run_id = response.json()["run_id"]
 
         # Add some tasks (simulating daemon execution)
         from src.wes_service.db.models import TaskLog
@@ -103,19 +129,31 @@ class TestWorkflowLifecycle:
 
     def test_pagination_workflow(self, client: TestClient):
         """Test pagination across multiple workflow runs."""
-        # Submit multiple workflows
-        run_ids = []
-        for i in range(15):
-            response = client.post(
-                "/ga4gh/wes/v1/runs",
-                data={
-                    "workflow_url": f"https://example.com/workflow-{i}.cwl",
-                    "workflow_type": "CWL",
-                    "workflow_type_version": "v1.0",
-                    "tags": f'{{"batch": "{i//5}"}}',
-                },
-            )
-            run_ids.append(response.json()["run_id"])
+        # Mock the workflow submission service
+        with patch('src.wes_service.api.routes.runs.LambdaWorkflowSubmissionService') as mock_service:
+            mock_instance = MagicMock()
+            # Make submit_workflow return a coroutine that resolves to the expected value
+            async def mock_submit_workflow(run):
+                return {
+                    "omics_run_id": "mock-omics-789",
+                    "statusCode": 200
+                }
+            mock_instance.submit_workflow = mock_submit_workflow
+            mock_service.return_value = mock_instance
+
+            # Submit multiple workflows
+            run_ids = []
+            for i in range(15):
+                response = client.post(
+                    "/ga4gh/wes/v1/runs",
+                    data={
+                        "workflow_url": f"https://example.com/workflow-{i}.cwl",
+                        "workflow_type": "CWL",
+                        "workflow_type_version": "v1.0",
+                        "tags": f'{{"batch": "{i//5}"}}',
+                    },
+                )
+                run_ids.append(response.json()["run_id"])
 
         # Get first page
         response = client.get(

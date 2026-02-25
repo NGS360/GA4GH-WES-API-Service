@@ -352,6 +352,7 @@ class Settings(BaseSettings):
         description="Timeout for callback endpoint processing",
     )
 
+
 @lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
