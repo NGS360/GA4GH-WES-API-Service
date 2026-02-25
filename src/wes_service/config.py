@@ -162,16 +162,6 @@ class Settings(BaseSettings):
         description="S3 bucket URI for Omics workflow outputs",
     )
 
-    # Daemon Configuration
-    daemon_poll_interval: int = Field(
-        default=30,
-        description="Interval in seconds between workflow status polling",
-    )
-    daemon_max_concurrent_runs: int = Field(
-        default=10,
-        description="Maximum number of concurrent workflow runs",
-    )
-
     # Authentication Configuration
     auth_method: Literal["basic", "oauth2", "none"] = Field(
         default="basic",
