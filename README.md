@@ -1,6 +1,6 @@
 # GA4GH WES API Service
 
-A production-ready implementation of the [GA4GH Workflow Execution Service (WES) API v1.1.0](https://github.com/ga4gh/workflow-execution-service-schemas) specification using FastAPI and Python 3.12.
+A production-ready implementation of the [GA4GH Workflow Execution Service (WES) API v1.1.0](https://github.com/ga4gh/workflow-execution-service-schemas) specification using FastAPI and Python 3.12 backed by AWS HealthOmics.
 
 ## Overview
 
@@ -43,6 +43,14 @@ GA4GH WES is designed with a clean separation: the API service logs workflow req
                                     │  (Local/S3)  │
                                     └──────────────┘
 ```
+## Expectations on how this works
+
+1. Workflow is registered with NGS360, which then in turn registers the workflow with the backend service (in this case AWS HealthOmics).
+2. Workflow is submitted to GA4GH WES API via Launcher which uses PAML.
+3. GA4GH WES API logs workflow in DB.
+4. Daemon (lambda) submits workflow to AWS HealthOmics and updates db status info
+5. Lambda is notiified when workflow completes and updates db info
+6. Launcher queries GA4GH WES API via PAML.
 
 ## Quick Start
 
