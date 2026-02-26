@@ -1,6 +1,7 @@
 """Service layer for workflow run operations."""
 
 import json
+import logging
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
@@ -24,15 +25,24 @@ from src.wes_service.schemas.run import (
     RunStatus,
     RunSummary,
 )
+from src.wes_service.services.workflow_submission_service import WorkflowSubmissionService
+
+logger = logging.getLogger(__name__)
 
 
 class RunService:
     """Service for managing workflow runs."""
 
-    def __init__(self, db: AsyncSession, storage: StorageBackend):
+    def __init__(
+        self,
+        db: AsyncSession,
+        storage: StorageBackend,
+        workflow_submission: WorkflowSubmissionService = None
+    ):
         """Initialize run service."""
         self.db = db
         self.storage = storage
+        self.workflow_submission = workflow_submission
         self.settings = get_settings()
 
     async def create_run(
@@ -127,6 +137,35 @@ class RunService:
                 self.db.add(attachment_record)
 
         await self.db.commit()
+
+        # Submit workflow for execution
+        try:
+            logger.info(f"Submitting workflow {run_id} for execution")
+            submission_response = await self.workflow_submission.submit_workflow(run)
+
+            # Update run with execution ID but keep QUEUED state
+            if submission_response.get('omics_run_id'):
+                if not run.outputs:
+                    run.outputs = {}
+                run.outputs['omics_run_id'] = submission_response['omics_run_id']
+
+                # Keep state as QUEUED - EventBridge events will update status and outputs
+                run.system_logs.append(
+                        f"Successfully submitted for execution. "
+                        f"Omics run ID: {submission_response['omics_run_id']}")
+                await self.db.commit()
+                logger.info(
+                        f"Successfully submitted workflow {run_id} for execution - "
+                        "run remains QUEUED until EventBridge status update")
+            else:
+                raise Exception("Workflow submission response did not contain omics_run_id")
+
+        except Exception as e:
+            logger.error(f"Failed to submit workflow {run_id} for execution: {str(e)}")
+            run.state = WorkflowState.SYSTEM_ERROR
+            run.system_logs.append(f"Failed to submit for execution: {str(e)}")
+            await self.db.commit()
+
         return run_id
 
     async def list_runs(
@@ -161,16 +200,27 @@ class RunService:
 
         # Filter by user if specified
         if user_id:
+            logger.info(f"Filtering runs for user_id: {user_id}")
             query = query.where(WorkflowRun.user_id == user_id)
 
         # Filter by tags if specified
         if tag_filters and isinstance(tag_filters, dict):
-            from sqlalchemy import text
+            logger.info(
+                f"Applying tag filters: {tag_filters}"
+            )
             for tag_key, tag_value in tag_filters.items():
-                # Use JSON containment operator to check if the tags JSON contains the key-value pair
-                # This creates a condition like: tags @> {"project": "testproject"}
-                json_condition = text(f"JSON_EXTRACT(tags, '$.{tag_key}') = '{tag_value}'")
-                query = query.where(json_condition)
+                logger.info(
+                    f"Filtering by tag: {tag_key}={tag_value}"
+                )
+                # Use SQLAlchemy's JSON operators
+                # This works with both MySQL and SQLite
+                query = query.where(
+                    WorkflowRun.tags[tag_key].as_string() == tag_value
+                )
+        else:
+            logger.info(
+                f"No tag filters applied. tag_filters={tag_filters}"
+            )
 
         # Apply pagination
         query = query.offset(offset).limit(page_size + 1)
@@ -178,6 +228,7 @@ class RunService:
         # Execute query
         result = await self.db.execute(query)
         runs = result.scalars().all()
+        logger.info(f"Retrieved {len(runs)} runs from database")
 
         # Check if there are more results
         has_more = len(runs) > page_size
