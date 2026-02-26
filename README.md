@@ -6,6 +6,18 @@ A production-ready implementation of the [GA4GH Workflow Execution Service (WES)
 
 GA4GH WES is designed with a clean separation: the API service logs workflow requests to a database, while a separate daemon monitors requests and handles execution on the target platform. This implementation provides a robust, scalable foundation for workflow execution services.
 
+
+## Expectations on how this works
+
+1. Workflow is registered with NGS360, which then in turn registers the workflow with the backend service (in this case AWS HealthOmics).
+   a. To register a workflow, make a call to NGS360 API Service, POST /api/v1/workflows, JSON={name='workflow_name', definition_uri='uri of workflow', engine='engine (AWS HealthOmics, SevenBridges, Arvados, etc', attributes=...}.
+   
+3. Workflow is submitted to GA4GH WES API via Launcher which uses PAML.
+4. GA4GH WES API logs workflow in DB.
+5. Daemon (lambda) submits workflow to AWS HealthOmics and updates db status info
+6. Lambda is notiified when workflow completes and updates db info
+7. Launcher queries GA4GH WES API via PAML.
+
 ## Features
 
 - ✅ **Complete GA4GH WES v1.1.0 API** - All 8 endpoints implemented
@@ -43,15 +55,6 @@ GA4GH WES is designed with a clean separation: the API service logs workflow req
                                     │  (Local/S3)  │
                                     └──────────────┘
 ```
-## Expectations on how this works
-
-1. Workflow is registered with NGS360, which then in turn registers the workflow with the backend service (in this case AWS HealthOmics).
-2. Workflow is submitted to GA4GH WES API via Launcher which uses PAML.
-3. GA4GH WES API logs workflow in DB.
-4. Daemon (lambda) submits workflow to AWS HealthOmics and updates db status info
-5. Lambda is notiified when workflow completes and updates db info
-6. Launcher queries GA4GH WES API via PAML.
-
 ## Quick Start
 
 ### Prerequisites
