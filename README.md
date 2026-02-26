@@ -9,8 +9,8 @@ GA4GH WES is designed with a clean separation: the API service logs workflow req
 
 ## Expectations on how this works
 
-1. Workflow is registered with NGS360, which then in turn registers the workflow with the backend service (in this case AWS HealthOmics).
-   a. To register a workflow, make a call to NGS360 API Service, POST /api/v1/workflows, JSON={name='workflow_name', definition_uri='uri of workflow', engine='engine (AWS HealthOmics, SevenBridges, Arvados, etc', attributes=...}.
+1. User registers a workflow with NGS360, which then in turn registers the workflow with the backend service (in this case AWS HealthOmics).
+   a. To register a workflow, make a call to NGS360 API Service, POST /api/v1/workflows, JSON={name='workflow_name', definition_uri='uri of workflow', engine='engine (AWS HealthOmics, SevenBridges, Arvados, etc', attributes=...}.  NGS360 API will call the lambda fn which will actually do the heavy-lifting.
    
 3. Workflow is submitted to GA4GH WES API via Launcher which uses PAML.
 4. GA4GH WES API logs workflow in DB.
