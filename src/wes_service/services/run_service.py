@@ -154,7 +154,9 @@ class RunService:
             if submission_response.get('omics_run_id'):
                 if not run.outputs:
                     run.outputs = {}
-                run.outputs['omics_run_id'] = submission_response['omics_run_id']
+
+                run.workflow_run_id = submission_response['omics_run_id']
+                #run.outputs['omics_run_id'] = submission_response['omics_run_id']
 
                 # Keep state as QUEUED - EventBridge events will update status and outputs
                 run.system_logs.append(
