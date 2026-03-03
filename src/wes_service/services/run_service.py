@@ -67,7 +67,7 @@ class RunService:
             workflow_type_version: Workflow type version
             workflow_url: URL to workflow definition
             workflow_attachments: List of uploaded files
-            tags: JSON string of tags
+            tags: JSON string of tags including ProjectId and TaskName
             workflow_engine: Workflow engine name
             workflow_engine_version: Workflow engine version
             workflow_engine_parameters: JSON string of engine parameters
@@ -79,11 +79,18 @@ class RunService:
         # Parse JSON strings
         params = json.loads(workflow_params) if workflow_params else {}
         tags_dict = json.loads(tags) if tags else {}
-        engine_params = (
-            json.loads(workflow_engine_parameters)
-            if workflow_engine_parameters
-            else {}
-        )
+
+        if workflow_engine_parameters:
+            engine_params = json.loads(workflow_engine_parameters)
+        else:
+            engine_params = {}
+
+        output_bucket = get_settings().s3_bucket_name
+        if "ProjectId" not in tags_dict:
+            raise ValueError("ProjectId tag is required.")
+        project_id = tags_dict.get("ProjectId")
+        output_uri = f"s3://{output_bucket}/Project/{project_id}/"
+        engine_params["outputUri"] = output_uri
 
         # Add "Name" tag if not already present, extracting it from workflow_engine_parameters
         if "Name" not in tags_dict and engine_params and "name" in engine_params:
@@ -158,9 +165,9 @@ class RunService:
                         f"Successfully submitted workflow {run_id} for execution - "
                         "run remains QUEUED until EventBridge status update")
             else:
-                raise Exception("Workflow submission response did not contain omics_run_id")
+                raise ValueError("Workflow submission response did not contain omics_run_id")
 
-        except Exception as e:
+        except ValueError as e:
             logger.error(f"Failed to submit workflow {run_id} for execution: {str(e)}")
             run.state = WorkflowState.SYSTEM_ERROR
             run.system_logs.append(f"Failed to submit for execution: {str(e)}")
