@@ -17,7 +17,7 @@ Set the following environment variables in your `.env` file:
 # AWS Omics Configuration
 OMICS_REGION=us-east-1
 OMICS_ROLE_ARN=arn:aws:iam::123456789012:role/OmicsWorkflowRole
-OMICS_OUTPUT_BUCKET=s3://your-output-bucket
+S#_BUCKET_NAME=s3://your-output-bucket
 
 # Set workflow executor to Omics
 WORKFLOW_EXECUTOR=omics
@@ -148,7 +148,7 @@ print(f"Status: {status}")
 
 2. **IAM Permissions**: The role specified in `OMICS_ROLE_ARN` needs appropriate permissions to run workflows in AWS Omics and access your S3 buckets.
 
-3. **Output Location**: Results will be stored in the S3 bucket specified in `OMICS_OUTPUT_BUCKET`, under a path that includes the WES run ID.
+3. **Output Location**: Results will be stored in the S3 bucket specified in `S3_BUCKET_NAME`, under a path that includes the WES run ID.
 
 4. **Cost Management**: AWS Omics incurs costs based on compute usage. Monitor your AWS billing dashboard when running workflows.
 

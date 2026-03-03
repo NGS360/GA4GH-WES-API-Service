@@ -260,7 +260,7 @@ Set the following environment variables:
 # AWS HealthOmics Configuration
 HEALTHOMICS_REGION=us-east-1
 HEALTHOMICS_ROLE_ARN=arn:aws:iam::123456789012:role/OmicsWorkflowRole
-HEALTHOMICS_OUTPUT_BUCKET=your-output-bucket
+S3_BUCKET_NAME=your-output-bucket
 
 # Set workflow executor to HealthOmics
 WORKFLOW_EXECUTOR=healthomics
