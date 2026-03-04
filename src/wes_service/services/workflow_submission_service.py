@@ -63,66 +63,68 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         Raises:
             Exception: If Lambda invocation or workflow submission fails
         """
-        # TBD: The try/catch block is too large.  This should only wrap the lambda invocation.
+        # Get engine_id from NGS360 API using the workflow_url as the workflow ID
         try:
-            # Get engine_id from NGS360 API using the workflow_url as the workflow ID
             engine_id = await self._get_engine_id_from_ngs360(run.workflow_url)
-
-            # Prepare Lambda payload using the engine_id instead of workflow_id
-            lambda_payload = {
-                'action': 'submit_workflow',
-                'source': 'ga4ghwes',
-                'wes_run_id': run.id,
-                'workflow_id': engine_id,  # Use engine_id from NGS360 API
-                'workflow_version': (
-                    run.workflow_params.get('workflow_version')
-                    if run.workflow_params else None
-                ),
-                'workflow_type': run.workflow_type,
-                'parameters': run.workflow_params or {},
-                'workflow_engine_parameters': run.workflow_engine_parameters or {},
-                'tags': {
-                    **(run.tags or {}),
-                    'WESRunId': run.id
-                }
-            }
-
-            logger.info(
-                f"Lambda payload for run {run.id}: "
-                f"{json.dumps(lambda_payload, default=str)}"
-            )
-
-            # Call Lambda function asynchronously
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self.lambda_client.invoke(
-                    FunctionName=self.lambda_function_name,
-                    InvocationType='RequestResponse',
-                    Payload=json.dumps(lambda_payload)
-                )
-            )
-
-            # Check for errors
-            if response['StatusCode'] != 200:
-                raise RuntimeError(
-                    f"Lambda invocation failed with status {response['StatusCode']}: "
-                    f"{response}"
-                )
-
-            # Parse response
-            response_payload = json.loads(response['Payload'].read())
-
-            # TBD: Will the response also have a statusCode?  If so, what generates this?  I don't believe this code is correct.
-            if response_payload.get('statusCode') != 200:
-                error_msg = response_payload.get('message', 'Unknown error')
-                raise RuntimeError(f"Workflow submission failed: {error_msg}")
-
-            return response_payload
-
         except Exception as e:
-            logger.error(f"Error calling Lambda function {self.lambda_function_name}: {str(e)}")
-            raise
+            logger.error(f"Failed to retrieve engine_id for workflow {run.workflow_url}: "
+                         f"{str(e)}")
+            return {}
+
+        # Prepare Lambda payload using the engine_id instead of workflow_id
+        lambda_payload = {
+            'action': 'submit_workflow',
+            'source': 'ga4ghwes',
+            'wes_run_id': run.id,
+            'workflow_id': engine_id,  # Use engine_id from NGS360 API
+            'workflow_version': (
+                run.workflow_params.get('workflow_version')
+                if run.workflow_params else None
+            ),
+            'workflow_type': run.workflow_type,
+            'parameters': run.workflow_params or {},
+            'workflow_engine_parameters': run.workflow_engine_parameters or {},
+            'tags': {
+                **(run.tags or {}),
+                'WESRunId': run.id
+            }
+        }
+
+        logger.info(
+            f"Lambda payload for run {run.id}: "
+            f"{json.dumps(lambda_payload, default=str)}"
+        )
+
+        # Call Lambda function asynchronously
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: self.lambda_client.invoke(
+                FunctionName=self.lambda_function_name,
+                InvocationType='RequestResponse',
+                Payload=json.dumps(lambda_payload)
+            )
+        )
+
+        # Check for errors
+        if response['StatusCode'] != 200:
+            logger.error(
+                f"Lambda invocation failed with status {response['StatusCode']}: "
+                f"{response}"
+            )
+            return {}
+
+        # Parse response
+        response_payload = json.loads(response['Payload'].read())
+
+        # TBD: Will the response also have a statusCode?  If so, what generates this?
+        # I don't believe this code is correct.
+        if response_payload.get('statusCode') != 200:
+            error_msg = response_payload.get('message', 'Unknown error')
+            logger.error(f"Workflow submission failed: {error_msg}")
+            return {}
+
+        return response_payload
 
     async def _get_engine_id_from_ngs360(self, workflow_id: str) -> str:
         """
