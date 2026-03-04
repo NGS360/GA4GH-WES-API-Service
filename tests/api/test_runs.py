@@ -2,6 +2,7 @@
 
 import io
 import json
+from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
@@ -10,8 +11,12 @@ from src.wes_service.db.models import WorkflowRun, WorkflowState
 class TestPAMLFunctions:
     """Tests endpoint as PAML would do.."""
 
-    async def test_paml_submit_task(self, client: TestClient):
+    @patch('src.wes_service.services.workflow_submission_service.LambdaWorkflowSubmissionService.submit_workflow')
+    async def test_paml_submit_task(self, mock_submit, client: TestClient):
         """Test submit task through PAML"""
+        # Mock the workflow submission to return a successful response
+        mock_submit.return_value = {"omics_run_id": "123456"}
+
         # Mimic inputs of PAML submit_task()
         name = "test_wes_run"
         project = {
@@ -32,7 +37,7 @@ class TestPAMLFunctions:
         }
         tags = {
             "TaskName": name,
-            "ProjectId": project["name"],
+            "ProjectId": project["id"],
         }
         response = client.post(
             "/ga4gh/wes/v1/runs",
@@ -175,7 +180,7 @@ class TestPAMLFunctions:
             workflow_url="123456",
             user_id="test_user",
             tags={
-                "ProjectId": project["name"],
+                "ProjectId": project["id"],
                 "TaskName": task_name
             }
         )
@@ -201,7 +206,7 @@ class TestPAMLFunctions:
             workflow_url="123456",
             user_id="test_user",
             tags={
-                "ProjectId": project["name"],
+                "ProjectId": project["id"],
                 "TaskName": "test-other-task-names"
             }
         )
@@ -218,7 +223,7 @@ class TestPAMLFunctions:
         assert len(data["runs"]) == 3
         tasks = []
         for run in data["runs"]:
-            if run["tags"]["ProjectId"] == project["name"]:
+            if run["tags"]["ProjectId"] == project["id"]:
                 if run["tags"]["TaskName"] == task_name:
                     tasks += [run]
         assert len(tasks) == 1
@@ -228,14 +233,19 @@ class TestPAMLFunctions:
 class TestSubmitWorkflow:
     """Tests for POST /runs endpoint."""
 
-    def test_submit_workflow_minimal(self, client: TestClient):
+    @patch('src.wes_service.services.workflow_submission_service.LambdaWorkflowSubmissionService.submit_workflow')
+    def test_submit_workflow_minimal(self, mock_submit, client: TestClient):
         """Test submitting a workflow with minimal parameters."""
+        # Mock the workflow submission to return a successful response
+        mock_submit.return_value = {"omics_run_id": "123456"}
+
         response = client.post(
             "/ga4gh/wes/v1/runs",
             data={
                 "workflow_url": "https://example.com/workflow.cwl",
                 "workflow_type": "CWL",
                 "workflow_type_version": "v1.0",
+                "tags": json.dumps({"ProjectId": "test_project"}),
             },
         )
         assert response.status_code == 200
@@ -243,8 +253,12 @@ class TestSubmitWorkflow:
         assert "run_id" in data
         assert isinstance(data["run_id"], str)
 
-    def test_submit_workflow_with_params(self, client: TestClient):
+    @patch('src.wes_service.services.workflow_submission_service.LambdaWorkflowSubmissionService.submit_workflow')
+    def test_submit_workflow_with_params(self, mock_submit, client: TestClient):
         """Test submitting a workflow with parameters."""
+        # Mock the workflow submission to return a successful response
+        mock_submit.return_value = {"omics_run_id": "123456"}
+
         params = {"input_file": "s3://bucket/input.txt"}
 
         response = client.post(
@@ -264,8 +278,12 @@ class TestSubmitWorkflow:
         data = response.json()
         assert "run_id" in data
 
-    def test_submit_workflow_with_attachments(self, client: TestClient):
+    @patch('src.wes_service.services.workflow_submission_service.LambdaWorkflowSubmissionService.submit_workflow')
+    def test_submit_workflow_with_attachments(self, mock_submit, client: TestClient):
         """Test submitting a workflow with file attachments."""
+        # Mock the workflow submission to return a successful response
+        mock_submit.return_value = {"omics_run_id": "123456"}
+
         files = [
             ("workflow_attachment", ("workflow.cwl", io.BytesIO(b"content1"))),
             ("workflow_attachment", ("inputs.json", io.BytesIO(b"content2"))),
@@ -277,6 +295,7 @@ class TestSubmitWorkflow:
                 "workflow_url": "workflow.cwl",
                 "workflow_type": "CWL",
                 "workflow_type_version": "v1.0",
+                "tags": json.dumps({"ProjectId": "test_project"}),
             },
             files=files,
         )
