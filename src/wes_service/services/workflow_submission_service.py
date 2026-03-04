@@ -5,7 +5,7 @@ import boto3
 import json
 import logging
 import os
-import requests
+import httpx
 from abc import ABC, abstractmethod
 
 from src.wes_service.config import get_settings
@@ -29,7 +29,7 @@ class WorkflowSubmissionService(ABC):
             Response containing execution details (e.g., omics_run_id)
 
         Raises:
-            Exception: If submission fails
+            RuntimeError: If submission fails
         """
         pass
 
@@ -61,12 +61,12 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             Lambda response containing omics_run_id
 
         Raises:
-            Exception: If Lambda invocation or workflow submission fails
+            RuntimeError: If Lambda invocation or workflow submission fails
         """
         # Get engine_id from NGS360 API using the workflow_url as the workflow ID
         try:
             engine_id = await self._get_engine_id_from_ngs360(run.workflow_url)
-        except Exception as e:
+        except RuntimeError as e:
             logger.error(f"Failed to retrieve engine_id for workflow {run.workflow_url}: "
                          f"{str(e)}")
             return {}
@@ -137,38 +137,27 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             The engine_id from the NGS360 API
 
         Raises:
-            Exception: If API call fails or engine_id not found
+            RuntimeError: If API call fails or engine_id not found
         """
-        try:
-            # Construct the API URL
-            api_url = f"{self.ngs360_api_url}/api/v1/workflows/{workflow_id}"
-            logger.info(f"Querying NGS360 API for workflow {workflow_id}: {api_url}")
+        # Construct the API URL
+        api_url = f"{self.ngs360_api_url}/api/v1/workflows/{workflow_id}"
+        logger.info(f"Querying NGS360 API for workflow {workflow_id}: {api_url}")
 
-            # Make async HTTP request
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: requests.get(api_url)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(api_url)
+
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"NGS360 API returned status {response.status_code}: {response.text}"
             )
 
-            if response.status_code != 200:
-                raise Exception(
-                    f"NGS360 API returned status {response.status_code}: {response.text}"
-                )
+        workflow_data = response.json()
+        engine_id = workflow_data.get("engine_id")
 
-            workflow_data = response.json()
-            engine_id = workflow_data.get("engine_id")
-
-            if not engine_id:
-                raise Exception(
-                    f"engine_id not found for workflow {workflow_id} in NGS360 API response"
-                )
-
-            logger.info(f"Successfully retrieved engine_id '{engine_id}' for workflow {workflow_id}")
-            return engine_id
-
-        except Exception as e:
-            logger.error(
-                f"Failed to get engine_id for workflow {workflow_id} from NGS360 API: {str(e)}"
+        if not engine_id:
+            raise RuntimeError(
+                f"engine_id not found for workflow {workflow_id} in NGS360 API response"
             )
-            raise
+
+        logger.info(f"Successfully retrieved engine_id '{engine_id}' for workflow {workflow_id}")
+        return engine_id
