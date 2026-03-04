@@ -156,7 +156,6 @@ class RunService:
                     run.outputs = {}
 
                 run.workflow_run_id = submission_response['omics_run_id']
-                #run.outputs['omics_run_id'] = submission_response['omics_run_id']
 
                 # Keep state as QUEUED - EventBridge events will update status and outputs
                 run.system_logs.append(
@@ -165,7 +164,8 @@ class RunService:
                 await self.db.commit()
                 logger.info(
                         f"Successfully submitted workflow {run_id} for execution - "
-                        "run remains QUEUED until EventBridge status update")
+                        "run remains QUEUED until EventBridge status update"
+                )
             else:
                 raise ValueError("Workflow submission response did not contain omics_run_id")
 
