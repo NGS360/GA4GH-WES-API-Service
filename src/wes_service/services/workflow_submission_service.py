@@ -58,10 +58,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             run: WorkflowRun to submit
 
         Returns:
-            Lambda response containing omics_run_id
-
-        Raises:
-            RuntimeError: If Lambda invocation or workflow submission fails
+            Lambda response containing omics_run_id or empty dict on failure
         """
         # Get engine_id from NGS360 API using the workflow_url as the workflow ID
         try:

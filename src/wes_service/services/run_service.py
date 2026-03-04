@@ -146,34 +146,30 @@ class RunService:
         await self.db.commit()
 
         # Submit workflow for execution
-        try:
-            logger.info(f"Submitting workflow {run_id} for execution")
-            submission_response = await self.workflow_submission.submit_workflow(run)
+        logger.info(f"Submitting workflow {run_id} for execution")
+        submission_response = await self.workflow_submission.submit_workflow(run)
 
-            # Update run with execution ID but keep QUEUED state
-            if submission_response.get('omics_run_id'):
-                if not run.outputs:
-                    run.outputs = {}
-
-                run.workflow_run_id = submission_response['omics_run_id']
-
-                # Keep state as QUEUED - EventBridge events will update status and outputs
-                run.system_logs.append(
-                        f"Successfully submitted for execution. "
-                        f"Omics run ID: {submission_response['omics_run_id']}")
-                await self.db.commit()
-                logger.info(
-                        f"Successfully submitted workflow {run_id} for execution - "
-                        "run remains QUEUED until EventBridge status update"
-                )
-            else:
-                raise ValueError("Workflow submission response did not contain omics_run_id")
-
-        except ValueError as e:
-            logger.error(f"Failed to submit workflow {run_id} for execution: {str(e)}")
+        if 'omics_run_id' not in submission_response:
+            logger.error("Workflow submission response did not contain omics_run_id")
             run.state = WorkflowState.SYSTEM_ERROR
             run.system_logs.append(f"Failed to submit for execution: {str(e)}")
             await self.db.commit()
+
+        # Update run with execution ID but keep QUEUED state
+        if not run.outputs:
+            run.outputs = {}
+
+        run.workflow_run_id = submission_response['omics_run_id']
+
+        # Keep state as QUEUED - EventBridge events will update status and outputs
+        run.system_logs.append(
+                f"Successfully submitted for execution. "
+                f"Omics run ID: {submission_response['omics_run_id']}")
+        await self.db.commit()
+        logger.info(
+                f"Successfully submitted workflow {run_id} for execution - "
+                "run remains QUEUED until EventBridge status update"
+        )
 
         return run_id
 
