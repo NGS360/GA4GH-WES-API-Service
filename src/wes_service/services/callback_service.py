@@ -107,6 +107,21 @@ class CallbackService:
                 detail=f"Unknown Omics status: {payload.status}",
             )
 
+        # If no state change, return success without updating
+        if new_state == previous_state:
+            logger.info(
+                f"No state change for run {payload.wes_run_id} "
+                f"(still {new_state}), returning success"
+            )
+            return CallbackResponse(
+                success=True,
+                wes_run_id=run.id,
+                previous_state=previous_state.value,
+                new_state=new_state.value,
+                message="No state change",
+                already_processed=False,
+            )
+
         # Validate state transition
         if not self._is_valid_transition(previous_state, new_state):
             # If run is already in terminal state, don't update but return success

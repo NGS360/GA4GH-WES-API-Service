@@ -107,14 +107,14 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
             # Check for errors
             if response['StatusCode'] != 200:
-                raise Exception(
+                raise RuntimeError(
                     f"Lambda invocation failed with status {response['StatusCode']}: "
                     f"{response_payload}"
                 )
 
             if response_payload.get('statusCode') != 200:
                 error_msg = response_payload.get('message', 'Unknown error')
-                raise Exception(f"Workflow submission failed: {error_msg}")
+                raise RuntimeError(f"Workflow submission failed: {error_msg}")
 
             return response_payload
 
