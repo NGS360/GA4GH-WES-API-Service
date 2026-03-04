@@ -102,6 +102,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                 Payload=json.dumps(lambda_payload)
             )
         )
+        logger.info(f"Lambda invocation response: {response}")
 
         # Check for errors
         if response['StatusCode'] != 200:
@@ -112,10 +113,10 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             return {}
 
         # Parse response
+        # The payload is the result of the lambda fn calling Omics.
         response_payload = json.loads(response['Payload'].read())
+        logger.info(f"Lambda invocation response payload: {response_payload}")
 
-        # TBD: Will the response also have a statusCode?  If so, what generates this?
-        # I don't believe this code is correct.
         if response_payload.get('statusCode') != 200:
             error_msg = response_payload.get('message', 'Unknown error')
             logger.error(f"Workflow submission failed: {error_msg}")
