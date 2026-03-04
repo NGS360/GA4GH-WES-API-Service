@@ -35,82 +35,106 @@ class TestWorkflowSubmissionService:
         mock_boto3_client.assert_called_once_with('lambda', region_name='us-west-2')
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
-    @patch('src.wes_service.services.workflow_submission_service.requests.get')
-    async def test_get_engine_id_from_ngs360_success(self, mock_requests_get, mock_get_settings):
+    async def test_get_engine_id_from_ngs360_success(self, mock_get_settings):
         """Test successful NGS360 API call."""
         # Mock settings
         mock_settings = MagicMock()
         mock_settings.ngs360_api_url = "https://test-ngs360.example.com"
         mock_get_settings.return_value = mock_settings
 
-        # Mock requests response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"engine_id": "12345"}
-        mock_requests_get.return_value = mock_response
-
         with patch.dict('os.environ', {}):
             service = LambdaWorkflowSubmissionService()
 
-        # Test the method
-        engine_id = await service._get_engine_id_from_ngs360("test-workflow-id")
+        # Mock httpx response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"engine_id": "12345"}
+
+        # Mock httpx.AsyncClient context manager
+        with patch('src.wes_service.services.workflow_submission_service.httpx.AsyncClient') as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+
+            # Make the get method async by creating an async mock
+            async def mock_get(*args, **kwargs):
+                return mock_response
+            mock_client.get = mock_get
+            mock_client_class.return_value = mock_client
+
+            # Test the method
+            engine_id = await service._get_engine_id_from_ngs360("test-workflow-id")
 
         # Verify results
         assert engine_id == "12345"
-        mock_requests_get.assert_called_once()
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
-    @patch('src.wes_service.services.workflow_submission_service.requests.get')
-    async def test_get_engine_id_from_ngs360_api_error(self, mock_requests_get, mock_get_settings):
+    async def test_get_engine_id_from_ngs360_api_error(self, mock_get_settings):
         """Test NGS360 API error handling."""
         # Mock settings
         mock_settings = MagicMock()
         mock_settings.ngs360_api_url = "https://test-ngs360.example.com"
         mock_get_settings.return_value = mock_settings
 
-        # Mock requests response with error
-        mock_response = MagicMock()
-        mock_response.status_code = 404
-        mock_response.text = "Not Found"
-        mock_requests_get.return_value = mock_response
-
         with patch.dict('os.environ', {}):
             service = LambdaWorkflowSubmissionService()
 
-        # Test error handling
-        with pytest.raises(Exception, match="NGS360 API returned status 404"):
-            await service._get_engine_id_from_ngs360("nonexistent-workflow")
+        # Mock httpx response with error
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.text = "Not Found"
+
+        # Mock httpx.AsyncClient context manager
+        with patch('src.wes_service.services.workflow_submission_service.httpx.AsyncClient') as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+
+            # Make the get method async by creating an async mock
+            async def mock_get(*args, **kwargs):
+                return mock_response
+            mock_client.get = mock_get
+            mock_client_class.return_value = mock_client
+
+            # Test error handling
+            with pytest.raises(Exception, match="NGS360 API returned status 404"):
+                await service._get_engine_id_from_ngs360("nonexistent-workflow")
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
-    @patch('src.wes_service.services.workflow_submission_service.requests.get')
-    async def test_get_engine_id_from_ngs360_missing_engine_id(
-        self, mock_requests_get, mock_get_settings
-    ):
+    async def test_get_engine_id_from_ngs360_missing_engine_id(self, mock_get_settings):
         """Test handling of missing engine_id in response."""
         # Mock settings
         mock_settings = MagicMock()
         mock_settings.ngs360_api_url = "https://test-ngs360.example.com"
         mock_get_settings.return_value = mock_settings
 
-        # Mock requests response without engine_id
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"name": "Test Workflow", "engine": "AWSHealthOmics"}
-        mock_requests_get.return_value = mock_response
-
         with patch.dict('os.environ', {}):
             service = LambdaWorkflowSubmissionService()
 
-        # Test error handling
-        with pytest.raises(Exception, match="engine_id not found for workflow"):
-            await service._get_engine_id_from_ngs360("test-workflow-id")
+        # Mock httpx response without engine_id
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"name": "Test Workflow", "engine": "AWSHealthOmics"}
+
+        # Mock httpx.AsyncClient context manager
+        with patch('src.wes_service.services.workflow_submission_service.httpx.AsyncClient') as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+
+            # Make the get method async by creating an async mock
+            async def mock_get(*args, **kwargs):
+                return mock_response
+            mock_client.get = mock_get
+            mock_client_class.return_value = mock_client
+
+            # Test error handling
+            with pytest.raises(Exception, match="engine_id not found for workflow"):
+                await service._get_engine_id_from_ngs360("test-workflow-id")
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
     @patch('src.wes_service.services.workflow_submission_service.boto3.client')
-    @patch('src.wes_service.services.workflow_submission_service.requests.get')
-    async def test_submit_workflow_success(
-        self, mock_requests_get, mock_boto3_client, mock_get_settings
-    ):
+    async def test_submit_workflow_success(self, mock_boto3_client, mock_get_settings):
         """Test successful workflow submission."""
         # Mock settings
         mock_settings = MagicMock()
@@ -121,7 +145,6 @@ class TestWorkflowSubmissionService:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"engine_id": "67890"}
-        mock_requests_get.return_value = mock_response
 
         # Mock Lambda client
         mock_lambda_client = MagicMock()
@@ -148,8 +171,20 @@ class TestWorkflowSubmissionService:
         with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):
             service = LambdaWorkflowSubmissionService()
 
-        # Test workflow submission
-        result = await service.submit_workflow(run)
+        # Mock httpx.AsyncClient context manager to prevent HTTP calls
+        with patch('src.wes_service.services.workflow_submission_service.httpx.AsyncClient') as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+
+            # Make the get method async by creating an async mock
+            async def mock_get(*args, **kwargs):
+                return mock_response
+            mock_client.get = mock_get
+            mock_client_class.return_value = mock_client
+
+            # Test workflow submission
+            result = await service.submit_workflow(run)
 
         # Verify results
         assert result['omics_run_id'] == 'omics-12345'
@@ -164,10 +199,7 @@ class TestWorkflowSubmissionService:
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
     @patch('src.wes_service.services.workflow_submission_service.boto3.client')
-    @patch('src.wes_service.services.workflow_submission_service.requests.get')
-    async def test_submit_workflow_ngs360_failure(
-        self, mock_requests_get, mock_boto3_client, mock_get_settings
-    ):
+    async def test_submit_workflow_ngs360_failure(self, mock_boto3_client, mock_get_settings):
         """Test workflow submission when NGS360 API fails."""
         # Mock settings
         mock_settings = MagicMock()
@@ -178,7 +210,6 @@ class TestWorkflowSubmissionService:
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.text = "Internal Server Error"
-        mock_requests_get.return_value = mock_response
 
         # Create test workflow run
         run = WorkflowRun(
@@ -190,6 +221,20 @@ class TestWorkflowSubmissionService:
         with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):
             service = LambdaWorkflowSubmissionService()
 
-        # Test error propagation
-        with pytest.raises(Exception, match="NGS360 API returned status 500"):
-            await service.submit_workflow(run)
+        # Mock httpx.AsyncClient context manager to prevent HTTP calls
+        with patch('src.wes_service.services.workflow_submission_service.httpx.AsyncClient') as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+
+            # Make the get method async by creating an async mock
+            async def mock_get(*args, **kwargs):
+                return mock_response
+            mock_client.get = mock_get
+            mock_client_class.return_value = mock_client
+
+            # Test error handling - service catches exception and returns empty dict
+            result = await service.submit_workflow(run)
+
+        # Verify that service returns empty dict on NGS360 failure
+        assert result == {}

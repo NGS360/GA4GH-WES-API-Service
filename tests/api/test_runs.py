@@ -2,16 +2,20 @@
 
 import io
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
 
+WORKFLOW_SUBMIT_PATCH = (
+    'src.wes_service.services.workflow_submission_service'
+    '.LambdaWorkflowSubmissionService.submit_workflow'
+)
 
 class TestPAMLFunctions:
     """Tests endpoint as PAML would do.."""
 
-    @patch('src.wes_service.services.workflow_submission_service.LambdaWorkflowSubmissionService.submit_workflow')
+    @patch(WORKFLOW_SUBMIT_PATCH)
     async def test_paml_submit_task(self, mock_submit, client: TestClient):
         """Test submit task through PAML"""
         # Mock the workflow submission to return a successful response
@@ -233,7 +237,7 @@ class TestPAMLFunctions:
 class TestSubmitWorkflow:
     """Tests for POST /runs endpoint."""
 
-    @patch('src.wes_service.services.workflow_submission_service.LambdaWorkflowSubmissionService.submit_workflow')
+    @patch(WORKFLOW_SUBMIT_PATCH)
     def test_submit_workflow_minimal(self, mock_submit, client: TestClient):
         """Test submitting a workflow with minimal parameters."""
         # Mock the workflow submission to return a successful response
@@ -253,7 +257,7 @@ class TestSubmitWorkflow:
         assert "run_id" in data
         assert isinstance(data["run_id"], str)
 
-    @patch('src.wes_service.services.workflow_submission_service.LambdaWorkflowSubmissionService.submit_workflow')
+    @patch(WORKFLOW_SUBMIT_PATCH)
     def test_submit_workflow_with_params(self, mock_submit, client: TestClient):
         """Test submitting a workflow with parameters."""
         # Mock the workflow submission to return a successful response
@@ -278,7 +282,7 @@ class TestSubmitWorkflow:
         data = response.json()
         assert "run_id" in data
 
-    @patch('src.wes_service.services.workflow_submission_service.LambdaWorkflowSubmissionService.submit_workflow')
+    @patch(WORKFLOW_SUBMIT_PATCH)
     def test_submit_workflow_with_attachments(self, mock_submit, client: TestClient):
         """Test submitting a workflow with file attachments."""
         # Mock the workflow submission to return a successful response
