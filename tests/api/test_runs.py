@@ -31,8 +31,8 @@ class TestPAMLFunctions:
             "name": name
         }
         tags = {
-            "Name": name,
-            "Project": project["name"],
+            "TaskName": name,
+            "ProjectId": project["name"],
         }
         response = client.post(
             "/ga4gh/wes/v1/runs",
@@ -175,8 +175,8 @@ class TestPAMLFunctions:
             workflow_url="123456",
             user_id="test_user",
             tags={
-                "Project": project["name"],
-                "Name": task_name
+                "ProjectId": project["name"],
+                "TaskName": task_name
             }
         )
         test_db.add(run1)
@@ -188,8 +188,8 @@ class TestPAMLFunctions:
             workflow_url="123456",
             user_id="test_user",
             tags={
-                "Project": "test-other-project-names",
-                "Name": task_name
+                "ProjectId": "test-other-project-names",
+                "TaskName": task_name
             }
         )
         test_db.add(run2)
@@ -201,8 +201,8 @@ class TestPAMLFunctions:
             workflow_url="123456",
             user_id="test_user",
             tags={
-                "Project": project["name"],
-                "Name": "test-other-task-names"
+                "ProjectId": project["name"],
+                "TaskName": "test-other-task-names"
             }
         )
         test_db.add(run3)
@@ -218,8 +218,8 @@ class TestPAMLFunctions:
         assert len(data["runs"]) == 3
         tasks = []
         for run in data["runs"]:
-            if run["tags"]["Project"] == project["name"]:
-                if run["tags"]["Name"] == task_name:
+            if run["tags"]["ProjectId"] == project["name"]:
+                if run["tags"]["TaskName"] == task_name:
                     tasks += [run]
         assert len(tasks) == 1
         assert tasks[0]["run_id"] == "test-get-task1"
@@ -255,8 +255,8 @@ class TestSubmitWorkflow:
                 "workflow_type_version": "v1.0",
                 "workflow_params": json.dumps(params),
                 "tags": json.dumps({
-                    "project": "test",
-                    "name": "example_workflow"
+                    "ProjectId": "test",
+                    "TaskName": "example_workflow"
                 }),
             },
         )
@@ -334,7 +334,7 @@ class TestListRuns:
             workflow_type="CWL",
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow1.cwl",
-            tags={"project": "test", "type": "A"},
+            tags={"ProjectId": "test", "type": "A"},
             user_id="test_user",
         )
         test_db.add(run1)
@@ -344,7 +344,7 @@ class TestListRuns:
             workflow_type="CWL",
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow2.cwl",
-            tags={"project": "test", "type": "B"},
+            tags={"ProjectId": "test", "type": "B"},
             user_id="test_user",
         )
         test_db.add(run2)
@@ -354,7 +354,7 @@ class TestListRuns:
             workflow_type="CWL",
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow2.cwl",
-            tags={"project": "another_test", "type": "B"},
+            tags={"ProjectId": "another_test", "type": "B"},
             user_id="test_user",
         )
         test_db.add(run3)
@@ -370,10 +370,10 @@ class TestListRuns:
         assert len(data["runs"]) == 1
         assert data["runs"][0]["run_id"] == "run1"
 
-        # Filter by tag project=test
+        # Filter by tag ProjectId=test
         response = client.get(
             "/ga4gh/wes/v1/runs",
-            params={"tags": json.dumps({"project": "test"})},
+            params={"tags": json.dumps({"ProjectId": "test"})},
         )
         assert response.status_code == 200
         data = response.json()
@@ -381,10 +381,10 @@ class TestListRuns:
         run_ids = {run["run_id"] for run in data["runs"]}
         assert run_ids == {"run1", "run2"}
 
-        # Filter by 2 tags, project=test and type=B
+        # Filter by 2 tags, ProjectId=test and type=B
         response = client.get(
             "/ga4gh/wes/v1/runs",
-            params={"tags": json.dumps({"project": "test", "type": "B"})},
+            params={"tags": json.dumps({"ProjectId": "test", "type": "B"})},
         )
         assert response.status_code == 200
         data = response.json()
@@ -443,7 +443,7 @@ class TestGetRunLog:
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             workflow_params={"input": "value"},
-            tags={"project": "test"},
+            tags={"ProjectId": "test"},
             user_id="test_user",
         )
         test_db.add(run)
