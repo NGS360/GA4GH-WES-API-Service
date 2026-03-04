@@ -63,6 +63,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         Raises:
             Exception: If Lambda invocation or workflow submission fails
         """
+        # TBD: The try/catch block is too large.  This should only wrap the lambda invocation.
         try:
             # Get engine_id from NGS360 API using the workflow_url as the workflow ID
             engine_id = await self._get_engine_id_from_ngs360(run.workflow_url)
