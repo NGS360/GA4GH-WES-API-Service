@@ -102,16 +102,17 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                 )
             )
 
-            # Parse response
-            response_payload = json.loads(response['Payload'].read())
-
             # Check for errors
             if response['StatusCode'] != 200:
                 raise RuntimeError(
                     f"Lambda invocation failed with status {response['StatusCode']}: "
-                    f"{response_payload}"
+                    f"{response}"
                 )
 
+            # Parse response
+            response_payload = json.loads(response['Payload'].read())
+
+            # TBD: Will the response also have a statusCode?  If so, what generates this?  I don't believe this code is correct.
             if response_payload.get('statusCode') != 200:
                 error_msg = response_payload.get('message', 'Unknown error')
                 raise RuntimeError(f"Workflow submission failed: {error_msg}")
