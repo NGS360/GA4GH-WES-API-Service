@@ -9,6 +9,9 @@ from src.wes_service.services.workflow_submission_service import (
     LambdaWorkflowSubmissionService,
 )
 
+HTTPX_CLIENT_PATCH = (
+    'src.wes_service.services.workflow_submission_service.httpx.AsyncClient'
+)
 
 @pytest.mark.asyncio
 class TestWorkflowSubmissionService:
@@ -51,7 +54,7 @@ class TestWorkflowSubmissionService:
         mock_response.json.return_value = {"engine_id": "12345"}
 
         # Mock httpx.AsyncClient context manager
-        with patch('src.wes_service.services.workflow_submission_service.httpx.AsyncClient') as mock_client_class:
+        with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
             mock_client = MagicMock()
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None
@@ -85,7 +88,7 @@ class TestWorkflowSubmissionService:
         mock_response.text = "Not Found"
 
         # Mock httpx.AsyncClient context manager
-        with patch('src.wes_service.services.workflow_submission_service.httpx.AsyncClient') as mock_client_class:
+        with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
             mock_client = MagicMock()
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None
@@ -117,7 +120,7 @@ class TestWorkflowSubmissionService:
         mock_response.json.return_value = {"name": "Test Workflow", "engine": "AWSHealthOmics"}
 
         # Mock httpx.AsyncClient context manager
-        with patch('src.wes_service.services.workflow_submission_service.httpx.AsyncClient') as mock_client_class:
+        with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
             mock_client = MagicMock()
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None
@@ -172,7 +175,7 @@ class TestWorkflowSubmissionService:
             service = LambdaWorkflowSubmissionService()
 
         # Mock httpx.AsyncClient context manager to prevent HTTP calls
-        with patch('src.wes_service.services.workflow_submission_service.httpx.AsyncClient') as mock_client_class:
+        with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
             mock_client = MagicMock()
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None
@@ -222,7 +225,7 @@ class TestWorkflowSubmissionService:
             service = LambdaWorkflowSubmissionService()
 
         # Mock httpx.AsyncClient context manager to prevent HTTP calls
-        with patch('src.wes_service.services.workflow_submission_service.httpx.AsyncClient') as mock_client_class:
+        with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
             mock_client = MagicMock()
             mock_client.__aenter__.return_value = mock_client
             mock_client.__aexit__.return_value = None
