@@ -12,6 +12,7 @@ WORKFLOW_SUBMIT_PATCH = (
     '.LambdaWorkflowSubmissionService.submit_workflow'
 )
 
+
 class TestPAMLFunctions:
     """Tests endpoint as PAML would do.."""
 
