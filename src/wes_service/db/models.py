@@ -84,8 +84,8 @@ class WorkflowRun(Base):
 
     # Outputs
     workflow_run_id: Mapped[str | None] = mapped_column(
-        String(36), 
-        nullable=True, 
+        String(36),
+        nullable=True,
         index=True,
         comment="ID for the executed workflow run in the underlying execution system (e.g. Omics Run ID)",
     )
