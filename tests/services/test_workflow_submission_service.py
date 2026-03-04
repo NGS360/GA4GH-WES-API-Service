@@ -13,6 +13,7 @@ HTTPX_CLIENT_PATCH = (
     'src.wes_service.services.workflow_submission_service.httpx.AsyncClient'
 )
 
+
 @pytest.mark.asyncio
 class TestWorkflowSubmissionService:
     """Tests for WorkflowSubmissionService."""
