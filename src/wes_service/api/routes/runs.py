@@ -102,7 +102,7 @@ async def run_workflow(
     """
     workflow_submission = LambdaWorkflowSubmissionService()
     service = RunService(db, storage, workflow_submission)
-    run_id = await service.create_run(
+    response = await service.create_run(
         workflow_params=workflow_params,
         workflow_type=workflow_type,
         workflow_type_version=workflow_type_version,
@@ -114,8 +114,12 @@ async def run_workflow(
         workflow_engine_parameters=workflow_engine_parameters,
         user_id=user,
     )
-
-    return RunId(run_id=run_id)
+    if "error" in response:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=response["error"],
+        )
+    return RunId(run_id=response["run_id"])
 
 
 @router.get(

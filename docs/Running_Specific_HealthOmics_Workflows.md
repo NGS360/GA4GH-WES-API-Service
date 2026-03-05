@@ -20,7 +20,7 @@ WORKFLOW_EXECUTOR=omics
 # Configure AWS Omics settings
 OMICS_REGION=us-east-1
 OMICS_ROLE_ARN=arn:aws:iam::123456789012:role/OmicsWorkflowRole
-OMICS_OUTPUT_BUCKET=s3://your-bucket/output-path
+S3_BUCKET_NAME=your-bucket
 ```
 
 2. Ensure you have AWS credentials configured on the system running the WES API service

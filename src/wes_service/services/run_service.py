@@ -57,7 +57,7 @@ class RunService:
         workflow_engine_version: str | None,
         workflow_engine_parameters: str | None,
         user_id: str,
-    ) -> str:
+    ) -> dict:
         """
         Create a new workflow run.
 
@@ -67,23 +67,33 @@ class RunService:
             workflow_type_version: Workflow type version
             workflow_url: URL to workflow definition
             workflow_attachments: List of uploaded files
-            tags: JSON string of tags
+            tags: JSON string of tags including ProjectId and TaskName
             workflow_engine: Workflow engine name
             workflow_engine_version: Workflow engine version
             workflow_engine_parameters: JSON string of engine parameters
             user_id: User creating the run
 
         Returns:
-            Run ID
+            Dict of {
+                'run_id': str,
+                'error': str (optional)
+            }
         """
         # Parse JSON strings
         params = json.loads(workflow_params) if workflow_params else {}
         tags_dict = json.loads(tags) if tags else {}
-        engine_params = (
-            json.loads(workflow_engine_parameters)
-            if workflow_engine_parameters
-            else {}
-        )
+
+        if workflow_engine_parameters:
+            engine_params = json.loads(workflow_engine_parameters)
+        else:
+            engine_params = {}
+
+        output_bucket = get_settings().s3_bucket_name
+        if "ProjectId" not in tags_dict:
+            raise ValueError("ProjectId tag is required.")
+        project_id = tags_dict.get("ProjectId")
+        output_uri = f"s3://{output_bucket}/Project/{project_id}/"
+        engine_params["outputUri"] = output_uri
 
         # Add "Name" tag if not already present, extracting it from workflow_engine_parameters
         if "Name" not in tags_dict and engine_params and "name" in engine_params:
@@ -94,10 +104,8 @@ class RunService:
             self.settings.get_workflow_type_versions().keys()
         )
         if workflow_type.upper() not in supported_types:
-            raise ValueError(
-                f"Unsupported workflow type: {workflow_type}. "
-                f"Supported types: {supported_types}"
-            )
+            return {"error": f"Unsupported workflow type: {workflow_type}. "
+                    f"Supported types: {supported_types}"}
 
         # Create run record
         run_id = str(uuid4())
@@ -139,34 +147,33 @@ class RunService:
         await self.db.commit()
 
         # Submit workflow for execution
-        try:
-            logger.info(f"Submitting workflow {run_id} for execution")
-            submission_response = await self.workflow_submission.submit_workflow(run)
+        logger.info(f"Submitting workflow {run_id} for execution")
+        submission_response = await self.workflow_submission.submit_workflow(run)
 
-            # Update run with execution ID but keep QUEUED state
-            if submission_response.get('omics_run_id'):
-                if not run.outputs:
-                    run.outputs = {}
-                run.outputs['omics_run_id'] = submission_response['omics_run_id']
-
-                # Keep state as QUEUED - EventBridge events will update status and outputs
-                run.system_logs.append(
-                        f"Successfully submitted for execution. "
-                        f"Omics run ID: {submission_response['omics_run_id']}")
-                await self.db.commit()
-                logger.info(
-                        f"Successfully submitted workflow {run_id} for execution - "
-                        "run remains QUEUED until EventBridge status update")
-            else:
-                raise Exception("Workflow submission response did not contain omics_run_id")
-
-        except Exception as e:
-            logger.error(f"Failed to submit workflow {run_id} for execution: {str(e)}")
+        if 'omics_run_id' not in submission_response:
+            logger.error("Workflow submission response did not contain omics_run_id")
             run.state = WorkflowState.SYSTEM_ERROR
-            run.system_logs.append(f"Failed to submit for execution: {str(e)}")
+            run.system_logs.append(f"Error submitting workflow {run_id} for execution")
             await self.db.commit()
+            return {"error": f"Error submitting workflow {run_id} for execution"}
 
-        return run_id
+        # Update run with execution ID but keep QUEUED state
+        if not run.outputs:
+            run.outputs = {}
+
+        run.workflow_run_id = submission_response['omics_run_id']
+
+        # Keep state as QUEUED - EventBridge events will update status and outputs
+        run.system_logs.append(
+                f"Successfully submitted for execution. "
+                f"Omics run ID: {submission_response['omics_run_id']}")
+        await self.db.commit()
+        logger.info(
+                f"Successfully submitted workflow {run_id} for execution - "
+                "run remains QUEUED until EventBridge status update"
+        )
+
+        return {"run_id": run_id}
 
     async def list_runs(
         self,

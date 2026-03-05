@@ -37,7 +37,7 @@ class TestWorkflowLifecycle:
                     "workflow_type": "CWL",
                     "workflow_type_version": "v1.0",
                     "workflow_params": '{"input": "test.txt"}',
-                    "tags": '{"env": "test", "user": "tester"}',
+                    "tags": '{"ProjectId": "test_project", "env": "test", "user": "tester"}',
                 },
             )
             assert response.status_code == 200
@@ -104,6 +104,7 @@ class TestWorkflowLifecycle:
                     "workflow_url": "https://example.com/workflow.cwl",
                     "workflow_type": "CWL",
                     "workflow_type_version": "v1.0",
+                    "tags": '{"ProjectId": "test_project"}',
                 },
             )
             run_id = response.json()["run_id"]
@@ -159,7 +160,7 @@ class TestWorkflowLifecycle:
                         "workflow_url": f"https://example.com/workflow-{i}.cwl",
                         "workflow_type": "CWL",
                         "workflow_type_version": "v1.0",
-                        "tags": f'{{"batch": "{i//5}"}}',
+                        "tags": f'{{"ProjectId": "test_project", "batch": "{i//5}"}}',
                     },
                 )
                 run_ids.append(response.json()["run_id"])

@@ -54,12 +54,12 @@ class TestRunService:
             "cacheId": execution_settings["cacheId"],
             "name": name
         }
-        run_id = await service.create_run(
+        result_dict = await service.create_run(
             workflow_params=json.dumps(parameters),
             workflow_type="CWL",
             workflow_type_version="v1.0",
             workflow_url=workflow,
-            tags=json.dumps({"Name": name, "Project": project["id"]}),
+            tags=json.dumps({"TaskName": name, "ProjectId": project["id"]}),
             workflow_engine_parameters=json.dumps(
                 workflow_engine_parameters
             ),
@@ -70,7 +70,9 @@ class TestRunService:
         )
 
         # Verify run was created correctly and added to db
-        assert run_id is not None
+        assert result_dict is not None
+        assert "run_id" in result_dict
+        run_id = result_dict["run_id"]
         assert isinstance(run_id, str)
         result = await test_db.get(WorkflowRun, run_id)
         assert result is not None
@@ -92,8 +94,8 @@ class TestRunService:
             workflow_type_version="v1.0",
             workflow_url="123456",
             tags={
-                "Name": "test_name",
-                "Project": "test_project"
+                "TaskName": "test_name",
+                "ProjectId": "test_project"
             },
         )
         test_db.add(run)
@@ -111,20 +113,22 @@ class TestRunService:
         """Test creating a new workflow run."""
         service = RunService(test_db, mock_storage, mock_workflow_submission)
 
-        run_id = await service.create_run(
+        result_dict = await service.create_run(
             workflow_params='{"input": "value"}',
             workflow_type="CWL",
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             workflow_attachments=None,
-            tags='{"project": "test"}',
+            tags='{"ProjectId": "test"}',
             workflow_engine="cwltool",
             workflow_engine_version="3.1",
             workflow_engine_parameters=None,
             user_id="testuser",
         )
 
-        assert run_id is not None
+        assert result_dict is not None
+        assert "run_id" in result_dict
+        run_id = result_dict["run_id"]
         assert isinstance(run_id, str)
 
         # Verify run was created in database

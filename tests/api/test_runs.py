@@ -2,16 +2,26 @@
 
 import io
 import json
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
+
+WORKFLOW_SUBMIT_PATCH = (
+    'src.wes_service.services.workflow_submission_service'
+    '.LambdaWorkflowSubmissionService.submit_workflow'
+)
 
 
 class TestPAMLFunctions:
     """Tests endpoint as PAML would do.."""
 
-    async def test_paml_submit_task(self, client: TestClient):
+    @patch(WORKFLOW_SUBMIT_PATCH)
+    async def test_paml_submit_task(self, mock_submit, client: TestClient):
         """Test submit task through PAML"""
+        # Mock the workflow submission to return a successful response
+        mock_submit.return_value = {"omics_run_id": "123456"}
+
         # Mimic inputs of PAML submit_task()
         name = "test_wes_run"
         project = {
@@ -31,8 +41,8 @@ class TestPAMLFunctions:
             "name": name
         }
         tags = {
-            "Name": name,
-            "Project": project["name"],
+            "TaskName": name,
+            "ProjectId": project["id"],
         }
         response = client.post(
             "/ga4gh/wes/v1/runs",
@@ -175,8 +185,8 @@ class TestPAMLFunctions:
             workflow_url="123456",
             user_id="test_user",
             tags={
-                "Project": project["name"],
-                "Name": task_name
+                "ProjectId": project["id"],
+                "TaskName": task_name
             }
         )
         test_db.add(run1)
@@ -188,8 +198,8 @@ class TestPAMLFunctions:
             workflow_url="123456",
             user_id="test_user",
             tags={
-                "Project": "test-other-project-names",
-                "Name": task_name
+                "ProjectId": "test-other-project-names",
+                "TaskName": task_name
             }
         )
         test_db.add(run2)
@@ -201,8 +211,8 @@ class TestPAMLFunctions:
             workflow_url="123456",
             user_id="test_user",
             tags={
-                "Project": project["name"],
-                "Name": "test-other-task-names"
+                "ProjectId": project["id"],
+                "TaskName": "test-other-task-names"
             }
         )
         test_db.add(run3)
@@ -218,8 +228,8 @@ class TestPAMLFunctions:
         assert len(data["runs"]) == 3
         tasks = []
         for run in data["runs"]:
-            if run["tags"]["Project"] == project["name"]:
-                if run["tags"]["Name"] == task_name:
+            if run["tags"]["ProjectId"] == project["id"]:
+                if run["tags"]["TaskName"] == task_name:
                     tasks += [run]
         assert len(tasks) == 1
         assert tasks[0]["run_id"] == "test-get-task1"
@@ -228,14 +238,19 @@ class TestPAMLFunctions:
 class TestSubmitWorkflow:
     """Tests for POST /runs endpoint."""
 
-    def test_submit_workflow_minimal(self, client: TestClient):
+    @patch(WORKFLOW_SUBMIT_PATCH)
+    def test_submit_workflow_minimal(self, mock_submit, client: TestClient):
         """Test submitting a workflow with minimal parameters."""
+        # Mock the workflow submission to return a successful response
+        mock_submit.return_value = {"omics_run_id": "123456"}
+
         response = client.post(
             "/ga4gh/wes/v1/runs",
             data={
                 "workflow_url": "https://example.com/workflow.cwl",
                 "workflow_type": "CWL",
                 "workflow_type_version": "v1.0",
+                "tags": json.dumps({"ProjectId": "test_project"}),
             },
         )
         assert response.status_code == 200
@@ -243,8 +258,12 @@ class TestSubmitWorkflow:
         assert "run_id" in data
         assert isinstance(data["run_id"], str)
 
-    def test_submit_workflow_with_params(self, client: TestClient):
+    @patch(WORKFLOW_SUBMIT_PATCH)
+    def test_submit_workflow_with_params(self, mock_submit, client: TestClient):
         """Test submitting a workflow with parameters."""
+        # Mock the workflow submission to return a successful response
+        mock_submit.return_value = {"omics_run_id": "123456"}
+
         params = {"input_file": "s3://bucket/input.txt"}
 
         response = client.post(
@@ -255,8 +274,8 @@ class TestSubmitWorkflow:
                 "workflow_type_version": "v1.0",
                 "workflow_params": json.dumps(params),
                 "tags": json.dumps({
-                    "project": "test",
-                    "name": "example_workflow"
+                    "ProjectId": "test",
+                    "TaskName": "example_workflow"
                 }),
             },
         )
@@ -264,8 +283,12 @@ class TestSubmitWorkflow:
         data = response.json()
         assert "run_id" in data
 
-    def test_submit_workflow_with_attachments(self, client: TestClient):
+    @patch(WORKFLOW_SUBMIT_PATCH)
+    def test_submit_workflow_with_attachments(self, mock_submit, client: TestClient):
         """Test submitting a workflow with file attachments."""
+        # Mock the workflow submission to return a successful response
+        mock_submit.return_value = {"omics_run_id": "123456"}
+
         files = [
             ("workflow_attachment", ("workflow.cwl", io.BytesIO(b"content1"))),
             ("workflow_attachment", ("inputs.json", io.BytesIO(b"content2"))),
@@ -277,6 +300,7 @@ class TestSubmitWorkflow:
                 "workflow_url": "workflow.cwl",
                 "workflow_type": "CWL",
                 "workflow_type_version": "v1.0",
+                "tags": json.dumps({"ProjectId": "test_project"}),
             },
             files=files,
         )
@@ -334,7 +358,7 @@ class TestListRuns:
             workflow_type="CWL",
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow1.cwl",
-            tags={"project": "test", "type": "A"},
+            tags={"ProjectId": "test", "type": "A"},
             user_id="test_user",
         )
         test_db.add(run1)
@@ -344,7 +368,7 @@ class TestListRuns:
             workflow_type="CWL",
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow2.cwl",
-            tags={"project": "test", "type": "B"},
+            tags={"ProjectId": "test", "type": "B"},
             user_id="test_user",
         )
         test_db.add(run2)
@@ -354,7 +378,7 @@ class TestListRuns:
             workflow_type="CWL",
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow2.cwl",
-            tags={"project": "another_test", "type": "B"},
+            tags={"ProjectId": "another_test", "type": "B"},
             user_id="test_user",
         )
         test_db.add(run3)
@@ -370,10 +394,10 @@ class TestListRuns:
         assert len(data["runs"]) == 1
         assert data["runs"][0]["run_id"] == "run1"
 
-        # Filter by tag project=test
+        # Filter by tag ProjectId=test
         response = client.get(
             "/ga4gh/wes/v1/runs",
-            params={"tags": json.dumps({"project": "test"})},
+            params={"tags": json.dumps({"ProjectId": "test"})},
         )
         assert response.status_code == 200
         data = response.json()
@@ -381,10 +405,10 @@ class TestListRuns:
         run_ids = {run["run_id"] for run in data["runs"]}
         assert run_ids == {"run1", "run2"}
 
-        # Filter by 2 tags, project=test and type=B
+        # Filter by 2 tags, ProjectId=test and type=B
         response = client.get(
             "/ga4gh/wes/v1/runs",
-            params={"tags": json.dumps({"project": "test", "type": "B"})},
+            params={"tags": json.dumps({"ProjectId": "test", "type": "B"})},
         )
         assert response.status_code == 200
         data = response.json()
@@ -443,7 +467,7 @@ class TestGetRunLog:
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             workflow_params={"input": "value"},
-            tags={"project": "test"},
+            tags={"ProjectId": "test"},
             user_id="test_user",
         )
         test_db.add(run)

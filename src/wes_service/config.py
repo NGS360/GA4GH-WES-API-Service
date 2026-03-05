@@ -157,10 +157,6 @@ class Settings(BaseSettings):
         default="",
         description="AWS IAM role ARN for Omics workflow execution",
     )
-    omics_output_bucket: str = Field(
-        default="s3://omics-outputs",
-        description="S3 bucket URI for Omics workflow outputs",
-    )
 
     # Authentication Configuration
     auth_method: Literal["basic", "oauth2", "none"] = Field(

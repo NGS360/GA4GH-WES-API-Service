@@ -83,6 +83,12 @@ class WorkflowRun(Base):
     )
 
     # Outputs
+    workflow_run_id: Mapped[str | None] = mapped_column(
+        String(36),
+        nullable=True,
+        index=True,
+        comment="ID for executed workflow run in underlying execution system (e.g. Omics Run ID)",
+    )
     outputs: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     # User tracking
