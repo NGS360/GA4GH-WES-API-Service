@@ -96,8 +96,9 @@ class RunService:
         engine_params["outputUri"] = output_uri
 
         # Add "Name" tag if not already present, extracting it from workflow_engine_parameters
-        if "Name" not in tags_dict and engine_params and "name" in engine_params:
-            tags_dict["Name"] = engine_params["name"]
+        if "TaskName" not in tags_dict and engine_params and "name" in engine_params:
+            tags_dict["TaskName"] = engine_params["name"]
+        task_name = tags_dict["TaskName"] if "TaskName" in tags_dict else None
 
         # Validate workflow type
         supported_types = list(
@@ -120,6 +121,8 @@ class RunService:
             workflow_engine_version=workflow_engine_version,
             workflow_engine_parameters=engine_params,
             tags=tags_dict,
+            project=project_id,
+            task_name=task_name,
             user_id=user_id,
         )
 
