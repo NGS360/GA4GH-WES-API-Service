@@ -43,8 +43,8 @@ class WorkflowRun(Base):
         nullable=False,
         index=True,
     )
-    project: Mapped[str]  = mapped_column(String(50), nullable=False)
-    task_name: Mapped[str]  = mapped_column(String(200), nullable=False)
+    project: Mapped[str] = mapped_column(String(50), nullable=False)
+    task_name: Mapped[str] = mapped_column(String(200), nullable=False)
 
     # Workflow specification
     workflow_type: Mapped[str] = mapped_column(String(50), nullable=False)

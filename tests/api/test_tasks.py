@@ -23,6 +23,8 @@ class TestListTasks:
             workflow_url="https://example.com/workflow.cwl",
             tags={},
             user_id="test_user",
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()
@@ -44,6 +46,8 @@ class TestListTasks:
             workflow_url="https://example.com/workflow.cwl",
             tags={},
             user_id="test_user",
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()
@@ -82,6 +86,8 @@ class TestListTasks:
             workflow_url="https://example.com/workflow.cwl",
             tags={},
             user_id="test_user",
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()
@@ -128,6 +134,8 @@ class TestGetTask:
             workflow_url="https://example.com/workflow.cwl",
             tags={},
             user_id="test_user",
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()
@@ -147,6 +155,8 @@ class TestGetTask:
             workflow_url="https://example.com/workflow.cwl",
             tags={},
             user_id="test_user",
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()

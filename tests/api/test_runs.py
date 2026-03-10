@@ -78,6 +78,8 @@ class TestPAMLFunctions:
             workflow_url="123456",
             tags={},
             user_id="test_user",
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()
@@ -112,7 +114,10 @@ class TestPAMLFunctions:
                     "output2": "s3://bucket/output/output_file2",
                 }
             },
-            user_id="test_user"
+            tags={},
+            user_id="test_user",
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()
@@ -153,7 +158,10 @@ class TestPAMLFunctions:
                     "output3": "s3://bucket/output/output_file3",
                 }
             },
-            user_id="test_user"
+            tags={},
+            user_id="test_user",
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()
@@ -187,7 +195,9 @@ class TestPAMLFunctions:
             tags={
                 "ProjectId": project["id"],
                 "TaskName": task_name
-            }
+            },
+            project=project["id"],
+            task_name=task_name,
         )
         test_db.add(run1)
         run2 = WorkflowRun(
@@ -200,7 +210,9 @@ class TestPAMLFunctions:
             tags={
                 "ProjectId": "test-other-project-names",
                 "TaskName": task_name
-            }
+            },
+            project="test-other-project-names",
+            task_name=task_name,
         )
         test_db.add(run2)
         run3 = WorkflowRun(
@@ -213,7 +225,9 @@ class TestPAMLFunctions:
             tags={
                 "ProjectId": project["id"],
                 "TaskName": "test-other-task-names"
-            }
+            },
+            project=project["id"],
+            task_name="test-other-task-names",
         )
         test_db.add(run3)
         await test_db.commit()
@@ -360,6 +374,8 @@ class TestListRuns:
             workflow_url="https://example.com/workflow1.cwl",
             tags={"ProjectId": "test", "type": "A"},
             user_id="test_user",
+            project="test",
+            task_name="test-task-A",
         )
         test_db.add(run1)
         run2 = WorkflowRun(
@@ -370,6 +386,8 @@ class TestListRuns:
             workflow_url="https://example.com/workflow2.cwl",
             tags={"ProjectId": "test", "type": "B"},
             user_id="test_user",
+            project="test",
+            task_name="test-task-B",
         )
         test_db.add(run2)
         run3 = WorkflowRun(
@@ -380,6 +398,8 @@ class TestListRuns:
             workflow_url="https://example.com/workflow2.cwl",
             tags={"ProjectId": "another_test", "type": "B"},
             user_id="test_user",
+            project="another_test",
+            task_name="test-task-B",
         )
         test_db.add(run3)
         await test_db.commit()
@@ -439,6 +459,8 @@ class TestGetRunStatus:
             workflow_url="https://example.com/workflow.cwl",
             tags={},
             user_id="test_user",
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()
@@ -469,6 +491,8 @@ class TestGetRunLog:
             workflow_params={"input": "value"},
             tags={"ProjectId": "test"},
             user_id="test_user",
+            project="test",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()
@@ -500,6 +524,8 @@ class TestCancelRun:
             workflow_url="https://example.com/workflow.cwl",
             tags={},
             user_id="test_user",
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()
@@ -524,6 +550,8 @@ class TestCancelRun:
             workflow_url="https://example.com/workflow.cwl",
             tags={},
             user_id="test_user",
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()

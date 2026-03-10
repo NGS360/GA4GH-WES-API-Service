@@ -168,8 +168,11 @@ class TestWorkflowSubmissionService:
             id="test-run-123",
             workflow_url="test-workflow-id",
             workflow_type="CWL",
+            workflow_type_version="v1.0",
             workflow_params={"input": "test"},
-            tags={"project": "test"}
+            tags={"project": "test"},
+            project="test",
+            task_name="test-task",
         )
 
         with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):
@@ -220,6 +223,10 @@ class TestWorkflowSubmissionService:
             id="test-run-123",
             workflow_url="test-workflow-id",
             workflow_type="CWL",
+            workflow_type_version="v1.0",
+            tags={},
+            project="test-project",
+            task_name="test-task",
         )
 
         with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):
