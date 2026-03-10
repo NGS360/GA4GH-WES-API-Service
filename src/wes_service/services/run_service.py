@@ -98,7 +98,6 @@ class RunService:
         # Add "Name" tag if not already present, extracting it from workflow_engine_parameters
         if "TaskName" not in tags_dict and engine_params and "name" in engine_params:
             tags_dict["TaskName"] = engine_params["name"]
-        task_name = tags_dict["TaskName"] if "TaskName" in tags_dict else 'wes-run-' + run_id
 
         # Validate workflow type
         supported_types = list(
@@ -110,6 +109,7 @@ class RunService:
 
         # Create run record
         run_id = str(uuid4())
+        task_name = tags_dict["TaskName"] if "TaskName" in tags_dict else 'wes-run-' + run_id
         run = WorkflowRun(
             id=run_id,
             state=WorkflowState.QUEUED,
