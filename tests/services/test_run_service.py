@@ -97,6 +97,8 @@ class TestRunService:
                 "TaskName": "test_name",
                 "ProjectId": "test_project"
             },
+            project="test_project",
+            task_name="test_name",
         )
         test_db.add(run)
         await test_db.commit()
@@ -159,6 +161,8 @@ class TestRunService:
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             tags={},
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()
@@ -178,6 +182,8 @@ class TestRunService:
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
             tags={},
+            project="test-project",
+            task_name="test-task",
         )
         test_db.add(run)
         await test_db.commit()
@@ -202,6 +208,8 @@ class TestRunService:
                 workflow_type_version="v1.0",
                 workflow_url="https://example.com/workflow.cwl",
                 tags={},
+                project="test-project",
+                task_name=f"test-task-{i}",
             )
             for i in range(4)
         ]

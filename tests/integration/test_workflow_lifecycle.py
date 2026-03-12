@@ -204,6 +204,8 @@ class TestWorkflowLifecycle:
                 workflow_type_version="v1.0",
                 workflow_url="https://example.com/workflow.cwl",
                 tags={},
+                project="test-project",
+                task_name=f"test-task-queued-{i}",
             )
             test_db.add(run)
 
@@ -215,6 +217,8 @@ class TestWorkflowLifecycle:
                 workflow_type_version="v1.0",
                 workflow_url="https://example.com/workflow.cwl",
                 tags={},
+                project="test-project",
+                task_name=f"test-task-complete-{i}",
             )
             test_db.add(run)
         await test_db.commit()
