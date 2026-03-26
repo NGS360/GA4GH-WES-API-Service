@@ -150,7 +150,14 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             )
 
         workflow_data = response.json()
-        engine_id = workflow_data.get("engine_id")
+        registrations = workflow_data.get("registrations")
+        omics_registrations = [item for item in registrations if item.get("engine") == "AWSHealthOmics"]
+        if len(omics_registrations)>0:
+            engine_id = omics_registrations[0].get("external_id")
+        else:
+            raise RuntimeError(
+                f"Workflow registration not found for workflow {workflow_id} in NGS360 API response"
+            )
 
         if not engine_id:
             raise RuntimeError(
