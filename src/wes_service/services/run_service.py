@@ -183,16 +183,18 @@ class RunService:
         page_size: int | None,
         page_token: str | None,
         user_id: str | None,
-        tag_filters: dict[str, str] | None = None,
+        filters: dict[str, any] | None = None,
     ) -> RunListResponse:
         """
-        List workflow runs with pagination and tag filtering.
+        List workflow runs with pagination and dynamic filtering.
 
         Args:
             page_size: Number of runs per page
             page_token: Token for next page
             user_id: Filter by user (None for all runs)
-            tag_filters: Dictionary of tag key-value pairs to filter by
+            filters: Dictionary containing filter criteria where:
+                - String values: {column: value} → WorkflowRun.column == value
+                - Dict values: {column: {key: value}} → WorkflowRun.column[key].as_string() == value
 
         Returns:
             RunListResponse with runs and next page token
@@ -213,24 +215,47 @@ class RunService:
             logger.info(f"Filtering runs for user_id: {user_id}")
             query = query.where(WorkflowRun.user_id == user_id)
 
-        # Filter by tags if specified
-        if tag_filters and isinstance(tag_filters, dict):
-            logger.info(
-                f"Applying tag filters: {tag_filters}"
-            )
-            for tag_key, tag_value in tag_filters.items():
-                logger.info(
-                    f"Filtering by tag: {tag_key}={tag_value}"
-                )
-                # Use SQLAlchemy's JSON operators
-                # This works with both MySQL and SQLite
-                query = query.where(
-                    WorkflowRun.tags[tag_key].as_string() == tag_value
-                )
+        # Apply dynamic filters if specified
+        if filters and isinstance(filters, dict):
+            logger.info(f"Applying filters: {filters}")
+
+            for filter_key, filter_value in filters.items():
+                try:
+                    # Check if the column exists on WorkflowRun model
+                    if not hasattr(WorkflowRun, filter_key):
+                        logger.warning(f"Invalid filter column: {filter_key}")
+                        continue
+
+                    column = getattr(WorkflowRun, filter_key)
+
+                    # Handle dictionary values for JSON columns (e.g., tags, workflow_params)
+                    if isinstance(filter_value, dict):
+                        logger.info(f"Applying JSON filter on {filter_key}: {filter_value}")
+                        for json_key, json_value in filter_value.items():
+                            query = query.where(
+                                column[json_key].as_string() == str(json_value)
+                            )
+
+                    # Handle string/scalar values for regular columns
+                    else:
+                        logger.info(f"Applying scalar filter: {filter_key}={filter_value}")
+
+                        # Handle state enum conversion
+                        if filter_key == "state" and isinstance(filter_value, str):
+                            from src.wes_service.db.models import WorkflowState
+                            try:
+                                filter_value = WorkflowState(filter_value)
+                            except ValueError:
+                                logger.warning(f"Invalid state value: {filter_value}")
+                                continue
+
+                        query = query.where(column == filter_value)
+
+                except Exception as e:
+                    logger.error(f"Error applying filter {filter_key}={filter_value}: {e}")
+                    continue
         else:
-            logger.info(
-                f"No tag filters applied. tag_filters={tag_filters}"
-            )
+            logger.info(f"No filters applied. filters={filters}")
 
         # Apply pagination
         query = query.offset(offset).limit(page_size + 1)
