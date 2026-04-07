@@ -12,13 +12,22 @@ from src.wes_service.config import get_settings
 
 settings = get_settings()
 
-# Create async engine
+# Create async engine — SQLite doesn't support connection pooling options
+_engine_kwargs: dict = {
+    "echo": settings.log_level == "DEBUG",
+}
+if settings.SQLALCHEMY_DATABASE_URI.startswith("sqlite"):
+    from sqlalchemy.pool import StaticPool
+    _engine_kwargs["poolclass"] = StaticPool
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    _engine_kwargs["pool_pre_ping"] = True
+    _engine_kwargs["pool_size"] = 10
+    _engine_kwargs["max_overflow"] = 20
+
 engine = create_async_engine(
     settings.SQLALCHEMY_DATABASE_URI,
-    echo=settings.log_level == "DEBUG",
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    **_engine_kwargs,
 )
 
 # Create session factory

@@ -11,8 +11,8 @@ from src.wes_service.config import get_settings
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# HTTP Basic Auth
-security = HTTPBasic()
+# HTTP Basic Auth (auto_error=False so auth_method=none can bypass)
+security = HTTPBasic(auto_error=False)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -46,13 +46,13 @@ def parse_basic_auth_users() -> dict[str, str]:
 
 
 async def get_current_user(
-    credentials: Annotated[HTTPBasicCredentials, Depends(security)],
+    credentials: Annotated[HTTPBasicCredentials | None, Depends(security)],
 ) -> str:
     """
     Validate HTTP Basic Authentication credentials.
 
     Args:
-        credentials: HTTP Basic auth credentials
+        credentials: HTTP Basic auth credentials (None when no header sent)
 
     Returns:
         Username if authentication successful
@@ -75,7 +75,14 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Basic authentication
+    # Basic authentication — credentials are required from here on
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
     users = parse_basic_auth_users()
 
     if not users:
