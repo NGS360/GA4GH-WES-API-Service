@@ -69,7 +69,7 @@ async def list_runs(
             )
 
     service = RunService(db, None)  # type: ignore
-    return await service.list_runs(page_size, page_token, user, parsed_filters)
+    return await service.list_runs(page_size, page_token, None, parsed_filters)
 
 
 @router.post(
