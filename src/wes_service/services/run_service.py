@@ -284,12 +284,12 @@ class RunService:
 
         Args:
             run_id: Run ID
-            user_id: User ID for authorization
+            user_id: User ID (unused - all users have read access)
 
         Returns:
             RunStatus
         """
-        run = await self._get_run(run_id, user_id)
+        run = await self._get_run(run_id, None)  # Allow read access to all users
         return RunStatus(
             run_id=run.id,
             state=State(run.state.value),
@@ -301,12 +301,12 @@ class RunService:
 
         Args:
             run_id: Run ID
-            user_id: User ID for authorization
+            user_id: User ID (unused - all users have read access)
 
         Returns:
             RunLog
         """
-        run = await self._get_run(run_id, user_id, load_relationships=True)
+        run = await self._get_run(run_id, None, load_relationships=True)  # Allow read access to all users
 
         # Build run request
         request = RunRequest(
@@ -370,7 +370,14 @@ class RunService:
         Returns:
             Run ID
         """
-        run = await self._get_run(run_id, user_id)
+        run = await self._get_run(run_id, None)  # Get run without user restriction
+
+        # Authorization check for write operations - only owner can cancel
+        if user_id and run.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to cancel this workflow run",
+            )
 
         # Check if run can be canceled
         if run.state in [
@@ -442,13 +449,6 @@ class RunService:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Workflow run not found: {run_id}",
-            )
-
-        # Authorization check
-        if user_id and run.user_id != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to access this workflow run",
             )
 
         return run
