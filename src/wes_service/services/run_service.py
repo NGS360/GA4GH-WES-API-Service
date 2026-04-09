@@ -232,9 +232,18 @@ class RunService:
                     if isinstance(filter_value, dict):
                         logger.info(f"Applying JSON filter on {filter_key}: {filter_value}")
                         for json_key, json_value in filter_value.items():
-                            query = query.where(
-                                column[json_key].as_string() == str(json_value)
-                            )
+                            # Handle complex JSON values (dicts, lists) vs simple values
+                            if isinstance(json_value, (dict, list)):
+                                # For complex objects, use JSON serialization for accurate comparison
+                                json_str = json.dumps(json_value, separators=(',', ':'), sort_keys=True)
+                                query = query.where(
+                                    column[json_key].as_string() == json_str
+                                )
+                            else:
+                                # For simple values, use string comparison
+                                query = query.where(
+                                    column[json_key].as_string() == str(json_value)
+                                )
 
                     # Handle string/scalar values for regular columns
                     else:
@@ -306,7 +315,7 @@ class RunService:
         Returns:
             RunLog
         """
-        run = await self._get_run(run_id, None, load_relationships=True)  # Allow read access to all users
+        run = await self._get_run(run_id, None, load_relationships=True)
 
         # Build run request
         request = RunRequest(
