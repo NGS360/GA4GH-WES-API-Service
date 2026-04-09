@@ -14,7 +14,7 @@ from src.wes_service.schemas.run import (
     RunStatus,
 )
 from src.wes_service.services.run_service import RunService
-from src.wes_service.services.workflow_submission_service import LambdaWorkflowSubmissionService
+from src.wes_service.services.workflow_submission_service import get_workflow_submission_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ async def run_workflow(
     The workflow_params JSON object specifies input parameters.
     The exact format depends on the workflow language conventions.
     """
-    workflow_submission = LambdaWorkflowSubmissionService()
+    workflow_submission = get_workflow_submission_service()
     service = RunService(db, storage, workflow_submission)
     response = await service.create_run(
         workflow_params=workflow_params,

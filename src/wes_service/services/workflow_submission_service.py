@@ -34,6 +34,104 @@ class WorkflowSubmissionService(ABC):
         pass
 
 
+class OmicsWorkflowSubmissionService(WorkflowSubmissionService):
+    """Direct AWS HealthOmics workflow submission service."""
+
+    def __init__(self):
+        """Initialize HealthOmics workflow submission service."""
+        settings = get_settings()
+        self.omics_client = boto3.client(
+            'omics', region_name=settings.omics_region
+        )
+        self.role_arn = settings.omics_role_arn
+        self.output_uri = f"s3://{settings.s3_bucket_name}/healthomics-outputs"
+
+    async def submit_workflow(self, run: WorkflowRun) -> dict:
+        """
+        Submit workflow directly to AWS HealthOmics.
+
+        Args:
+            run: WorkflowRun to submit
+
+        Returns:
+            Dict containing omics_run_id, or empty dict on failure
+        """
+        engine_params = run.workflow_engine_parameters or {}
+        output_uri = engine_params.get('outputUri', self.output_uri)
+
+        # Build StartRun parameters
+        start_run_params = {
+            'roleArn': self.role_arn,
+            'outputUri': output_uri,
+            'tags': {
+                'WESRunId': run.id,
+                **(run.tags or {}),
+            },
+        }
+
+        # workflow_url is the HealthOmics workflow ID
+        workflow_id = run.workflow_url
+        start_run_params['workflowId'] = workflow_id
+
+        # Workflow version from engine params
+        if engine_params.get('workflow_version'):
+            start_run_params['workflowVersionName'] = (
+                engine_params['workflow_version']
+            )
+
+        # Run name
+        start_run_params['name'] = run.task_name or f'wes-{run.id}'
+
+        # Workflow parameters
+        if run.workflow_params:
+            start_run_params['parameters'] = run.workflow_params
+
+        # Storage capacity from engine params
+        if engine_params.get('storageCapacity'):
+            start_run_params['storageCapacity'] = int(
+                engine_params['storageCapacity']
+            )
+
+        # Log level
+        if engine_params.get('logLevel'):
+            start_run_params['logLevel'] = engine_params['logLevel']
+
+        logger.info(
+            f"Submitting HealthOmics run for WES run {run.id}: "
+            f"workflow={workflow_id}, name={start_run_params['name']}"
+        )
+
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.omics_client.start_run(**start_run_params)
+            )
+
+            omics_run_id = response.get('id')
+            if not omics_run_id:
+                logger.error(
+                    f"HealthOmics StartRun response missing 'id': {response}"
+                )
+                return {}
+
+            logger.info(
+                f"HealthOmics run started: {omics_run_id} "
+                f"for WES run {run.id}"
+            )
+            return {
+                'omics_run_id': omics_run_id,
+                'arn': response.get('arn', ''),
+                'status': response.get('status', ''),
+            }
+
+        except Exception as e:
+            logger.error(
+                f"Failed to submit HealthOmics run for WES run {run.id}: {e}"
+            )
+            return {}
+
+
 class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
     """Workflow submission service using AWS Lambda."""
 
@@ -159,3 +257,15 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
         logger.info(f"Successfully retrieved engine_id '{engine_id}' for workflow {workflow_id}")
         return engine_id
+
+
+def get_workflow_submission_service() -> WorkflowSubmissionService:
+    """
+    Factory that returns the appropriate submission service
+    based on the WORKFLOW_EXECUTOR setting.
+    """
+    settings = get_settings()
+    if settings.workflow_executor == 'omics':
+        return OmicsWorkflowSubmissionService()
+    else:
+        return LambdaWorkflowSubmissionService()

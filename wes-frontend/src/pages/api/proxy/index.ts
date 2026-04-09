@@ -10,9 +10,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Endpoint parameter is required' });
     }
     
-    // Basic auth credentials
-    const username = 'ngs360';
-    const password = 'ngs360password';
+    // Basic auth credentials (only used when backend has auth enabled)
+    const username = process.env.WES_API_USERNAME || '';
+    const password = process.env.WES_API_PASSWORD || '';
     
     // Handle query parameters
     const queryParams = { ...req.query };
@@ -23,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     console.log(`Proxying request to: ${url}`);
     
-    const response = await axios({
+    const axiosConfig: any = {
       method: req.method || 'GET',
       url: url,
       params: Object.keys(queryParams).length > 0 ? queryParams : undefined,
@@ -31,11 +31,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       headers: {
         'Content-Type': 'application/json',
       },
-      auth: {
-        username,
-        password,
-      },
-    });
+    };
+
+    // Only add auth if credentials are configured
+    if (username && password) {
+      axiosConfig.auth = { username, password };
+    }
+    
+    const response = await axios(axiosConfig);
     
     res.status(response.status).json(response.data);
   } catch (error: any) {

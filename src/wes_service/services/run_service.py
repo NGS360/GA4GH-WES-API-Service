@@ -1,5 +1,7 @@
 """Service layer for workflow run operations."""
 
+import asyncio
+import boto3
 import json
 import logging
 from uuid import uuid4
@@ -28,6 +30,25 @@ from src.wes_service.schemas.run import (
 from src.wes_service.services.workflow_submission_service import WorkflowSubmissionService
 
 logger = logging.getLogger(__name__)
+
+# Map HealthOmics status to WES State
+OMICS_TO_WES_STATE = {
+    'PENDING': State.QUEUED,
+    'STARTING': State.INITIALIZING,
+    'RUNNING': State.RUNNING,
+    'STOPPING': State.CANCELING,
+    'COMPLETED': State.COMPLETE,
+    'DELETED': State.CANCELED,
+    'CANCELLED': State.CANCELED,
+    'FAILED': State.EXECUTOR_ERROR,
+}
+
+
+def _format_dt(dt) -> str | None:
+    """Format a boto3 datetime to ISO 8601 string safe for JS parsing."""
+    if dt is None:
+        return None
+    return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
 class RunService:
@@ -188,6 +209,9 @@ class RunService:
         """
         List workflow runs with pagination and tag filtering.
 
+        When workflow_executor is 'omics', fetches runs directly from
+        AWS HealthOmics. Otherwise queries the local database.
+
         Args:
             page_size: Number of runs per page
             page_token: Token for next page
@@ -197,58 +221,114 @@ class RunService:
         Returns:
             RunListResponse with runs and next page token
         """
-        # Default page size
         if page_size is None:
             page_size = 10
-        page_size = min(page_size, 100)  # Max 100 per page
+        page_size = min(page_size, 100)
 
-        # Parse page token (offset)
+        settings = get_settings()
+
+        if settings.workflow_executor == 'omics':
+            return await self._list_omics_runs(
+                page_size, page_token, tag_filters
+            )
+
+        return await self._list_db_runs(
+            page_size, page_token, user_id, tag_filters
+        )
+
+    async def _list_omics_runs(
+        self,
+        page_size: int,
+        page_token: str | None,
+        tag_filters: dict[str, str] | None = None,
+    ) -> RunListResponse:
+        """List runs from AWS HealthOmics."""
+        settings = get_settings()
+        omics_client = boto3.client(
+            'omics', region_name=settings.omics_region
+        )
+
+        list_params = {'maxResults': page_size}
+        if page_token:
+            list_params['startingToken'] = page_token
+
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: omics_client.list_runs(**list_params)
+            )
+        except Exception as e:
+            logger.error(f"Failed to list HealthOmics runs: {e}")
+            return RunListResponse(runs=[], next_page_token="")
+
+        summaries = []
+        for item in response.get('items', []):
+            omics_status = item.get('status', 'PENDING')
+            wes_state = OMICS_TO_WES_STATE.get(
+                omics_status, State.UNKNOWN
+            )
+
+            start_time = item.get('startTime')
+            stop_time = item.get('stopTime')
+            tags = item.get('tags', {}) or {}
+
+            # Apply tag filters if specified
+            if tag_filters:
+                match = all(
+                    tags.get(k) == v for k, v in tag_filters.items()
+                )
+                if not match:
+                    continue
+
+            summaries.append(RunSummary(
+                run_id=item.get('id', ''),
+                state=wes_state,
+                start_time=_format_dt(start_time),
+                end_time=_format_dt(stop_time),
+                tags=tags,
+                name=item.get('name', ''),
+            ))
+
+        next_token = response.get('nextToken', '')
+        return RunListResponse(
+            runs=summaries, next_page_token=next_token or ''
+        )
+
+    async def _list_db_runs(
+        self,
+        page_size: int,
+        page_token: str | None,
+        user_id: str | None,
+        tag_filters: dict[str, str] | None = None,
+    ) -> RunListResponse:
+        """List runs from the local database."""
         offset = int(page_token) if page_token else 0
 
-        # Build query
         query = select(WorkflowRun).order_by(WorkflowRun.created_at.desc())
 
-        # Filter by user if specified
         if user_id:
             logger.info(f"Filtering runs for user_id: {user_id}")
             query = query.where(WorkflowRun.user_id == user_id)
 
-        # Filter by tags if specified
         if tag_filters and isinstance(tag_filters, dict):
-            logger.info(
-                f"Applying tag filters: {tag_filters}"
-            )
+            logger.info(f"Applying tag filters: {tag_filters}")
             for tag_key, tag_value in tag_filters.items():
-                logger.info(
-                    f"Filtering by tag: {tag_key}={tag_value}"
-                )
-                # Use SQLAlchemy's JSON operators
-                # This works with both MySQL and SQLite
                 query = query.where(
                     WorkflowRun.tags[tag_key].as_string() == tag_value
                 )
-        else:
-            logger.info(
-                f"No tag filters applied. tag_filters={tag_filters}"
-            )
 
-        # Apply pagination
         query = query.offset(offset).limit(page_size + 1)
 
-        # Execute query
         result = await self.db.execute(query)
         runs = result.scalars().all()
         logger.info(f"Retrieved {len(runs)} runs from database")
 
-        # Check if there are more results
         has_more = len(runs) > page_size
         if has_more:
             runs = runs[:page_size]
 
-        # Convert to summaries
         summaries = [self._run_to_summary(run) for run in runs]
-
-        # Generate next page token
         next_token = str(offset + page_size) if has_more else ""
 
         return RunListResponse(runs=summaries, next_page_token=next_token)
@@ -264,6 +344,10 @@ class RunService:
         Returns:
             RunStatus
         """
+        settings = get_settings()
+        if settings.workflow_executor == 'omics':
+            return await self._get_omics_run_status(run_id)
+
         run = await self._get_run(run_id, user_id)
         return RunStatus(
             run_id=run.id,
@@ -281,6 +365,10 @@ class RunService:
         Returns:
             RunLog
         """
+        settings = get_settings()
+        if settings.workflow_executor == 'omics':
+            return await self._get_omics_run_log(run_id)
+
         run = await self._get_run(run_id, user_id, load_relationships=True)
 
         # Build run request
@@ -345,6 +433,10 @@ class RunService:
         Returns:
             Run ID
         """
+        settings = get_settings()
+        if settings.workflow_executor == 'omics':
+            return await self._cancel_omics_run(run_id)
+
         run = await self._get_run(run_id, user_id)
 
         # Check if run can be canceled
@@ -365,6 +457,26 @@ class RunService:
 
         return run.id
 
+    async def _cancel_omics_run(self, run_id: str) -> str:
+        """Cancel a run directly in HealthOmics."""
+        settings = get_settings()
+        omics_client = boto3.client(
+            'omics', region_name=settings.omics_region
+        )
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: omics_client.cancel_run(id=run_id)
+            )
+            return run_id
+        except Exception as e:
+            logger.error(f"Failed to cancel HealthOmics run {run_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to cancel run: {e}",
+            )
+
     async def get_system_state_counts(self) -> dict[str, int]:
         """Get count of runs in each state."""
         query = select(
@@ -381,6 +493,96 @@ class RunService:
                 counts[state.value] = 0
 
         return counts
+
+    async def _get_omics_run_status(self, run_id: str) -> RunStatus:
+        """Get run status directly from HealthOmics."""
+        settings = get_settings()
+        omics_client = boto3.client(
+            'omics', region_name=settings.omics_region
+        )
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: omics_client.get_run(id=run_id)
+            )
+            omics_status = response.get('status', 'PENDING')
+            wes_state = OMICS_TO_WES_STATE.get(
+                omics_status, State.UNKNOWN
+            )
+            return RunStatus(run_id=run_id, state=wes_state)
+        except Exception as e:
+            logger.error(f"Failed to get HealthOmics run {run_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Workflow run not found: {run_id}",
+            )
+
+    async def _get_omics_run_log(self, run_id: str) -> RunLog:
+        """Get detailed run log from HealthOmics."""
+        settings = get_settings()
+        omics_client = boto3.client(
+            'omics', region_name=settings.omics_region
+        )
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: omics_client.get_run(id=run_id)
+            )
+        except Exception as e:
+            logger.error(f"Failed to get HealthOmics run {run_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Workflow run not found: {run_id}",
+            )
+
+        omics_status = response.get('status', 'PENDING')
+        wes_state = OMICS_TO_WES_STATE.get(omics_status, State.UNKNOWN)
+        start_time = response.get('startTime')
+        stop_time = response.get('stopTime')
+        tags = response.get('tags', {}) or {}
+
+        request = RunRequest(
+            workflow_params=response.get('parameters', {}),
+            workflow_type=response.get('workflowType', 'CWL'),
+            workflow_type_version='v1.2',
+            workflow_url=response.get('workflowId', ''),
+            tags=tags,
+        )
+
+        run_log = Log(
+            name=response.get('name', ''),
+            cmd=None,
+            start_time=_format_dt(start_time),
+            end_time=_format_dt(stop_time),
+            stdout=response.get('logLocation', {}).get(
+                'engineLogStream', None
+            ),
+            stderr=None,
+            exit_code=0 if omics_status == 'COMPLETED' else None,
+            system_logs=[
+                f"HealthOmics status: {omics_status}",
+                f"ARN: {response.get('arn', '')}",
+                f"Output URI: {response.get('outputUri', '')}",
+            ],
+        )
+
+        if response.get('statusMessage'):
+            run_log.system_logs.append(
+                f"Status message: {response['statusMessage']}"
+            )
+
+        return RunLog(
+            run_id=run_id,
+            request=request,
+            state=wes_state,
+            name=response.get('name', ''),
+            run_log=run_log,
+            task_logs_url=None,
+            task_logs=None,
+            outputs={'outputUri': response.get('outputUri', '')},
+        )
 
     async def _get_run(
         self,
