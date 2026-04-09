@@ -52,7 +52,14 @@ class TestWorkflowSubmissionService:
         # Mock httpx response
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"engine_id": "12345"}
+        mock_response.json.return_value = {
+            "registrations": [
+                {
+                    "engine": "AWSHealthOmics",
+                    "external_id": "12345"
+                }
+            ]
+        }
 
         # Mock httpx.AsyncClient context manager
         with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
@@ -115,10 +122,17 @@ class TestWorkflowSubmissionService:
         with patch.dict('os.environ', {}):
             service = LambdaWorkflowSubmissionService()
 
-        # Mock httpx response without engine_id
+        # Mock httpx response without external_id
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"name": "Test Workflow", "engine": "AWSHealthOmics"}
+        mock_response.json.return_value = {
+            "registrations": [
+                {
+                    "engine": "AWSHealthOmics"
+                    # Missing external_id to test error case
+                }
+            ]
+        }
 
         # Mock httpx.AsyncClient context manager
         with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
@@ -133,7 +147,7 @@ class TestWorkflowSubmissionService:
             mock_client_class.return_value = mock_client
 
             # Test error handling
-            with pytest.raises(Exception, match="engine_id not found for workflow"):
+            with pytest.raises(RuntimeError, match="engine_id not found for workflow"):
                 await service._get_engine_id_from_ngs360("test-workflow-id")
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
@@ -148,7 +162,14 @@ class TestWorkflowSubmissionService:
         # Mock NGS360 API response
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"engine_id": "67890"}
+        mock_response.json.return_value = {
+            "registrations": [
+                {
+                    "engine": "AWSHealthOmics",
+                    "external_id": "67890"
+                }
+            ]
+        }
 
         # Mock Lambda client
         mock_lambda_client = MagicMock()

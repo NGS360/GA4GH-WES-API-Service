@@ -235,7 +235,9 @@ class RunService:
                             # Handle complex JSON values (dicts, lists) vs simple values
                             if isinstance(json_value, (dict, list)):
                                 # For complex objects, use JSON serialization for accurate comparison
-                                json_str = json.dumps(json_value, separators=(',', ':'), sort_keys=True)
+                                json_str = json.dumps(
+                                    json_value, separators=(',', ':'), sort_keys=True
+                                )
                                 query = query.where(
                                     column[json_key].as_string() == json_str
                                 )

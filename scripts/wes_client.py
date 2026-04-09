@@ -280,10 +280,7 @@ def parse_arguments() -> argparse.Namespace:
     # List command
     list_parser = subparsers.add_parser("list", help="List workflow runs")
     list_parser.add_argument("--page-size", type=int, help="Page size")
-    list_parser.add_argument(
-        "--filters",
-        help="Filters JSON string, e.g. '{\"workflow_url\":\"wf-abc\",\"tags\":{\"ProjectId\":\"123\"}}'"
-    )
+    list_parser.add_argument("--filters", help="Filters JSON string")
 
     # Status command
     status_parser = subparsers.add_parser("status", help="Get run status")
