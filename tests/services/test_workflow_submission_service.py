@@ -211,8 +211,12 @@ class TestWorkflowSubmissionService:
             mock_client.get = mock_get
             mock_client_class.return_value = mock_client
 
+            # Mock database session
+            mock_db = MagicMock()
+            mock_db.commit = MagicMock()
+
             # Test workflow submission
-            result = await service.submit_workflow(run)
+            result = await service.submit_workflow(run, mock_db)
 
         # Verify results
         assert result['omics_run_id'] == 'omics-12345'
@@ -265,8 +269,12 @@ class TestWorkflowSubmissionService:
             mock_client.get = mock_get
             mock_client_class.return_value = mock_client
 
+            # Mock database session
+            mock_db = MagicMock()
+            mock_db.commit = MagicMock()
+
             # Test error handling - service catches exception and returns empty dict
-            result = await service.submit_workflow(run)
+            result = await service.submit_workflow(run, mock_db)
 
         # Verify that service returns empty dict on NGS360 failure
         assert result == {}

@@ -69,7 +69,10 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         try:
             engine_id = await self._get_engine_id_from_ngs360(run.workflow_url)
         except RuntimeError as e:
-            error_msg = f"Failed to retrieve engine_id from NGS360 API for workflow {run.workflow_url}: {str(e)}"
+            error_msg = (
+                f"Failed to retrieve engine_id from NGS360 API for workflow "
+                f"{run.workflow_url}: {str(e)}"
+            )
             logger.error(error_msg)
             run.system_logs.append(error_msg)
             attributes.flag_modified(run, "system_logs")
@@ -127,7 +130,8 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         logger.info(f"Lambda invocation response payload: {response_payload}")
 
         if response_payload.get('statusCode') != 200:
-            error_msg = f"Workflow submission failed: {response_payload.get('message', 'Unknown error')}"
+            error_msg = (f"Workflow submission failed: "
+                        f"{response_payload.get('message', 'Unknown error')}")
             logger.error(error_msg)
             run.system_logs.append(error_msg)
             attributes.flag_modified(run, "system_logs")
@@ -163,8 +167,8 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
         workflow_data = response.json()
         registrations = workflow_data.get("registrations")
-        omics_registrations = [item for item in registrations if item.get("engine") == "AWSHealthOmics"]
-        if len(omics_registrations)>0:
+        omics_registrations = [c for c in registrations if item.get("engine") == "AWSHealthOmics"]
+        if len(omics_registrations) > 0:
             engine_id = omics_registrations[0].get("external_id")
         else:
             raise RuntimeError(

@@ -16,7 +16,7 @@ class MockWorkflowSubmissionService(WorkflowSubmissionService):
         # Mock the settings dependency to avoid real configuration requirements
         self.ngs360_api_url = "http://mock-ngs360-api.test"
 
-    async def submit_workflow(self, run) -> dict:
+    async def submit_workflow(self, run, db) -> dict:
         """Mock workflow submission that returns a fake omics_run_id."""
         # Mock the NGS360 API call within submit_workflow
         return {"omics_run_id": f"omics-{run.id}", "statusCode": 200}

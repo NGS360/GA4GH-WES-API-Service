@@ -21,7 +21,7 @@ class TestWorkflowLifecycle:
             mock_instance = MagicMock()
 
             # Make submit_workflow return a coroutine that resolves to the expected value
-            async def mock_submit_workflow(run):
+            async def mock_submit_workflow(run, db):
                 return {
                     "omics_run_id": "mock-omics-123",
                     "statusCode": 200
@@ -89,7 +89,7 @@ class TestWorkflowLifecycle:
             mock_instance = MagicMock()
 
             # Make submit_workflow return a coroutine that resolves to the expected value
-            async def mock_submit_workflow(run):
+            async def mock_submit_workflow(run, db):
                 return {
                     "omics_run_id": "mock-omics-456",
                     "statusCode": 200
@@ -143,7 +143,7 @@ class TestWorkflowLifecycle:
             mock_instance = MagicMock()
 
             # Make submit_workflow return a coroutine that resolves to the expected value
-            async def mock_submit_workflow(run):
+            async def mock_submit_workflow(run, db):
                 return {
                     "omics_run_id": "mock-omics-789",
                     "statusCode": 200
