@@ -213,8 +213,9 @@ class TestWorkflowSubmissionService:
             mock_client_class.return_value = mock_client
 
             # Mock database session
+            from unittest.mock import AsyncMock
             mock_db = MagicMock()
-            mock_db.commit = MagicMock()
+            mock_db.commit = AsyncMock()
 
             # Test workflow submission
             result = await service.submit_workflow(run, mock_db)
@@ -272,8 +273,9 @@ class TestWorkflowSubmissionService:
             mock_client_class.return_value = mock_client
 
             # Mock database session
+            from unittest.mock import AsyncMock
             mock_db = MagicMock()
-            mock_db.commit = MagicMock()
+            mock_db.commit = AsyncMock()
 
             # Test error handling - service catches exception and returns empty dict
             result = await service.submit_workflow(run, mock_db)
