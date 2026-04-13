@@ -194,6 +194,7 @@ class TestWorkflowSubmissionService:
             tags={"project": "test"},
             project="test",
             task_name="test-task",
+            system_logs=[],
         )
 
         with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):
@@ -252,6 +253,7 @@ class TestWorkflowSubmissionService:
             tags={},
             project="test-project",
             task_name="test-task",
+            system_logs=[],
         )
 
         with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):

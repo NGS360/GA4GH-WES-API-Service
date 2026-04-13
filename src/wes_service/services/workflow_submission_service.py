@@ -131,7 +131,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
         if response_payload.get('statusCode') != 200:
             error_msg = (f"Workflow submission failed: "
-                        f"{response_payload.get('message', 'Unknown error')}")
+                         f"{response_payload.get('message', 'Unknown error')}")
             logger.error(error_msg)
             run.system_logs.append(error_msg)
             attributes.flag_modified(run, "system_logs")
@@ -167,7 +167,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
         workflow_data = response.json()
         registrations = workflow_data.get("registrations")
-        omics_registrations = [c for c in registrations if item.get("engine") == "AWSHealthOmics"]
+        omics_registrations = [c for c in registrations if c.get("engine") == "AWSHealthOmics"]
         if len(omics_registrations) > 0:
             engine_id = omics_registrations[0].get("external_id")
         else:
