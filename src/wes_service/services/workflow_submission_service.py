@@ -8,6 +8,9 @@ import os
 import httpx
 from abc import ABC, abstractmethod
 
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import attributes
+
 from src.wes_service.config import get_settings
 from src.wes_service.db.models import WorkflowRun
 
@@ -18,12 +21,13 @@ class WorkflowSubmissionService(ABC):
     """Abstract base class for workflow submission services."""
 
     @abstractmethod
-    async def submit_workflow(self, run: WorkflowRun) -> dict:
+    async def submit_workflow(self, run: WorkflowRun, db: AsyncSession) -> dict:
         """
         Submit workflow for execution.
 
         Args:
             run: WorkflowRun to submit
+            db: Database session for logging errors
 
         Returns:
             Response containing execution details (e.g., omics_run_id)
@@ -50,12 +54,13 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         settings = get_settings()
         self.ngs360_api_url = settings.ngs360_api_url
 
-    async def submit_workflow(self, run: WorkflowRun) -> dict:
+    async def submit_workflow(self, run: WorkflowRun, db: AsyncSession) -> dict:
         """
         Submit workflow to Lambda function for Omics execution.
 
         Args:
             run: WorkflowRun to submit
+            db: Database session for logging errors
 
         Returns:
             Lambda response containing omics_run_id or empty dict on failure
@@ -64,8 +69,11 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         try:
             engine_id = await self._get_engine_id_from_ngs360(run.workflow_url)
         except RuntimeError as e:
-            logger.error(f"Failed to retrieve engine_id for workflow {run.workflow_url}: "
-                         f"{str(e)}")
+            error_msg = f"Failed to retrieve engine_id from NGS360 API for workflow {run.workflow_url}: {str(e)}"
+            logger.error(error_msg)
+            run.system_logs.append(error_msg)
+            attributes.flag_modified(run, "system_logs")
+            await db.commit()
             return {}
 
         # Prepare Lambda payload using the engine_id instead of workflow_id
@@ -106,10 +114,11 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
         # Check for errors
         if response['StatusCode'] != 200:
-            logger.error(
-                f"Lambda invocation failed with status {response['StatusCode']}: "
-                f"{response}"
-            )
+            error_msg = f"Lambda invocation failed with status {response['StatusCode']}"
+            logger.error(f"{error_msg}: {response}")
+            run.system_logs.append(error_msg)
+            attributes.flag_modified(run, "system_logs")
+            await db.commit()
             return {}
 
         # Parse response
@@ -118,8 +127,11 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         logger.info(f"Lambda invocation response payload: {response_payload}")
 
         if response_payload.get('statusCode') != 200:
-            error_msg = response_payload.get('message', 'Unknown error')
-            logger.error(f"Workflow submission failed: {error_msg}")
+            error_msg = f"Workflow submission failed: {response_payload.get('message', 'Unknown error')}"
+            logger.error(error_msg)
+            run.system_logs.append(error_msg)
+            attributes.flag_modified(run, "system_logs")
+            await db.commit()
             return {}
 
         return response_payload

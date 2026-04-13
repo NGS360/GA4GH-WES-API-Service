@@ -90,7 +90,9 @@ class RunService:
 
         output_bucket = get_settings().s3_bucket_name
         if "ProjectId" not in tags_dict:
-            raise ValueError("ProjectId tag is required.")
+            error_msg = "Job Submission Failed: ProjectId tag is required but not provided in tags"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         project_id = tags_dict.get("ProjectId")
         output_uri = f"s3://{output_bucket}/Project/{project_id}/"
         engine_params["outputUri"] = output_uri
@@ -151,7 +153,7 @@ class RunService:
 
         # Submit workflow for execution
         logger.info(f"Submitting workflow {run_id} for execution")
-        submission_response = await self.workflow_submission.submit_workflow(run)
+        submission_response = await self.workflow_submission.submit_workflow(run, self.db)
 
         if 'omics_run_id' not in submission_response:
             logger.error("Workflow submission response did not contain omics_run_id")
