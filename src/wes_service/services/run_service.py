@@ -90,7 +90,9 @@ class RunService:
 
         output_bucket = get_settings().s3_bucket_name
         if "ProjectId" not in tags_dict:
-            raise ValueError("ProjectId tag is required.")
+            error_msg = "Job Submission Failed: ProjectId tag is required but not provided in tags"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         project_id = tags_dict.get("ProjectId")
         output_uri = f"s3://{output_bucket}/Project/{project_id}/"
         engine_params["outputUri"] = output_uri
@@ -151,7 +153,7 @@ class RunService:
 
         # Submit workflow for execution
         logger.info(f"Submitting workflow {run_id} for execution")
-        submission_response = await self.workflow_submission.submit_workflow(run)
+        submission_response = await self.workflow_submission.submit_workflow(run, self.db)
 
         if 'omics_run_id' not in submission_response:
             logger.error("Workflow submission response did not contain omics_run_id")
@@ -183,16 +185,18 @@ class RunService:
         page_size: int | None,
         page_token: str | None,
         user_id: str | None,
-        tag_filters: dict[str, str] | None = None,
+        filters: dict[str, any] | None = None,
     ) -> RunListResponse:
         """
-        List workflow runs with pagination and tag filtering.
+        List workflow runs with pagination and dynamic filtering.
 
         Args:
             page_size: Number of runs per page
             page_token: Token for next page
             user_id: Filter by user (None for all runs)
-            tag_filters: Dictionary of tag key-value pairs to filter by
+            filters: Dictionary containing filter criteria where:
+                - String values: {column: value} → WorkflowRun.column == value
+                - Dict values: {column: {key: value}} → WorkflowRun.column[key].as_string() == value
 
         Returns:
             RunListResponse with runs and next page token
@@ -213,24 +217,58 @@ class RunService:
             logger.info(f"Filtering runs for user_id: {user_id}")
             query = query.where(WorkflowRun.user_id == user_id)
 
-        # Filter by tags if specified
-        if tag_filters and isinstance(tag_filters, dict):
-            logger.info(
-                f"Applying tag filters: {tag_filters}"
-            )
-            for tag_key, tag_value in tag_filters.items():
-                logger.info(
-                    f"Filtering by tag: {tag_key}={tag_value}"
-                )
-                # Use SQLAlchemy's JSON operators
-                # This works with both MySQL and SQLite
-                query = query.where(
-                    WorkflowRun.tags[tag_key].as_string() == tag_value
-                )
+        # Apply dynamic filters if specified
+        if filters and isinstance(filters, dict):
+            logger.info(f"Applying filters: {filters}")
+
+            for filter_key, filter_value in filters.items():
+                try:
+                    # Check if the column exists on WorkflowRun model
+                    if not hasattr(WorkflowRun, filter_key):
+                        logger.warning(f"Invalid filter column: {filter_key}")
+                        continue
+
+                    column = getattr(WorkflowRun, filter_key)
+
+                    # Handle dictionary values for JSON columns (e.g., tags, workflow_params)
+                    if isinstance(filter_value, dict):
+                        logger.info(f"Applying JSON filter on {filter_key}: {filter_value}")
+                        for json_key, json_value in filter_value.items():
+                            # Handle complex JSON values (dicts, lists) vs simple values
+                            if isinstance(json_value, (dict, list)):
+                                # For complex objects, use JSON serialization for accurate comparison
+                                json_str = json.dumps(
+                                    json_value, separators=(',', ':'), sort_keys=True
+                                )
+                                query = query.where(
+                                    column[json_key].as_string() == json_str
+                                )
+                            else:
+                                # For simple values, use string comparison
+                                query = query.where(
+                                    column[json_key].as_string() == str(json_value)
+                                )
+
+                    # Handle string/scalar values for regular columns
+                    else:
+                        logger.info(f"Applying scalar filter: {filter_key}={filter_value}")
+
+                        # Handle state enum conversion
+                        if filter_key == "state" and isinstance(filter_value, str):
+                            from src.wes_service.db.models import WorkflowState
+                            try:
+                                filter_value = WorkflowState(filter_value)
+                            except ValueError:
+                                logger.warning(f"Invalid state value: {filter_value}")
+                                continue
+
+                        query = query.where(column == filter_value)
+
+                except Exception as e:
+                    logger.error(f"Error applying filter {filter_key}={filter_value}: {e}")
+                    continue
         else:
-            logger.info(
-                f"No tag filters applied. tag_filters={tag_filters}"
-            )
+            logger.info(f"No filters applied. filters={filters}")
 
         # Apply pagination
         query = query.offset(offset).limit(page_size + 1)
@@ -259,12 +297,12 @@ class RunService:
 
         Args:
             run_id: Run ID
-            user_id: User ID for authorization
+            user_id: User ID (unused - all users have read access)
 
         Returns:
             RunStatus
         """
-        run = await self._get_run(run_id, user_id)
+        run = await self._get_run(run_id, None)  # Allow read access to all users
         return RunStatus(
             run_id=run.id,
             state=State(run.state.value),
@@ -276,12 +314,12 @@ class RunService:
 
         Args:
             run_id: Run ID
-            user_id: User ID for authorization
+            user_id: User ID (unused - all users have read access)
 
         Returns:
             RunLog
         """
-        run = await self._get_run(run_id, user_id, load_relationships=True)
+        run = await self._get_run(run_id, None, load_relationships=True)
 
         # Build run request
         request = RunRequest(
@@ -345,7 +383,14 @@ class RunService:
         Returns:
             Run ID
         """
-        run = await self._get_run(run_id, user_id)
+        run = await self._get_run(run_id, None)  # Get run without user restriction
+
+        # Authorization check for write operations - only owner can cancel
+        if user_id and run.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to cancel this workflow run",
+            )
 
         # Check if run can be canceled
         if run.state in [
@@ -417,13 +462,6 @@ class RunService:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Workflow run not found: {run_id}",
-            )
-
-        # Authorization check
-        if user_id and run.user_id != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to access this workflow run",
             )
 
         return run

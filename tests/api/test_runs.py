@@ -407,7 +407,7 @@ class TestListRuns:
         # Filter by tag type=A
         response = client.get(
             "/ga4gh/wes/v1/runs",
-            params={"tags": json.dumps({"type": "A"})},
+            params={"filters": json.dumps({"tags": {"type": "A"}})},
         )
         assert response.status_code == 200
         data = response.json()
@@ -417,7 +417,7 @@ class TestListRuns:
         # Filter by tag ProjectId=test
         response = client.get(
             "/ga4gh/wes/v1/runs",
-            params={"tags": json.dumps({"ProjectId": "test"})},
+            params={"filters": json.dumps({"tags": {"ProjectId": "test"}})},
         )
         assert response.status_code == 200
         data = response.json()
@@ -428,7 +428,7 @@ class TestListRuns:
         # Filter by 2 tags, ProjectId=test and type=B
         response = client.get(
             "/ga4gh/wes/v1/runs",
-            params={"tags": json.dumps({"ProjectId": "test", "type": "B"})},
+            params={"filters": json.dumps({"tags": {"ProjectId": "test", "type": "B"}})},
         )
         assert response.status_code == 200
         data = response.json()

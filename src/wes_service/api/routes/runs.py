@@ -32,7 +32,7 @@ async def list_runs(
     user: CurrentUser,
     page_size: int | None = None,
     page_token: str | None = None,
-    tags: str | None = None,
+    filters: str | None = None,
 ) -> RunListResponse:
     """
     List workflow runs.
@@ -41,28 +41,35 @@ async def list_runs(
     make assumptions about live updates. Use GetRunStatus or GetRunLog
     to monitor specific runs.
 
-    Supports filtering by tags using a JSON string in the 'tags' parameter, e.g.:
-    ?tags={"project":"testproject","name":"sampleA"}
+    Supports filtering using the 'filters' parameter with JSON format:
+    ?filters={"tags":{"ProjectId":"123","TaskName":"my-task"},"workflow_url":"wf-abc","state":"RUNNING"}
+
+    Supported filter fields:
+    - tags: Dictionary of tag key-value pairs to filter by
+    - workflow_url: Filter by specific workflow URL
+    - task_name: Filter by task name (extracted from tags.TaskName)
+    - state: Filter by workflow state
+    - project: Filter by project ID (extracted from tags.ProjectId)
     """
     # Log raw request parameters for debugging
-    logger.info(f"list_runs called with tags parameter: {tags!r}")
+    logger.info(f"list_runs called with filters parameter: {filters!r}")
     logger.info(f"list_runs called with page_size: {page_size}, page_token: {page_token}")
 
-    # Parse tags if provided
-    tag_filters = {}
-    if tags:
+    # Parse filters if provided
+    parsed_filters = {}
+    if filters:
         try:
-            tag_filters = json.loads(tags)
-            logger.info(f"Parsed tag_filters: {tag_filters}")
+            parsed_filters = json.loads(filters)
+            logger.info(f"Parsed filters: {parsed_filters}")
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse tags JSON: {e}")
+            logger.error(f"Failed to parse filters JSON: {e}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid JSON format for tags parameter",
+                detail="Invalid JSON format for filters parameter",
             )
 
     service = RunService(db, None)  # type: ignore
-    return await service.list_runs(page_size, page_token, user, tag_filters)
+    return await service.list_runs(page_size, page_token, None, parsed_filters)
 
 
 @router.post(
