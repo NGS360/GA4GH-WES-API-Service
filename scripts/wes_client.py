@@ -123,13 +123,45 @@ class WESClient:
         self,
         page_size: int | None = None,
         page_token: str | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """List workflow runs."""
+        """
+        List workflow runs with optional filtering.
+
+        Args:
+            page_size: Number of runs per page
+            page_token: Token for pagination
+            filters: Dictionary of filter criteria where:
+                - String values: {column: value} → WorkflowRun.column == value
+                - Dict values: {column: {key: value}} → WorkflowRun.column[key].as_string() == value
+
+        Examples:
+            # Filter by workflow_url
+            filters={"workflow_url": "wf-12345abcdef"}
+
+            # Filter by tags
+            filters={"tags": {"ProjectId": "123", "TaskName": "my-task"}}
+
+            # Filter by state
+            filters={"state": "RUNNING"}
+
+            # Combined filters
+            filters={
+                "workflow_url": "wf-12345abcdef",
+                "tags": {"ProjectId": "123"},
+                "state": "RUNNING"
+            }
+
+        Returns:
+            Dictionary containing runs and pagination info
+        """
         params = {}
         if page_size:
             params["page_size"] = page_size
         if page_token:
             params["page_token"] = page_token
+        if filters:
+            params["filters"] = json.dumps(filters)
 
         response = httpx.get(
             f"{self.base_url}/runs",
@@ -248,6 +280,7 @@ def parse_arguments() -> argparse.Namespace:
     # List command
     list_parser = subparsers.add_parser("list", help="List workflow runs")
     list_parser.add_argument("--page-size", type=int, help="Page size")
+    list_parser.add_argument("--filters", help="Filters JSON string")
 
     # Status command
     status_parser = subparsers.add_parser("status", help="Get run status")
@@ -307,7 +340,10 @@ def main() -> None:
             print(f"Submitted workflow run: {run_id}")
 
         elif args.command == "list":
-            result = client.list_runs(page_size=args.page_size)
+            filters = None
+            if args.filters:
+                filters = json.loads(args.filters)
+            result = client.list_runs(page_size=args.page_size, filters=filters)
             print(json.dumps(result, indent=2))
 
         elif args.command == "status":
