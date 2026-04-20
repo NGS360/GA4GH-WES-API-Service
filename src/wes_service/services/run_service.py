@@ -158,9 +158,21 @@ class RunService:
         if 'omics_run_id' not in submission_response:
             logger.error("Workflow submission response did not contain omics_run_id")
             run.state = WorkflowState.SYSTEM_ERROR
-            run.system_logs.append(f"Error submitting workflow {run_id} for execution")
+
+            detailed_error = None
+            if run.system_logs:
+                # Get the last error message (most recent one from workflow submission)
+                for log_entry in reversed(run.system_logs):
+                    if log_entry and not log_entry.startswith("Successfully"):
+                        detailed_error = log_entry
+                        break
+
+            if not detailed_error:
+                detailed_error = f"Error submitting workflow {run_id} for execution"
+                run.system_logs.append(detailed_error)
+
             await self.db.commit()
-            return {"error": f"Error submitting workflow {run_id} for execution"}
+            return {"error": detailed_error}
 
         # Update run with execution ID but keep QUEUED state
         if not run.outputs:
