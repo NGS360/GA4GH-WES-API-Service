@@ -1,7 +1,6 @@
 """Service layer for callback operations."""
 
 import logging
-from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -107,6 +106,12 @@ class CallbackService:
                 detail=f"Unknown Omics status: {payload.status}",
             )
 
+        if payload.status == "RUNNING":
+            if not run.start_time:
+                run.start_time = payload.event_time
+                attributes.flag_modified(run, "start_time")
+                await self.db.commit()
+
         # If no state change, return success without updating
         if new_state == previous_state:
             logger.info(
@@ -153,7 +158,7 @@ class CallbackService:
 
         # Update callback tracking fields
         if hasattr(run, 'last_callback_time'):
-            run.last_callback_time = datetime.now(timezone.utc)
+            run.last_callback_time = payload.event_time
         if hasattr(run, 'last_event_id'):
             run.last_event_id = payload.event_id
 
@@ -178,7 +183,8 @@ class CallbackService:
         # If terminal state, set end time and exit code
         if new_state in self.TERMINAL_STATES:
             if not run.end_time:
-                run.end_time = datetime.now(timezone.utc)
+                run.end_time = payload.event_time
+                attributes.flag_modified(run, "end_time")
 
             # Store log urls if provided
             if payload.log_urls:
