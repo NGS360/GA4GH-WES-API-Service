@@ -4,11 +4,6 @@ build:
 	git add requirements.txt
 	git commit -m "Update requirements.txt" || echo "No changes to commit"
 
-deploy:
-	git add .ebextensions/
-	eb deploy --staged
-	git restore --staged .ebextensions/
-
 test:
 	uv sync --extra dev
 	uv run pytest --cov=src --cov-report=html
