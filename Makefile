@@ -1,8 +1,8 @@
 build:
 	uv lock
 	uv pip compile pyproject.toml -o requirements.txt
-	git add requirements.txt
-	git commit -m "Update requirements.txt" || echo "No changes to commit"
+	git add requirements.txt uv.lock
+	git commit -m "Update requirements.txt/uv.lock" || echo "No changes to commit"
 
 test:
 	uv sync --extra dev
