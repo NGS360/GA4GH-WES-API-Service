@@ -1,6 +1,6 @@
 """Service info endpoint."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 
@@ -54,7 +54,7 @@ async def get_service_info(
 
     # Service creation/update times (static for now)
     created_at = datetime(2024, 1, 1).isoformat() + "Z"
-    updated_at = datetime.utcnow().isoformat() + "Z"
+    updated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
     return ServiceInfo(
         id="org.ga4gh.wes",
