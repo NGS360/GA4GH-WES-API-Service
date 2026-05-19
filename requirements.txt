@@ -38,7 +38,7 @@ click==8.3.1
     # via uvicorn
 cryptography==46.0.7
     # via python-jose
-ecdsa==0.19.1
+ecdsa==0.19.2
     # via python-jose
 fastapi==0.135.1
     # via wes-service (pyproject.toml)
