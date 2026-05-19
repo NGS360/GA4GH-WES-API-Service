@@ -44,7 +44,7 @@ fastapi==0.136.1
     # via wes-service (pyproject.toml)
 flake8==7.3.0
     # via wes-service (pyproject.toml)
-greenlet==3.3.2
+greenlet==3.5.0
     # via wes-service (pyproject.toml)
 h11==0.16.0
     # via
@@ -88,7 +88,7 @@ pydantic==2.12.5
     #   pydantic-settings
 pydantic-core==2.41.5
     # via pydantic
-pydantic-settings==2.13.1
+pydantic-settings==2.14.1
     # via wes-service (pyproject.toml)
 pyflakes==3.4.0
     # via flake8
