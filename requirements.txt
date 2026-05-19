@@ -44,7 +44,7 @@ fastapi==0.135.1
     # via wes-service (pyproject.toml)
 flake8==7.3.0
     # via wes-service (pyproject.toml)
-greenlet==3.3.2
+greenlet==3.5.0
     # via wes-service (pyproject.toml)
 h11==0.16.0
     # via
@@ -142,7 +142,7 @@ urllib3==2.6.3
     # via
     #   botocore
     #   requests
-uvicorn==0.41.0
+uvicorn==0.47.0
     # via wes-service (pyproject.toml)
 uvloop==0.22.1
     # via uvicorn
