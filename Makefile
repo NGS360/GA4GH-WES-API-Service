@@ -1,9 +1,8 @@
-deploy:
+build:
 	uv lock
 	uv pip compile pyproject.toml -o requirements.txt
-	git add requirements.txt .ebextensions/
-	eb deploy --staged
-	git restore --staged requirements.txt .ebextensions/
+	git add requirements.txt uv.lock
+	git commit -m "Update requirements.txt/uv.lock" || echo "No changes to commit"
 
 test:
 	uv sync --extra dev
