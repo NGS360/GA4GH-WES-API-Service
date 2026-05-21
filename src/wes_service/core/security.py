@@ -45,7 +45,7 @@ def parse_basic_auth_users() -> dict[str, str]:
     return users
 
 
-async def get_current_user(
+def get_current_user(
     credentials: Annotated[HTTPBasicCredentials, Depends(security)],
 ) -> str:
     """
@@ -101,24 +101,24 @@ async def get_current_user(
     return username
 
 
-async def get_optional_user(
-    credentials: HTTPBasicCredentials | None = Depends(security),
-) -> str | None:
-    """
-    Get current user or None if no authentication provided.
+# async def get_optional_user(
+#     credentials: HTTPBasicCredentials | None = Depends(security),
+# ) -> str | None:
+#     """
+#     Get current user or None if no authentication provided.
 
-    This is useful for endpoints that support optional authentication.
+#     This is useful for endpoints that support optional authentication.
 
-    Args:
-        credentials: Optional HTTP Basic auth credentials
+#     Args:
+#         credentials: Optional HTTP Basic auth credentials
 
-    Returns:
-        Username if authenticated, None otherwise
-    """
-    if credentials is None:
-        return None
+#     Returns:
+#         Username if authenticated, None otherwise
+#     """
+#     if credentials is None:
+#         return None
 
-    try:
-        return await get_current_user(credentials)
-    except HTTPException:
-        return None
+#     try:
+#         return await get_current_user(credentials)
+#     except HTTPException:
+#         return None
