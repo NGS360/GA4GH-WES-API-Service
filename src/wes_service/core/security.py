@@ -3,7 +3,7 @@
 from typing import Annotated
 
 import httpx
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import (
     HTTPBasic,
     HTTPBasicCredentials,
