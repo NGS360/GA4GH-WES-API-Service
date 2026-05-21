@@ -159,7 +159,7 @@ class Settings(BaseSettings):
     )
 
     # Authentication Configuration
-    auth_method: Literal["basic", "oauth2", "none"] = Field(
+    auth_method: Literal["basic", "oauth2", "api_token", "none"] = Field(
         default="basic",
         description="Authentication method",
     )
