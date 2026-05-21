@@ -104,7 +104,8 @@ async def validate_api_token(token: str) -> str:
 
 async def get_current_user(
     basic_credentials: Annotated[HTTPBasicCredentials | None, Depends(security_basic)] = None,
-    bearer_credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security_bearer)] = None,
+    bearer_credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(security_bearer)] = None,
 ) -> str:
     """
     Validate authentication credentials (Basic or Bearer token).
