@@ -226,25 +226,18 @@ class RunService:
 
         # Filter by user if specified
         if user_id:
-            logger.info(f"Filtering runs for user_id: {user_id}")
             query = query.where(WorkflowRun.user_id == user_id)
 
         # Apply dynamic filters if specified
         if filters and isinstance(filters, dict):
-            logger.info(f"Applying filters: {filters}")
-
             for filter_key, filter_value in filters.items():
                 try:
                     # Check if the column exists on WorkflowRun model
                     if not hasattr(WorkflowRun, filter_key):
-                        logger.warning(f"Invalid filter column: {filter_key}")
                         continue
-
                     column = getattr(WorkflowRun, filter_key)
-
                     # Handle dictionary values for JSON columns (e.g., tags, workflow_params)
                     if isinstance(filter_value, dict):
-                        logger.info(f"Applying JSON filter on {filter_key}: {filter_value}")
                         for json_key, json_value in filter_value.items():
                             # Handle complex JSON values (dicts, lists) vs simple values
                             if isinstance(json_value, (dict, list)):
@@ -260,27 +253,18 @@ class RunService:
                                 query = query.where(
                                     column[json_key].as_string() == str(json_value)
                                 )
-
                     # Handle string/scalar values for regular columns
                     else:
-                        logger.info(f"Applying scalar filter: {filter_key}={filter_value}")
-
                         # Handle state enum conversion
                         if filter_key == "state" and isinstance(filter_value, str):
                             from src.wes_service.db.models import WorkflowState
                             try:
                                 filter_value = WorkflowState(filter_value)
                             except ValueError:
-                                logger.warning(f"Invalid state value: {filter_value}")
                                 continue
-
                         query = query.where(column == filter_value)
-
-                except Exception as e:
-                    logger.error(f"Error applying filter {filter_key}={filter_value}: {e}")
+                except Exception:
                     continue
-        else:
-            logger.info(f"No filters applied. filters={filters}")
 
         # Apply pagination
         query = query.offset(offset).limit(page_size + 1)
@@ -288,7 +272,6 @@ class RunService:
         # Execute query
         result = await self.db.execute(query)
         runs = result.scalars().all()
-        logger.info(f"Retrieved {len(runs)} runs from database")
 
         # Check if there are more results
         has_more = len(runs) > page_size

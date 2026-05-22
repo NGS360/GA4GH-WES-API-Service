@@ -51,24 +51,18 @@ async def list_runs(
     - state: Filter by workflow state
     - project: Filter by project ID (extracted from tags.ProjectId)
     """
-    # Log raw request parameters for debugging
-    logger.info(f"list_runs called with filters parameter: {filters!r}")
-    logger.info(f"list_runs called with page_size: {page_size}, page_token: {page_token}")
-
     # Parse filters if provided
     parsed_filters = {}
     if filters:
         try:
             parsed_filters = json.loads(filters)
-            logger.info(f"Parsed filters: {parsed_filters}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse filters JSON: {e}")
+        except json.JSONDecodeError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid JSON format for filters parameter",
             )
 
-    service = RunService(db, None)  # type: ignore
+    service = RunService(db, None)
     return await service.list_runs(page_size, page_token, None, parsed_filters)
 
 
