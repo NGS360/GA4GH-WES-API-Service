@@ -213,95 +213,104 @@ class RunService:
         Returns:
             RunListResponse with runs and next page token
         """
-        # Default page size
-        if page_size is None:
-            page_size = 10
-        page_size = min(page_size, 100)  # Max 100 per page
+        page_size = self._normalize_page_size(page_size)
+        offset = self._parse_page_token(page_token)
 
-        # Parse page token (offset)
-        offset = int(page_token) if page_token else 0
-
-        # Build query
-        query = select(WorkflowRun).order_by(WorkflowRun.created_at.desc())
-
-        # Filter by user if specified
-        if user_id:
-            logger.info(f"Filtering runs for user_id: {user_id}")
-            query = query.where(WorkflowRun.user_id == user_id)
-
-        # Apply dynamic filters if specified
-        if filters and isinstance(filters, dict):
-            logger.info(f"Applying filters: {filters}")
-
-            for filter_key, filter_value in filters.items():
-                try:
-                    # Check if the column exists on WorkflowRun model
-                    if not hasattr(WorkflowRun, filter_key):
-                        logger.warning(f"Invalid filter column: {filter_key}")
-                        continue
-
-                    column = getattr(WorkflowRun, filter_key)
-
-                    # Handle dictionary values for JSON columns (e.g., tags, workflow_params)
-                    if isinstance(filter_value, dict):
-                        logger.info(f"Applying JSON filter on {filter_key}: {filter_value}")
-                        for json_key, json_value in filter_value.items():
-                            # Handle complex JSON values (dicts, lists) vs simple values
-                            if isinstance(json_value, (dict, list)):
-                                # For complex objects, use JSON serialization for accurate comparison
-                                json_str = json.dumps(
-                                    json_value, separators=(',', ':'), sort_keys=True
-                                )
-                                query = query.where(
-                                    column[json_key].as_string() == json_str
-                                )
-                            else:
-                                # For simple values, use string comparison
-                                query = query.where(
-                                    column[json_key].as_string() == str(json_value)
-                                )
-
-                    # Handle string/scalar values for regular columns
-                    else:
-                        logger.info(f"Applying scalar filter: {filter_key}={filter_value}")
-
-                        # Handle state enum conversion
-                        if filter_key == "state" and isinstance(filter_value, str):
-                            from src.wes_service.db.models import WorkflowState
-                            try:
-                                filter_value = WorkflowState(filter_value)
-                            except ValueError:
-                                logger.warning(f"Invalid state value: {filter_value}")
-                                continue
-
-                        query = query.where(column == filter_value)
-
-                except Exception as e:
-                    logger.error(f"Error applying filter {filter_key}={filter_value}: {e}")
-                    continue
-        else:
-            logger.info(f"No filters applied. filters={filters}")
-
-        # Apply pagination
+        # Build and execute query
+        query = self._build_base_query(user_id)
+        query = self._apply_filters_to_query(query, filters)
         query = query.offset(offset).limit(page_size + 1)
 
-        # Execute query
-        result = await self.db.execute(query)
-        runs = result.scalars().all()
-        logger.info(f"Retrieved {len(runs)} runs from database")
+        # Execute and process results
+        runs = await self._execute_query(query)
+        summaries, next_token = self._process_results(runs, page_size, offset)
 
-        # Check if there are more results
+        return RunListResponse(runs=summaries, next_page_token=next_token)
+
+    def _normalize_page_size(self, page_size: int | None) -> int:
+        """Normalize page size to valid range."""
+        if page_size is None:
+            return 10
+        return min(page_size, 100)
+
+    def _parse_page_token(self, page_token: str | None) -> int:
+        """Parse page token to offset."""
+        return int(page_token) if page_token else 0
+
+    def _build_base_query(self, user_id: str | None):
+        """Build base query with user filter if specified."""
+        query = select(WorkflowRun).order_by(WorkflowRun.created_at.desc())
+        if user_id:
+            query = query.where(WorkflowRun.user_id == user_id)
+        return query
+
+    def _apply_filters_to_query(self, query, filters: dict[str, any] | None):
+        """Apply dynamic filters to query."""
+        if not filters or not isinstance(filters, dict):
+            return query
+
+        for filter_key, filter_value in filters.items():
+            query = self._apply_single_filter(query, filter_key, filter_value)
+        return query
+
+    def _apply_single_filter(self, query, filter_key: str, filter_value: any):
+        """Apply a single filter to the query."""
+        try:
+            if not hasattr(WorkflowRun, filter_key):
+                return query
+
+            column = getattr(WorkflowRun, filter_key)
+
+            if isinstance(filter_value, dict):
+                return self._apply_json_filter(query, column, filter_value)
+            else:
+                return self._apply_scalar_filter(query, column, filter_key, filter_value)
+        except Exception:
+            return query
+
+    def _apply_json_filter(self, query, column, filter_value: dict):
+        """Apply JSON column filter (e.g., tags, workflow_params)."""
+        for json_key, json_value in filter_value.items():
+            if isinstance(json_value, (dict, list)):
+                # Complex objects: use JSON serialization
+                json_str = json.dumps(json_value, separators=(',', ':'), sort_keys=True)
+                query = query.where(column[json_key].as_string() == json_str)
+            else:
+                # Simple values: use string comparison
+                query = query.where(column[json_key].as_string() == str(json_value))
+        return query
+
+    def _apply_scalar_filter(self, query, column, filter_key: str, filter_value: any):
+        """Apply scalar column filter."""
+        converted_value = self._convert_filter_value(filter_key, filter_value)
+        if converted_value is not None:
+            query = query.where(column == converted_value)
+        return query
+
+    def _convert_filter_value(self, filter_key: str, filter_value: any) -> any:
+        """Convert filter value to appropriate type (e.g., state enum)."""
+        if filter_key == "state" and isinstance(filter_value, str):
+            try:
+                return WorkflowState(filter_value)
+            except ValueError:
+                return None
+        return filter_value
+
+    async def _execute_query(self, query):
+        """Execute query and return results."""
+        result = await self.db.execute(query)
+        return result.scalars().all()
+
+    def _process_results(self, runs: list, page_size: int, offset: int) -> tuple[list, str]:
+        """Process query results and generate pagination info."""
         has_more = len(runs) > page_size
         if has_more:
             runs = runs[:page_size]
 
-        # Convert to summaries
         summaries = [self._run_to_summary(run) for run in runs]
-
-        # Generate next page token
         next_token = str(offset + page_size) if has_more else ""
 
-        return RunListResponse(runs=summaries, next_page_token=next_token)
+        return summaries, next_token
 
     async def get_run_status(self, run_id: str, user_id: str | None) -> RunStatus:
         """
