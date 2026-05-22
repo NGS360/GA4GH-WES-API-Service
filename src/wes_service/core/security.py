@@ -1,8 +1,10 @@
 """Security utilities for authentication and authorization."""
 
 from typing import Annotated
+import threading
 
 import httpx
+from cachetools import TTLCache
 from fastapi import Depends, HTTPException, status
 from fastapi.security import (
     HTTPBasic,
@@ -20,6 +22,49 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # HTTP Basic Auth
 security_basic = HTTPBasic(auto_error=False)
 security_bearer = HTTPBearer(auto_error=False)
+
+# Token cache initialization
+# Note: Cache is initialized with default values and can be reconfigured via settings
+_token_cache: TTLCache | None = None
+_cache_lock = threading.Lock()
+
+
+def _get_token_cache() -> TTLCache:
+    """
+    Get or initialize the token cache based on settings.
+    
+    Returns:
+        TTLCache instance configured with settings
+    """
+    global _token_cache
+    
+    if _token_cache is None:
+        settings = get_settings()
+        _token_cache = TTLCache(
+            maxsize=settings.token_cache_max_size,
+            ttl=settings.token_cache_ttl_seconds
+        )
+    
+    return _token_cache
+
+
+def clear_token_cache() -> None:
+    """Clear the token cache (useful for testing or manual invalidation)."""
+    with _cache_lock:
+        cache = _get_token_cache()
+        cache.clear()
+
+
+def invalidate_token(token: str) -> None:
+    """
+    Invalidate a specific token from cache.
+    
+    Args:
+        token: The token to invalidate
+    """
+    with _cache_lock:
+        cache = _get_token_cache()
+        cache.pop(token, None)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -50,12 +95,13 @@ def parse_basic_auth_users() -> dict[str, str]:
     return users
 
 
-async def validate_api_token(token: str) -> str:
+async def validate_api_token(token: str, use_cache: bool = True) -> str:
     """
-    Validate an API token against the NGS360 auth endpoint.
+    Validate an API token against the NGS360 auth endpoint with caching.
 
     Args:
         token: Bearer token to validate
+        use_cache: Whether to use cached results (default: True)
 
     Returns:
         Username from the auth endpoint
@@ -64,6 +110,17 @@ async def validate_api_token(token: str) -> str:
         HTTPException: If token is invalid or auth endpoint is unreachable
     """
     settings = get_settings()
+    
+    # Check cache first if enabled
+    if use_cache and settings.enable_token_cache:
+        with _cache_lock:
+            cache = _get_token_cache()
+            cached_result = cache.get(token)
+        
+        if cached_result is not None:
+            return cached_result
+    
+    # Cache miss or cache disabled - validate with NGS360 API
     url = f"{settings.ngs360_api_url}/api/v1/auth/me"
 
     async with httpx.AsyncClient() as client:
@@ -98,6 +155,12 @@ async def validate_api_token(token: str) -> str:
             detail="Could not determine username from token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Cache the successful validation if enabled
+    if use_cache and settings.enable_token_cache:
+        with _cache_lock:
+            cache = _get_token_cache()
+            cache[token] = username
 
     return username
 

@@ -168,6 +168,20 @@ class Settings(BaseSettings):
         description="Comma-separated list of username:hashed_password pairs",
     )
 
+    # Token caching configuration
+    enable_token_cache: bool = Field(
+        default=True,
+        description="Enable caching of token validation results",
+    )
+    token_cache_ttl_seconds: int = Field(
+        default=300,
+        description="Token cache TTL in seconds (default: 5 minutes)",
+    )
+    token_cache_max_size: int = Field(
+        default=1000,
+        description="Maximum number of tokens to cache",
+    )
+
     # Service Configuration
     service_name: str = Field(
         default="GA4GH WES Service",
