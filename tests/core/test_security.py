@@ -209,6 +209,9 @@ class TestGetCurrentUserApiToken:
         with patch("src.wes_service.core.security.get_settings") as mock_settings:
             mock_settings.return_value.auth_method = "api_token"
             mock_settings.return_value.ngs360_api_url = "http://ngs360.example.com"
+            mock_settings.return_value.enable_token_cache = True
+            mock_settings.return_value.token_cache_max_size = 1000
+            mock_settings.return_value.token_cache_ttl_seconds = 300
 
             with patch("httpx.AsyncClient") as mock_client_cls:
                 mock_client = AsyncMock()
@@ -352,6 +355,9 @@ class TestValidateApiToken:
 
         with patch("src.wes_service.core.security.get_settings") as mock_settings:
             mock_settings.return_value.ngs360_api_url = "http://ngs360.example.com"
+            mock_settings.return_value.enable_token_cache = True
+            mock_settings.return_value.token_cache_max_size = 1000
+            mock_settings.return_value.token_cache_ttl_seconds = 300
 
             with patch("httpx.AsyncClient") as mock_client_cls:
                 mock_client = AsyncMock()
