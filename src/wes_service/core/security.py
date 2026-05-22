@@ -32,19 +32,19 @@ _cache_lock = threading.Lock()
 def _get_token_cache() -> TTLCache:
     """
     Get or initialize the token cache based on settings.
-    
+
     Returns:
         TTLCache instance configured with settings
     """
     global _token_cache
-    
+
     if _token_cache is None:
         settings = get_settings()
         _token_cache = TTLCache(
             maxsize=settings.token_cache_max_size,
             ttl=settings.token_cache_ttl_seconds
         )
-    
+
     return _token_cache
 
 
@@ -58,7 +58,7 @@ def clear_token_cache() -> None:
 def invalidate_token(token: str) -> None:
     """
     Invalidate a specific token from cache.
-    
+
     Args:
         token: The token to invalidate
     """
@@ -110,16 +110,16 @@ async def validate_api_token(token: str, use_cache: bool = True) -> str:
         HTTPException: If token is invalid or auth endpoint is unreachable
     """
     settings = get_settings()
-    
+
     # Check cache first if enabled
     if use_cache and settings.enable_token_cache:
         with _cache_lock:
             cache = _get_token_cache()
             cached_result = cache.get(token)
-        
+
         if cached_result is not None:
             return cached_result
-    
+
     # Cache miss or cache disabled - validate with NGS360 API
     url = f"{settings.ngs360_api_url}/api/v1/auth/me"
 
