@@ -2,8 +2,14 @@
 
 from typing import Annotated
 
+import httpx
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.security import (
+    HTTPBasic,
+    HTTPBasicCredentials,
+    HTTPBearer,
+    HTTPAuthorizationCredentials
+)
 from passlib.context import CryptContext
 
 from src.wes_service.config import get_settings
@@ -12,7 +18,8 @@ from src.wes_service.config import get_settings
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Basic Auth
-security = HTTPBasic()
+security_basic = HTTPBasic(auto_error=False)
+security_bearer = HTTPBearer(auto_error=False)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -34,25 +41,78 @@ def parse_basic_auth_users() -> dict[str, str]:
     """
     settings = get_settings()
     users = {}
-
     if settings.basic_auth_users:
         for user_entry in settings.basic_auth_users.split(","):
             user_entry = user_entry.strip()
             if ":" in user_entry:
                 username, hashed_pwd = user_entry.split(":", 1)
                 users[username.strip()] = hashed_pwd.strip()
-
     return users
 
 
-async def get_current_user(
-    credentials: Annotated[HTTPBasicCredentials, Depends(security)],
-) -> str:
+async def validate_api_token(token: str) -> str:
     """
-    Validate HTTP Basic Authentication credentials.
+    Validate an API token against the NGS360 auth endpoint.
 
     Args:
-        credentials: HTTP Basic auth credentials
+        token: Bearer token to validate
+
+    Returns:
+        Username from the auth endpoint
+
+    Raises:
+        HTTPException: If token is invalid or auth endpoint is unreachable
+    """
+    settings = get_settings()
+    url = f"{settings.ngs360_api_url}/api/v1/auth/me"
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-Client-Application": "ngs360-ga4gh",
+                    "User-Agent": "ngs360-ga4gh/1.0",
+                },
+                timeout=10.0,
+            )
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Authentication service unavailable: {exc}",
+            ) from exc
+
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired API token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    data = response.json()
+    username = data.get("username")
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not determine username from token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return username
+
+
+async def get_current_user(
+    basic_credentials: Annotated[HTTPBasicCredentials | None, Depends(security_basic)] = None,
+    bearer_credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(security_bearer)] = None,
+) -> str:
+    """
+    Validate authentication credentials (Basic or Bearer token).
+
+    Args:
+        basic_credentials: HTTP Basic auth credentials (if provided)
+        bearer_credentials: HTTP Bearer token credentials (if provided)
 
     Returns:
         Username if authentication successful
@@ -66,59 +126,60 @@ async def get_current_user(
     if settings.auth_method == "none":
         return "anonymous"
 
-    # For OAuth2, this would validate bearer tokens
-    if settings.auth_method == "oauth2":
-        # TODO: Implement OAuth2 token validation
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="OAuth2 not yet implemented",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    # Bearer token authentication (API token)
+    if bearer_credentials is not None and settings.auth_method == "api_token":
+        return await validate_api_token(bearer_credentials.credentials)
 
     # Basic authentication
-    users = parse_basic_auth_users()
+    if basic_credentials is not None and settings.auth_method == "basic":
+        users = parse_basic_auth_users()
 
-    if not users:
-        # No users configured, allow access (development mode)
-        return credentials.username
+        if not users:
+            # No users configured, allow access (development mode)
+            return basic_credentials.username
 
-    username = credentials.username
-    if username not in users:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+        username = basic_credentials.username
+        if username not in users:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials",
+                headers={"WWW-Authenticate": "Basic"},
+            )
 
-    # Verify password
-    if not verify_password(credentials.password, users[username]):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+        # Verify password
+        if not verify_password(basic_credentials.password, users[username]):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+        return username
 
-    return username
+    # No credentials provided
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
+# async def get_optional_user(
+#     credentials: HTTPBasicCredentials | None = Depends(security),
+# ) -> str | None:
+#     """
+#     Get current user or None if no authentication provided.
 
-async def get_optional_user(
-    credentials: HTTPBasicCredentials | None = Depends(security),
-) -> str | None:
-    """
-    Get current user or None if no authentication provided.
+#     This is useful for endpoints that support optional authentication.
 
-    This is useful for endpoints that support optional authentication.
+#     Args:
+#         credentials: Optional HTTP Basic auth credentials
 
-    Args:
-        credentials: Optional HTTP Basic auth credentials
+#     Returns:
+#         Username if authenticated, None otherwise
+#     """
+#     if credentials is None:
+#         return None
 
-    Returns:
-        Username if authenticated, None otherwise
-    """
-    if credentials is None:
-        return None
-
-    try:
-        return await get_current_user(credentials)
-    except HTTPException:
-        return None
+#     try:
+#         return await get_current_user(credentials)
+#     except HTTPException:
+#         return None
