@@ -7,6 +7,7 @@ import logging
 import os
 import httpx
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import attributes
@@ -140,12 +141,12 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
         return response_payload
 
-    async def _get_engine_id_from_ngs360(self, workflow_id: str) -> str:
+    async def _get_engine_id_from_ngs360(self, workflow_url: str) -> str:
         """
-        Query NGS360 API to get the engine_id for a given workflow ID.
+        Query NGS360 API to get the engine_id for a given workflow URL.
 
         Args:
-            workflow_id: The workflow ID to look up
+            workflow_url: The workflow URL in format NGS360WORKFLOWID[:ALIAS_OR_VERSION]
 
         Returns:
             The engine_id from the NGS360 API
@@ -153,17 +154,21 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         Raises:
             RuntimeError: If API call fails or engine_id not found
         """
-        if len(workflow_id.split(':'))>1:
-            ngs360_workflow_id = workflow_id.split(':')[0]
-            workflow_version = workflow_id.split(':')[1]
+        if ':' in workflow_url:
+            if len(workflow_url.split(':'))>2:
+                raise RuntimeError(
+                    "Workflow URL format error - expect NGS360WORKFLOWID[:ALIAS_OR_VERSION"
+                )
+            else:
+                workflow_id = workflow_url.split(':')[0]
+                suffix = workflow_url.split(':')[1]
         else:
-            ngs360_workflow_id = workflow_id
-            workflow_version = None
+            workflow_id = workflow_url
+            suffix = None
 
         # Construct the API URL
-        api_url = f"{self.ngs360_api_url}/api/v1/workflows/{ngs360_workflow_id}"
-        logger.info(f"Querying NGS360 API for workflow {ngs360_workflow_id}: {api_url}")
-
+        api_url = f"{self.ngs360_api_url}/api/v1/workflows/{workflow_id}"
+        logger.info(f"Querying NGS360 API for workflow {workflow_id}: {api_url}")
 
         async with httpx.AsyncClient() as client:
             response = await client.get(api_url)
@@ -173,22 +178,57 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             )
         workflow_data = response.json()
 
-        alias = workflow_data.get("aliases")
-        versions = workflow_data.get("versions")
-
-        registrations = workflow_data.get("registrations")
-        omics_registrations = [c for c in registrations if c.get("engine") == "AWSHealthOmics"]
-        if len(omics_registrations) > 0:
-            engine_id = omics_registrations[0].get("external_id")
-        else:
+        alias = workflow_data.get("aliases", [])
+        versions = workflow_data.get("versions", [])
+        if not versions:
             raise RuntimeError(
-                f"Workflow registration not found for workflow {workflow_id} in NGS360 API response"
+                f"No versions found for workflow {ngs360_workflow_id} in NGS360 API response"
             )
 
+        if suffix:
+            # Check if match with any alias
+            selected_version = None
+            for alias_element in alias:
+                if alias_element["alias"] == suffix:
+                    alias_version = alias_element["version"]
+                    selected_version = [c for c in versions if c["version"]==alias_version][0]
+                    break
+
+            # Get specified version
+            if not selected_version:
+                for version_element in versions:
+                    if str(version_element["version"]) == suffix:
+                        selected_version = version_element
+
+            if not selected_version:
+                raise RuntimeError(
+                    f"Specified Alias/Version {suffix} is not found for workflow {workflow_id}."
+                )
+        else:
+            # Get latest version when not specified
+            latest_version = versions[0]
+            for version_element in versions:
+                if version_element["version"] > latest_version["version"]:
+                    latest_version = version_element
+            selected_version = latest_version
+
+        # Get newest deployment
+        deployments = selected_version.get("deployments", [])
+        deployments = [c for c in deployments if c["engine"]=="AWSHealthOmics (us-east)"]
+        if not deployments:
+            raise RuntimeError(
+                f"Specified Alias/Version {suffix} has no deployments in AWSHealthOmics (us-east)."
+            )
+
+        last_deployment = deployments[0]
+        for deployment in deployments:
+            if datetime.fromisoformat(deployment["created_at"]) > datetime.fromisoformat(last_deployment["created_at"]):
+                last_deployment = deployment
+        engine_id = last_deployment["external_id"]
         if not engine_id:
             raise RuntimeError(
-                f"engine_id not found for workflow {workflow_id} in NGS360 API response"
+                f"engine_id not found for workflow {workflow_id} deployment {last_deployment['id']} in NGS360 API response"
             )
 
-        logger.info(f"Successfully retrieved engine_id '{engine_id}' for workflow {workflow_id}")
+        logger.info(f"Successfully retrieved engine_id '{engine_id}' for workflow {workflow_url}")
         return engine_id
