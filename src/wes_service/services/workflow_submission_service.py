@@ -188,11 +188,12 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         if suffix:
             # Check if match with any alias
             selected_version = None
-            for alias_element in alias:
-                if alias_element["alias"] == suffix:
-                    alias_version = alias_element["version"]
-                    selected_version = [c for c in versions if c["version"]==alias_version][0]
-                    break
+            if alias:
+                for alias_element in alias:
+                    if alias_element["alias"] == suffix:
+                        alias_version = alias_element["version"]
+                        selected_version = [c for c in versions if c["version"]==alias_version][0]
+                        break
 
             # Get specified version
             if not selected_version:
