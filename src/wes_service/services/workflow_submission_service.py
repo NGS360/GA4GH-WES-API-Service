@@ -153,19 +153,29 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         Raises:
             RuntimeError: If API call fails or engine_id not found
         """
+        if len(workflow_id.split(':'))>1:
+            ngs360_workflow_id = workflow_id.split(':')[0]
+            workflow_version = workflow_id.split(':')[1]
+        else:
+            ngs360_workflow_id = workflow_id
+            workflow_version = None
+
         # Construct the API URL
-        api_url = f"{self.ngs360_api_url}/api/v1/workflows/{workflow_id}"
-        logger.info(f"Querying NGS360 API for workflow {workflow_id}: {api_url}")
+        api_url = f"{self.ngs360_api_url}/api/v1/workflows/{ngs360_workflow_id}"
+        logger.info(f"Querying NGS360 API for workflow {ngs360_workflow_id}: {api_url}")
+
 
         async with httpx.AsyncClient() as client:
             response = await client.get(api_url)
-
         if response.status_code != 200:
             raise RuntimeError(
                 f"NGS360 API returned status {response.status_code}: {response.text}"
             )
-
         workflow_data = response.json()
+
+        alias = workflow_data.get("aliases")
+        versions = workflow_data.get("versions")
+
         registrations = workflow_data.get("registrations")
         omics_registrations = [c for c in registrations if c.get("engine") == "AWSHealthOmics"]
         if len(omics_registrations) > 0:
