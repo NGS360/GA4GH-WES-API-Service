@@ -2,7 +2,6 @@
 
 import io
 import json
-from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState

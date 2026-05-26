@@ -25,7 +25,6 @@ from src.wes_service.schemas.run import (
     RunStatus,
     RunSummary,
 )
-from src.wes_service.services.workflow_submission_service import WorkflowSubmissionService
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +100,8 @@ class RunService:
             self.settings.get_workflow_type_versions().keys()
         )
         if workflow_type.upper() not in supported_types:
-            error_msg = f"Unsupported workflow type: {workflow_type}. Supported types: {supported_types}"
+            error_msg = f"Unsupported workflow type: {workflow_type}. " \
+                        f"Supported types: {supported_types}"
             logger.error(error_msg)
             raise ValueError(error_msg)
 

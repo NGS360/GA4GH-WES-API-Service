@@ -1,6 +1,5 @@
 """Service layer for workflow submission operations."""
 
-import asyncio
 import boto3
 import json
 import logging
@@ -10,7 +9,6 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import attributes
 
 from src.wes_service.config import get_settings
 from src.wes_service.db.models import WorkflowRun
@@ -125,7 +123,8 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         workflow_engine_id = self._select_deployment(selected_version, suffix, workflow_id)
 
         logger.info(
-            f"Successfully retrieved workflow_engine_id '{workflow_engine_id}' for workflow {workflow_url}"
+            f"Successfully retrieved workflow_engine_id "
+            f"'{workflow_engine_id}' for workflow {workflow_url}"
         )
         return workflow_engine_id
 
