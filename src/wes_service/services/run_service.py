@@ -55,7 +55,7 @@ class RunService:
         workflow_engine_version: str | None,
         workflow_engine_parameters: str | None,
         user_id: str,
-    ) -> dict:
+    ) -> WorkflowRun:
         """
         Create a new workflow run.
 
@@ -72,10 +72,7 @@ class RunService:
             user_id: User creating the run
 
         Returns:
-            Dict of {
-                'run_id': str,
-                'error': str (optional)
-            }
+            WorkflowRun object representing the created workflow run
         """
         # Parse JSON strings
         params = json.loads(workflow_params) if workflow_params else {}
@@ -104,8 +101,9 @@ class RunService:
             self.settings.get_workflow_type_versions().keys()
         )
         if workflow_type.upper() not in supported_types:
-            return {"error": f"Unsupported workflow type: {workflow_type}. "
-                    f"Supported types: {supported_types}"}
+            error_msg = f"Unsupported workflow type: {workflow_type}. Supported types: {supported_types}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
         # Create run record
         run_id = str(uuid4())
@@ -188,7 +186,7 @@ class RunService:
         #         "run remains QUEUED until EventBridge status update"
         # )
 
-        return {"run_id": run_id}
+        return run
 
     async def list_runs(
         self,
