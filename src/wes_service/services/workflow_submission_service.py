@@ -65,7 +65,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         """
         # Get engine_id from NGS360 API using the workflow_url as the workflow ID
         try:
-            engine_id = await self._get_engine_id_from_ngs360(run_request.workflow_url)
+            workflow_engine_id = await self._get_engine_id_from_ngs360(run_request.workflow_url)
         except RuntimeError as e:
             error_msg = (
                 f"Failed to retrieve engine_id from NGS360 API for workflow "
@@ -74,12 +74,12 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             logger.error(error_msg)
             return
 
-        # Prepare Lambda payload using the engine_id instead of workflow_id
+        # Prepare Lambda payload
         lambda_payload = {
             'action': 'submit_workflow',
             'source': 'ga4ghwes',
             'wes_run_id': run_request.id,
-            'workflow_id': engine_id,  # Use engine_id from NGS360 API
+            'workflow_id': workflow_engine_id,
             'workflow_version': (
                 run_request.workflow_params.get('workflow_version')
                 if run_request.workflow_params else None
@@ -105,7 +105,6 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                 Payload=json.dumps(lambda_payload)
         )
         logger.info(f"Lambda invocation response: {response}")
-
 
     async def _get_engine_id_from_ngs360(self, workflow_url: str) -> str:
         """
