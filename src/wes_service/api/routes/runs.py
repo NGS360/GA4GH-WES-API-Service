@@ -101,8 +101,7 @@ async def run_workflow(
     The workflow_params JSON object specifies input parameters.
     The exact format depends on the workflow language conventions.
     """
-    workflow_submission = LambdaWorkflowSubmissionService()
-    service = RunService(db, storage, workflow_submission)
+    service = RunService(db, storage)
     response = await service.create_run(
         workflow_params=workflow_params,
         workflow_type=workflow_type,
