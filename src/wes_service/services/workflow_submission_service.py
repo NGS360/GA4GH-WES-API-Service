@@ -155,7 +155,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             RuntimeError: If API call fails or engine_id not found
         """
         if ':' in workflow_url:
-            if len(workflow_url.split(':'))>2:
+            if len(workflow_url.split(':')) > 2:
                 raise RuntimeError(
                     "Workflow URL format error - expect NGS360WORKFLOWID[:ALIAS_OR_VERSION"
                 )
@@ -182,7 +182,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         versions = workflow_data.get("versions", [])
         if not versions:
             raise RuntimeError(
-                f"No versions found for workflow {ngs360_workflow_id} in NGS360 API response"
+                f"No versions found for workflow {workflow_id} in NGS360 API response"
             )
 
         if suffix:
@@ -192,7 +192,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                 for alias_element in alias:
                     if alias_element["alias"] == suffix:
                         alias_version = alias_element["version"]
-                        selected_version = [c for c in versions if c["version"]==alias_version][0]
+                        selected_version = [c for c in versions if c["version"] == alias_version][0]
                         break
 
             # Get specified version
@@ -215,7 +215,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
         # Get newest deployment
         deployments = selected_version.get("deployments", [])
-        deployments = [c for c in deployments if c["engine"]=="AWSHealthOmics (us-east)"]
+        deployments = [c for c in deployments if c["engine"] == "AWSHealthOmics (us-east)"]
         if not deployments:
             raise RuntimeError(
                 f"Specified Alias/Version {suffix} has no deployments in AWSHealthOmics (us-east)."
@@ -223,12 +223,14 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
         last_deployment = deployments[0]
         for deployment in deployments:
-            if datetime.fromisoformat(deployment["created_at"]) > datetime.fromisoformat(last_deployment["created_at"]):
+            creatd = datetime.fromisoformat(deployment["created_at"])
+            if creatd > datetime.fromisoformat(last_deployment["created_at"]):
                 last_deployment = deployment
         engine_id = last_deployment["external_id"]
         if not engine_id:
             raise RuntimeError(
-                f"engine_id not found for workflow {workflow_id} deployment {last_deployment['id']} in NGS360 API response"
+                f"engine_id not found for workflow {workflow_id} deployment "
+                f"{last_deployment['id']} in NGS360 API response"
             )
 
         logger.info(f"Successfully retrieved engine_id '{engine_id}' for workflow {workflow_url}")

@@ -39,8 +39,8 @@ class TestWorkflowSubmissionService:
         mock_boto3_client.assert_called_once_with('lambda', region_name='us-west-2')
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
-    async def test_get_engine_id_from_ngs360_success(self, mock_get_settings):
-        """Test successful NGS360 API call."""
+    async def test_get_engine_id_from_ngs360_latest_version(self, mock_get_settings):
+        """Test getting engine ID when no version specified."""
         # Mock settings
         mock_settings = MagicMock()
         mock_settings.ngs360_api_url = "https://test-ngs360.example.com"
@@ -53,10 +53,31 @@ class TestWorkflowSubmissionService:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "registrations": [
+            "aliases": [],
+            "versions": [
                 {
-                    "engine": "AWSHealthOmics",
-                    "external_id": "12345"
+                    "id": "version-1-id",
+                    "version": 1,
+                    "deployments": [
+                        {
+                            "id": "deployment-1-id",
+                            "engine": "AWSHealthOmics (us-east)",
+                            "external_id": "arn:aws:omics:us-east-1:123:workflow/456/version/v1",
+                            "created_at": "2026-01-01T10:00:00"
+                        }
+                    ]
+                },
+                {
+                    "id": "version-2-id",
+                    "version": 2,
+                    "deployments": [
+                        {
+                            "id": "deployment-2-id",
+                            "engine": "AWSHealthOmics (us-east)",
+                            "external_id": "arn:aws:omics:us-east-1:123:workflow/456/version/v2",
+                            "created_at": "2026-01-02T10:00:00"
+                        }
+                    ]
                 }
             ]
         }
@@ -77,7 +98,136 @@ class TestWorkflowSubmissionService:
             engine_id = await service._get_engine_id_from_ngs360("test-workflow-id")
 
         # Verify results
-        assert engine_id == "12345"
+        assert engine_id == "arn:aws:omics:us-east-1:123:workflow/456/version/v2"
+
+    @patch('src.wes_service.services.workflow_submission_service.get_settings')
+    async def test_get_engine_id_from_ngs360_specific_version(self, mock_get_settings):
+        """Test getting engine ID from specific version."""
+        # Mock settings
+        mock_settings = MagicMock()
+        mock_settings.ngs360_api_url = "https://test-ngs360.example.com"
+        mock_get_settings.return_value = mock_settings
+
+        with patch.dict('os.environ', {}):
+            service = LambdaWorkflowSubmissionService()
+
+        # Mock httpx response with new structure
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "aliases": [],
+            "versions": [
+                {
+                    "id": "version-1-id",
+                    "version": 1,
+                    "deployments": [
+                        {
+                            "id": "deployment-1-id",
+                            "engine": "AWSHealthOmics (us-east)",
+                            "external_id": "arn:aws:omics:us-east-1:123:workflow/456/version/v1",
+                            "created_at": "2026-01-01T10:00:00"
+                        }
+                    ]
+                },
+                {
+                    "id": "version-2-id",
+                    "version": 2,
+                    "deployments": [
+                        {
+                            "id": "deployment-2-id",
+                            "engine": "AWSHealthOmics (us-east)",
+                            "external_id": "arn:aws:omics:us-east-1:123:workflow/456/version/v2",
+                            "created_at": "2026-01-02T10:00:00"
+                        }
+                    ]
+                }
+            ]
+        }
+
+        # Mock httpx.AsyncClient context manager
+        with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+
+            # Make the get method async by creating an async mock
+            async def mock_get(*args, **kwargs):
+                return mock_response
+            mock_client.get = mock_get
+            mock_client_class.return_value = mock_client
+
+            # Test the method with specific version
+            engine_id = await service._get_engine_id_from_ngs360("test-workflow-id:1")
+
+        # Verify results - should return engine_id from version 1
+        assert engine_id == "arn:aws:omics:us-east-1:123:workflow/456/version/v1"
+
+    @patch('src.wes_service.services.workflow_submission_service.get_settings')
+    async def test_get_engine_id_from_ngs360_with_alias(self, mock_get_settings):
+        """Test getting engine ID using alias."""
+        # Mock settings
+        mock_settings = MagicMock()
+        mock_settings.ngs360_api_url = "https://test-ngs360.example.com"
+        mock_get_settings.return_value = mock_settings
+
+        with patch.dict('os.environ', {}):
+            service = LambdaWorkflowSubmissionService()
+
+        # Mock httpx response with alias
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "aliases": [
+                {
+                    "alias": "production",
+                    "version": 2
+                }
+            ],
+            "versions": [
+                {
+                    "id": "version-1-id",
+                    "version": 1,
+                    "deployments": [
+                        {
+                            "id": "deployment-1-id",
+                            "engine": "AWSHealthOmics (us-east)",
+                            "external_id": "arn:aws:omics:us-east-1:123:workflow/456/version/v1",
+                            "created_at": "2026-01-01T10:00:00"
+                        }
+                    ]
+                },
+                {
+                    "id": "version-2-id",
+                    "version": 2,
+                    "deployments": [
+                        {
+                            "id": "deployment-2-id",
+                            "engine": "AWSHealthOmics (us-east)",
+                            "external_id": "arn:aws:omics:us-east-1:123:workflow/456/version/v2",
+                            "created_at": "2026-01-02T10:00:00"
+                        }
+                    ]
+                }
+            ]
+        }
+
+        # Mock httpx.AsyncClient context manager
+        with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+
+            # Make the get method async by creating an async mock
+            async def mock_get(*args, **kwargs):
+                return mock_response
+            mock_client.get = mock_get
+            mock_client_class.return_value = mock_client
+
+            # Test the method with alias
+            engine_id = await service._get_engine_id_from_ngs360("test-workflow-id:production")
+
+        # Verify results - should return engine_id from version 2 (aliased as production)
+        assert engine_id == "arn:aws:omics:us-east-1:123:workflow/456/version/v2"
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
     async def test_get_engine_id_from_ngs360_api_error(self, mock_get_settings):
@@ -112,8 +262,8 @@ class TestWorkflowSubmissionService:
                 await service._get_engine_id_from_ngs360("nonexistent-workflow")
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
-    async def test_get_engine_id_from_ngs360_missing_engine_id(self, mock_get_settings):
-        """Test handling of missing engine_id in response."""
+    async def test_get_engine_id_from_ngs360_no_versions(self, mock_get_settings):
+        """Test handling when no versions exist."""
         # Mock settings
         mock_settings = MagicMock()
         mock_settings.ngs360_api_url = "https://test-ngs360.example.com"
@@ -122,14 +272,58 @@ class TestWorkflowSubmissionService:
         with patch.dict('os.environ', {}):
             service = LambdaWorkflowSubmissionService()
 
-        # Mock httpx response without external_id
+        # Mock httpx response with no versions
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "registrations": [
+            "aliases": [],
+            "versions": []
+        }
+
+        # Mock httpx.AsyncClient context manager
+        with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+
+            # Make the get method async by creating an async mock
+            async def mock_get(*args, **kwargs):
+                return mock_response
+            mock_client.get = mock_get
+            mock_client_class.return_value = mock_client
+
+            # Test error handling
+            with pytest.raises(RuntimeError, match="No versions found for workflow"):
+                await service._get_engine_id_from_ngs360("test-workflow-id")
+
+    @patch('src.wes_service.services.workflow_submission_service.get_settings')
+    async def test_get_engine_id_from_ngs360_no_deployments(self, mock_get_settings):
+        """Test handling when version has no AWSHealthOmics deployments."""
+        # Mock settings
+        mock_settings = MagicMock()
+        mock_settings.ngs360_api_url = "https://test-ngs360.example.com"
+        mock_get_settings.return_value = mock_settings
+
+        with patch.dict('os.environ', {}):
+            service = LambdaWorkflowSubmissionService()
+
+        # Mock httpx response with version but no omics deployments
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "aliases": [],
+            "versions": [
                 {
-                    "engine": "AWSHealthOmics"
-                    # Missing external_id to test error case
+                    "id": "version-1-id",
+                    "version": 1,
+                    "deployments": [
+                        {
+                            "id": "deployment-other-id",
+                            "engine": "OtherEngine",
+                            "external_id": "other-123",
+                            "created_at": "2026-01-01T10:00:00"
+                        }
+                    ]
                 }
             ]
         }
@@ -147,7 +341,7 @@ class TestWorkflowSubmissionService:
             mock_client_class.return_value = mock_client
 
             # Test error handling
-            with pytest.raises(RuntimeError, match="engine_id not found for workflow"):
+            with pytest.raises(RuntimeError, match="has no deployments in AWSHealthOmics"):
                 await service._get_engine_id_from_ngs360("test-workflow-id")
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
@@ -163,10 +357,19 @@ class TestWorkflowSubmissionService:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "registrations": [
+            "aliases": [],
+            "versions": [
                 {
-                    "engine": "AWSHealthOmics",
-                    "external_id": "67890"
+                    "id": "version-1-id",
+                    "version": 1,
+                    "deployments": [
+                        {
+                            "id": "deployment-submit-id",
+                            "engine": "AWSHealthOmics (us-east)",
+                            "external_id": "arn:aws:omics:us-east-1:123:workflow/456",
+                            "created_at": "2026-01-01T10:00:00"
+                        }
+                    ]
                 }
             ]
         }
@@ -228,7 +431,7 @@ class TestWorkflowSubmissionService:
         mock_lambda_client.invoke.assert_called_once()
         call_args = mock_lambda_client.invoke.call_args
         payload = json.loads(call_args[1]['Payload'])
-        assert payload['workflow_id'] == '67890'  # Should use engine_id from NGS360
+        assert payload['workflow_id'] == 'arn:aws:omics:us-east-1:123:workflow/456'  # Should use engine_id from NGS360
         assert payload['wes_run_id'] == 'test-run-123'
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
