@@ -481,7 +481,4 @@ class TestWorkflowSubmissionService:
             mock_db.commit = AsyncMock()
 
             # Test error handling - service catches exception and returns empty dict
-            result = await service.submit_workflow(run, mock_db)
-
-        # Verify that service returns empty dict on NGS360 failure
-        assert result == {}
+            await service.submit_workflow(run, mock_db)

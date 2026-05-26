@@ -55,91 +55,57 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         settings = get_settings()
         self.ngs360_api_url = settings.ngs360_api_url
 
-    async def submit_workflow(self, run: WorkflowRun, db: AsyncSession) -> dict:
+    async def submit_workflow(self, run_request: WorkflowRun, db: AsyncSession):
         """
         Submit workflow to Lambda function for Omics execution.
 
         Args:
-            run: WorkflowRun to submit
+            run_request_id: ID of the workflow run to submit
             db: Database session for logging errors
-
-        Returns:
-            Lambda response containing omics_run_id or empty dict on failure
         """
         # Get engine_id from NGS360 API using the workflow_url as the workflow ID
         try:
-            engine_id = await self._get_engine_id_from_ngs360(run.workflow_url)
+            engine_id = await self._get_engine_id_from_ngs360(run_request.workflow_url)
         except RuntimeError as e:
             error_msg = (
                 f"Failed to retrieve engine_id from NGS360 API for workflow "
-                f"{run.workflow_url}: {str(e)}"
+                f"{run_request.workflow_url}: {str(e)}"
             )
             logger.error(error_msg)
-            run.system_logs.append(error_msg)
-            attributes.flag_modified(run, "system_logs")
-            await db.commit()
-            return {}
+            return
 
         # Prepare Lambda payload using the engine_id instead of workflow_id
         lambda_payload = {
             'action': 'submit_workflow',
             'source': 'ga4ghwes',
-            'wes_run_id': run.id,
+            'wes_run_id': run_request.id,
             'workflow_id': engine_id,  # Use engine_id from NGS360 API
             'workflow_version': (
-                run.workflow_params.get('workflow_version')
-                if run.workflow_params else None
+                run_request.workflow_params.get('workflow_version')
+                if run_request.workflow_params else None
             ),
-            'workflow_type': run.workflow_type,
-            'parameters': run.workflow_params or {},
-            'workflow_engine_parameters': run.workflow_engine_parameters or {},
+            'workflow_type': run_request.workflow_type,
+            'parameters': run_request.workflow_params or {},
+            'workflow_engine_parameters': run_request.workflow_engine_parameters or {},
             'tags': {
-                **(run.tags or {}),
-                'WESRunId': run.id
+                **(run_request.tags or {}),
+                'WESRunId': run_request.id
             }
         }
 
         logger.info(
-            f"Lambda payload for run {run.id}: "
+            f"Lambda payload for run {run_request.id}: "
             f"{json.dumps(lambda_payload, default=str)}"
         )
 
         # Call Lambda function asynchronously
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: self.lambda_client.invoke(
+        response = self.lambda_client.invoke(
                 FunctionName=self.lambda_function_name,
-                InvocationType='RequestResponse',
+                InvocationType='Event',
                 Payload=json.dumps(lambda_payload)
-            )
         )
         logger.info(f"Lambda invocation response: {response}")
 
-        # Check for errors
-        if response['StatusCode'] != 200:
-            error_msg = f"Lambda invocation failed with status {response['StatusCode']}"
-            logger.error(f"{error_msg}: {response}")
-            run.system_logs.append(error_msg)
-            attributes.flag_modified(run, "system_logs")
-            await db.commit()
-            return {}
-
-        # Parse response
-        # The payload is the result of the lambda fn calling Omics.
-        response_payload = json.loads(response['Payload'].read())
-        logger.info(f"Lambda invocation response payload: {response_payload}")
-
-        if response_payload.get('statusCode') != 200:
-            error_msg = (f"Workflow submission failed: "
-                         f"{response_payload.get('message', 'Unknown error')}")
-            logger.error(error_msg)
-            run.system_logs.append(error_msg)
-            attributes.flag_modified(run, "system_logs")
-            await db.commit()
-            return {}
-
-        return response_payload
 
     async def _get_engine_id_from_ngs360(self, workflow_url: str) -> str:
         """
@@ -149,89 +115,198 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             workflow_url: The workflow URL in format NGS360WORKFLOWID[:ALIAS_OR_VERSION]
 
         Returns:
-            The engine_id from the NGS360 API
+            The workflow id on the requested engine from the NGS360 API
 
         Raises:
-            RuntimeError: If API call fails or engine_id not found
+            RuntimeError: If API call fails or workflow_engine_id not found
         """
-        if ':' in workflow_url:
-            if len(workflow_url.split(':')) > 2:
-                raise RuntimeError(
-                    "Workflow URL format error - expect NGS360WORKFLOWID[:ALIAS_OR_VERSION"
-                )
-            else:
-                workflow_id = workflow_url.split(':')[0]
-                suffix = workflow_url.split(':')[1]
-        else:
-            workflow_id = workflow_url
-            suffix = None
+        workflow_id, suffix = self._parse_workflow_url(workflow_url)
+        workflow_data = await self._fetch_workflow_from_api(workflow_id)
+        selected_version = self._select_version(workflow_data, suffix, workflow_id)
+        workflow_engine_id = self._select_deployment(selected_version, suffix, workflow_id)
 
-        # Construct the API URL
+        logger.info(
+            f"Successfully retrieved workflow_engine_id '{workflow_engine_id}' for workflow {workflow_url}"
+        )
+        return workflow_engine_id
+
+    def _parse_workflow_url(self, workflow_url: str) -> tuple[str, str | None]:
+        """
+        Parse workflow URL into ID and optional suffix (alias/version).
+
+        Args:
+            workflow_url: The workflow URL in format NGS360WORKFLOWID[:ALIAS_OR_VERSION]
+
+        Returns:
+            Tuple of (workflow_id, suffix) where suffix may be None
+
+        Raises:
+            RuntimeError: If URL format is invalid
+        """
+        if ':' not in workflow_url:
+            return workflow_url, None
+
+        parts = workflow_url.split(':')
+        if len(parts) > 2:
+            raise RuntimeError(
+                "Workflow URL format error - expect NGS360WORKFLOWID[:ALIAS_OR_VERSION]"
+            )
+        return parts[0], parts[1]
+
+    async def _fetch_workflow_from_api(self, workflow_id: str) -> dict:
+        """
+        Fetch workflow data from NGS360 API.
+
+        Args:
+            workflow_id: The NGS360 workflow ID
+
+        Returns:
+            Workflow data dictionary from the API
+
+        Raises:
+            RuntimeError: If API call fails
+        """
         api_url = f"{self.ngs360_api_url}/api/v1/workflows/{workflow_id}"
         logger.info(f"Querying NGS360 API for workflow {workflow_id}: {api_url}")
 
         async with httpx.AsyncClient() as client:
             response = await client.get(api_url)
+
         if response.status_code != 200:
             raise RuntimeError(
                 f"NGS360 API returned status {response.status_code}: {response.text}"
             )
-        workflow_data = response.json()
+        return response.json()
 
-        alias = workflow_data.get("aliases", [])
+    def _find_version_by_alias(
+        self,
+        aliases: list[dict],
+        versions: list[dict],
+        alias_name: str,
+    ) -> dict | None:
+        """
+        Find version matching the given alias.
+
+        Args:
+            aliases: List of alias entries from workflow data
+            versions: List of version entries from workflow data
+            alias_name: The alias name to search for
+
+        Returns:
+            Matching version dict, or None if not found
+        """
+        for alias_entry in aliases:
+            if alias_entry["alias"] == alias_name:
+                alias_version = alias_entry["version"]
+                matching = [v for v in versions if v["version"] == alias_version]
+                return matching[0] if matching else None
+        return None
+
+    def _find_version_by_number(
+        self,
+        versions: list[dict],
+        version_str: str,
+    ) -> dict | None:
+        """
+        Find version by direct version number string.
+
+        Args:
+            versions: List of version entries from workflow data
+            version_str: Version number as a string
+
+        Returns:
+            Matching version dict, or None if not found
+        """
+        for version_entry in versions:
+            if str(version_entry["version"]) == version_str:
+                return version_entry
+        return None
+
+    def _select_version(
+        self,
+        workflow_data: dict,
+        suffix: str | None,
+        workflow_id: str,
+    ) -> dict:
+        """
+        Select the appropriate workflow version based on suffix or return latest.
+
+        Args:
+            workflow_data: Full workflow data from the API
+            suffix: Optional alias or version suffix
+            workflow_id: The workflow ID (for error messages)
+
+        Returns:
+            Selected version dictionary
+
+        Raises:
+            RuntimeError: If no versions exist or specified version not found
+        """
         versions = workflow_data.get("versions", [])
         if not versions:
             raise RuntimeError(
                 f"No versions found for workflow {workflow_id} in NGS360 API response"
             )
 
-        if suffix:
-            # Check if match with any alias
-            selected_version = None
-            if alias:
-                for alias_element in alias:
-                    if alias_element["alias"] == suffix:
-                        alias_version = alias_element["version"]
-                        selected_version = [c for c in versions if c["version"] == alias_version][0]
-                        break
+        if not suffix:
+            return max(versions, key=lambda v: v["version"])
 
-            # Get specified version
-            if not selected_version:
-                for version_element in versions:
-                    if str(version_element["version"]) == suffix:
-                        selected_version = version_element
+        # Try alias first, then direct version number
+        aliases = workflow_data.get("aliases", [])
+        selected = self._find_version_by_alias(aliases, versions, suffix)
 
-            if not selected_version:
-                raise RuntimeError(
-                    f"Specified Alias/Version {suffix} is not found for workflow {workflow_id}."
-                )
-        else:
-            # Get latest version when not specified
-            latest_version = versions[0]
-            for version_element in versions:
-                if version_element["version"] > latest_version["version"]:
-                    latest_version = version_element
-            selected_version = latest_version
+        if not selected:
+            selected = self._find_version_by_number(versions, suffix)
 
-        # Get newest deployment
-        deployments = selected_version.get("deployments", [])
-        deployments = [c for c in deployments if c["engine"] == "AWSHealthOmics (us-east)"]
-        if not deployments:
+        if not selected:
             raise RuntimeError(
-                f"Specified Alias/Version {suffix} has no deployments in AWSHealthOmics (us-east)."
+                f"Specified Alias/Version {suffix} is not found for workflow {workflow_id}."
             )
 
-        last_deployment = deployments[0]
-        for deployment in deployments:
-            creatd = datetime.fromisoformat(deployment["created_at"])
-            if creatd > datetime.fromisoformat(last_deployment["created_at"]):
-                last_deployment = deployment
-        engine_id = last_deployment["external_id"]
+        return selected
+
+    def _select_deployment(
+        self,
+        version: dict,
+        suffix: str | None,
+        workflow_id: str,
+    ) -> str:
+        """
+        Select the most recent AWSHealthOmics deployment and return its engine_id.
+
+        Args:
+            version: The selected version dictionary
+            suffix: The alias/version suffix (for error messages)
+            workflow_id: The workflow ID (for error messages)
+
+        Returns:
+            The engine_id string from the selected deployment
+
+        Raises:
+            RuntimeError: If no deployments found or engine_id is empty
+        """
+        deployments = version.get("deployments", [])
+        omics_deployments = [
+            d for d in deployments
+            if d["engine"] == "AWSHealthOmics (us-east)"
+        ]
+
+        if not omics_deployments:
+            raise RuntimeError(
+                f"Specified Alias/Version {suffix} has no deployments "
+                f"in AWSHealthOmics (us-east)."
+            )
+
+        latest = max(
+            omics_deployments,
+            key=lambda d: datetime.fromisoformat(d["created_at"]),
+        )
+
+        engine_id = latest["external_id"]
         if not engine_id:
             raise RuntimeError(
                 f"engine_id not found for workflow {workflow_id} deployment "
-                f"{last_deployment['id']} in NGS360 API response"
+                f"{latest['id']} in NGS360 API response"
             )
 
-        logger.info(f"Successfully retrieved engine_id '{engine_id}' for workflow {workflow_url}")
         return engine_id
