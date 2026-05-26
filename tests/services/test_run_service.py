@@ -67,7 +67,7 @@ class TestRunService:
         """Test creating a new workflow run."""
         service = RunService(test_db, mock_storage)
 
-        result_dict = await service.create_run(
+        workflow_run = await service.create_run(
             workflow_params='{"input": "value"}',
             workflow_type="CWL",
             workflow_type_version="v1.0",
@@ -80,9 +80,8 @@ class TestRunService:
             user_id="testuser",
         )
 
-        assert result_dict is not None
-        assert "run_id" in result_dict
-        run_id = result_dict["run_id"]
+        assert workflow_run is not None
+        run_id = workflow_run.id
         assert isinstance(run_id, str)
 
         # Verify run was created in database
