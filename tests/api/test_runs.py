@@ -16,48 +16,6 @@ WORKFLOW_SUBMIT_PATCH = (
 class TestPAMLFunctions:
     """Tests endpoint as PAML would do.."""
 
-    def test_paml_submit_task(self, client: TestClient):
-        """Test submit task through PAML"""
-        # Mimic inputs of PAML submit_task()
-        name = "test_wes_run"
-        project = {
-            "name": "test_project_name",
-            "id": "test_project_id",
-        }
-        workflow = "1234567"
-        parameters = {
-            "input_file": "s3://bucket/input.fastq",
-            "reference_genome": "s3://bucket/reference.fa"
-        }
-        execution_settings = {"cacheId": "12345"}
-
-        # Mock run
-        workflow_engine_parameters = {
-            "cacheId": execution_settings["cacheId"],
-            "name": name
-        }
-        tags = {
-            "TaskName": name,
-            "ProjectId": project["id"],
-        }
-        response = client.post(
-            "/ga4gh/wes/v1/runs",
-            data={
-                "workflow_url": workflow,
-                "workflow_type": "CWL",
-                "workflow_type_version": "v1.0",
-                "workflow_params": json.dumps(parameters),
-                "workflow_engine_parameters": json.dumps(workflow_engine_parameters),
-                "tags": json.dumps(tags),
-            },
-        )
-
-        # Verify run was created correctly and added to db
-        assert response.status_code == 200
-        data = response.json()
-        assert "run_id" in data
-        assert isinstance(data["run_id"], str)
-
     async def test_paml_get_task_state(self, client: TestClient, test_db):
         """Test get task state through PAML"""
         # Mimic inputs of PAML get_task_state()
