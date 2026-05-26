@@ -16,12 +16,8 @@ WORKFLOW_SUBMIT_PATCH = (
 class TestPAMLFunctions:
     """Tests endpoint as PAML would do.."""
 
-    @patch(WORKFLOW_SUBMIT_PATCH)
-    async def test_paml_submit_task(self, mock_submit, client: TestClient):
+    def test_paml_submit_task(self, client: TestClient):
         """Test submit task through PAML"""
-        # Mock the workflow submission to return a successful response
-        mock_submit.return_value = {"omics_run_id": "123456"}
-
         # Mimic inputs of PAML submit_task()
         name = "test_wes_run"
         project = {
