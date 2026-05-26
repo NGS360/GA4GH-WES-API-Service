@@ -431,7 +431,7 @@ class TestWorkflowSubmissionService:
         mock_lambda_client.invoke.assert_called_once()
         call_args = mock_lambda_client.invoke.call_args
         payload = json.loads(call_args[1]['Payload'])
-        assert payload['workflow_id'] == 'arn:aws:omics:us-east-1:123:workflow/456'  # Should use engine_id from NGS360
+        assert payload['workflow_id'] == 'arn:aws:omics:us-east-1:123:workflow/456'
         assert payload['wes_run_id'] == 'test-run-123'
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
