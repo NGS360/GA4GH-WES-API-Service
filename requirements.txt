@@ -19,7 +19,7 @@ anyio==4.12.1
     #   watchfiles
 bcrypt==5.0.0
     # via passlib
-boto3==1.42.60
+boto3==1.43.14
     # via wes-service (pyproject.toml)
 botocore==1.42.60
     # via
