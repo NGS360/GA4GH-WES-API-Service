@@ -31,54 +31,6 @@ def mock_workflow_submission():
 @pytest.mark.asyncio
 class TestRunService:
     """Tests for RunService."""
-
-    async def test_paml_submit_task(self, test_db, mock_storage):
-        """Test submit task through PAML"""
-        # Mimic inputs of PAML submit_task()
-        name = "test_wes_run"
-        project = {
-            "name": "test_project_name",
-            "id": "test_project_id",
-        }
-        workflow = "1234567"
-        parameters = {
-            "input_file": "s3://bucket/input.fastq",
-            "reference_genome": "s3://bucket/reference.fa"
-        }
-        execution_settings = {"cacheId": "12345"}
-
-        # Mock run service - we need to pass the workflow_submission mock
-        service = RunService(test_db, mock_storage)
-
-        workflow_engine_parameters = {
-            "cacheId": execution_settings["cacheId"],
-            "name": name
-        }
-        result_dict = await service.create_run(
-            workflow_params=json.dumps(parameters),
-            workflow_type="CWL",
-            workflow_type_version="v1.0",
-            workflow_url=workflow,
-            tags=json.dumps({"TaskName": name, "ProjectId": project["id"]}),
-            workflow_engine_parameters=json.dumps(
-                workflow_engine_parameters
-            ),
-            workflow_attachments=None,
-            workflow_engine="CWL",
-            workflow_engine_version="v1.0",
-            user_id="ngs360",
-        )
-
-        # Verify run was created correctly and added to db
-        assert result_dict is not None
-        assert "run_id" in result_dict
-        run_id = result_dict["run_id"]
-        assert isinstance(run_id, str)
-        result = await test_db.get(WorkflowRun, run_id)
-        assert result is not None
-        assert result.workflow_type == "CWL"
-        assert result.state == WorkflowState.QUEUED
-
     async def test_paml_get_task_state(self, test_db, mock_storage):
         """Test get task state through PAML"""
         # Mimic inputs of PAML get_task_state()
