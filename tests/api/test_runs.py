@@ -252,12 +252,8 @@ class TestPAMLFunctions:
 class TestSubmitWorkflow:
     """Tests for POST /runs endpoint."""
 
-    @patch(WORKFLOW_SUBMIT_PATCH)
-    def test_submit_workflow_minimal(self, mock_submit, client: TestClient):
+    def test_submit_workflow_minimal(self, client: TestClient):
         """Test submitting a workflow with minimal parameters."""
-        # Mock the workflow submission to return a successful response
-        mock_submit.return_value = {"omics_run_id": "123456"}
-
         response = client.post(
             "/ga4gh/wes/v1/runs",
             data={
@@ -272,12 +268,8 @@ class TestSubmitWorkflow:
         assert "run_id" in data
         assert isinstance(data["run_id"], str)
 
-    @patch(WORKFLOW_SUBMIT_PATCH)
-    def test_submit_workflow_with_params(self, mock_submit, client: TestClient):
+    def test_submit_workflow_with_params(self, client: TestClient):
         """Test submitting a workflow with parameters."""
-        # Mock the workflow submission to return a successful response
-        mock_submit.return_value = {"omics_run_id": "123456"}
-
         params = {"input_file": "s3://bucket/input.txt"}
 
         response = client.post(
@@ -297,12 +289,8 @@ class TestSubmitWorkflow:
         data = response.json()
         assert "run_id" in data
 
-    @patch(WORKFLOW_SUBMIT_PATCH)
-    def test_submit_workflow_with_attachments(self, mock_submit, client: TestClient):
+    def test_submit_workflow_with_attachments(self, client: TestClient):
         """Test submitting a workflow with file attachments."""
-        # Mock the workflow submission to return a successful response
-        mock_submit.return_value = {"omics_run_id": "123456"}
-
         files = [
             ("workflow_attachment", ("workflow.cwl", io.BytesIO(b"content1"))),
             ("workflow_attachment", ("inputs.json", io.BytesIO(b"content2"))),
