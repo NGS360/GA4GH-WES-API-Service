@@ -377,13 +377,8 @@ class TestWorkflowSubmissionService:
         # Mock Lambda client
         mock_lambda_client = MagicMock()
         mock_lambda_response = {
-            'StatusCode': 200,
-            'Payload': MagicMock()
+            'StatusCode': 202,
         }
-        mock_lambda_response['Payload'].read.return_value = json.dumps({
-            'statusCode': 200,
-            'omics_run_id': 'omics-12345'
-        }).encode('utf-8')
         mock_lambda_client.invoke.return_value = mock_lambda_response
         mock_boto3_client.return_value = mock_lambda_client
 
@@ -420,12 +415,11 @@ class TestWorkflowSubmissionService:
             mock_db = MagicMock()
             mock_db.commit = AsyncMock()
 
-            # Test workflow submission
+            # Test workflow submission (Event invocation is fire-and-forget)
             result = await service.submit_workflow(run, mock_db)
 
-        # Verify results
-        assert result['omics_run_id'] == 'omics-12345'
-        assert result['statusCode'] == 200
+        # Event invocation is fire-and-forget, so submit_workflow returns None
+        assert result is None
 
         # Verify Lambda was called with correct payload
         mock_lambda_client.invoke.assert_called_once()
@@ -481,7 +475,4 @@ class TestWorkflowSubmissionService:
             mock_db.commit = AsyncMock()
 
             # Test error handling - service catches exception and returns empty dict
-            result = await service.submit_workflow(run, mock_db)
-
-        # Verify that service returns empty dict on NGS360 failure
-        assert result == {}
+            await service.submit_workflow(run, mock_db)

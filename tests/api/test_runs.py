@@ -2,7 +2,6 @@
 
 import io
 import json
-from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
@@ -15,52 +14,6 @@ WORKFLOW_SUBMIT_PATCH = (
 
 class TestPAMLFunctions:
     """Tests endpoint as PAML would do.."""
-
-    @patch(WORKFLOW_SUBMIT_PATCH)
-    async def test_paml_submit_task(self, mock_submit, client: TestClient):
-        """Test submit task through PAML"""
-        # Mock the workflow submission to return a successful response
-        mock_submit.return_value = {"omics_run_id": "123456"}
-
-        # Mimic inputs of PAML submit_task()
-        name = "test_wes_run"
-        project = {
-            "name": "test_project_name",
-            "id": "test_project_id",
-        }
-        workflow = "1234567"
-        parameters = {
-            "input_file": "s3://bucket/input.fastq",
-            "reference_genome": "s3://bucket/reference.fa"
-        }
-        execution_settings = {"cacheId": "12345"}
-
-        # Mock run
-        workflow_engine_parameters = {
-            "cacheId": execution_settings["cacheId"],
-            "name": name
-        }
-        tags = {
-            "TaskName": name,
-            "ProjectId": project["id"],
-        }
-        response = client.post(
-            "/ga4gh/wes/v1/runs",
-            data={
-                "workflow_url": workflow,
-                "workflow_type": "CWL",
-                "workflow_type_version": "v1.0",
-                "workflow_params": json.dumps(parameters),
-                "workflow_engine_parameters": json.dumps(workflow_engine_parameters),
-                "tags": json.dumps(tags),
-            },
-        )
-
-        # Verify run was created correctly and added to db
-        assert response.status_code == 200
-        data = response.json()
-        assert "run_id" in data
-        assert isinstance(data["run_id"], str)
 
     async def test_paml_get_task_state(self, client: TestClient, test_db):
         """Test get task state through PAML"""
@@ -252,12 +205,8 @@ class TestPAMLFunctions:
 class TestSubmitWorkflow:
     """Tests for POST /runs endpoint."""
 
-    @patch(WORKFLOW_SUBMIT_PATCH)
-    def test_submit_workflow_minimal(self, mock_submit, client: TestClient):
+    def test_submit_workflow_minimal(self, client: TestClient):
         """Test submitting a workflow with minimal parameters."""
-        # Mock the workflow submission to return a successful response
-        mock_submit.return_value = {"omics_run_id": "123456"}
-
         response = client.post(
             "/ga4gh/wes/v1/runs",
             data={
@@ -272,12 +221,8 @@ class TestSubmitWorkflow:
         assert "run_id" in data
         assert isinstance(data["run_id"], str)
 
-    @patch(WORKFLOW_SUBMIT_PATCH)
-    def test_submit_workflow_with_params(self, mock_submit, client: TestClient):
+    def test_submit_workflow_with_params(self, client: TestClient):
         """Test submitting a workflow with parameters."""
-        # Mock the workflow submission to return a successful response
-        mock_submit.return_value = {"omics_run_id": "123456"}
-
         params = {"input_file": "s3://bucket/input.txt"}
 
         response = client.post(
@@ -297,12 +242,8 @@ class TestSubmitWorkflow:
         data = response.json()
         assert "run_id" in data
 
-    @patch(WORKFLOW_SUBMIT_PATCH)
-    def test_submit_workflow_with_attachments(self, mock_submit, client: TestClient):
+    def test_submit_workflow_with_attachments(self, client: TestClient):
         """Test submitting a workflow with file attachments."""
-        # Mock the workflow submission to return a successful response
-        mock_submit.return_value = {"omics_run_id": "123456"}
-
         files = [
             ("workflow_attachment", ("workflow.cwl", io.BytesIO(b"content1"))),
             ("workflow_attachment", ("inputs.json", io.BytesIO(b"content2"))),

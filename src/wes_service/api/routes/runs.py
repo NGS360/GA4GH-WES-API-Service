@@ -101,26 +101,37 @@ async def run_workflow(
     The workflow_params JSON object specifies input parameters.
     The exact format depends on the workflow language conventions.
     """
-    workflow_submission = LambdaWorkflowSubmissionService()
-    service = RunService(db, storage, workflow_submission)
-    response = await service.create_run(
-        workflow_params=workflow_params,
-        workflow_type=workflow_type,
-        workflow_type_version=workflow_type_version,
-        workflow_url=workflow_url,
-        workflow_attachments=workflow_attachment,
-        tags=tags,
-        workflow_engine=workflow_engine,
-        workflow_engine_version=workflow_engine_version,
-        workflow_engine_parameters=workflow_engine_parameters,
-        user_id=user,
-    )
-    if "error" in response:
+    service = RunService(db, storage)
+    try:
+        run = await service.create_run(
+            workflow_params=workflow_params,
+            workflow_type=workflow_type,
+            workflow_type_version=workflow_type_version,
+            workflow_url=workflow_url,
+            workflow_attachments=workflow_attachment,
+            tags=tags,
+            workflow_engine=workflow_engine,
+            workflow_engine_version=workflow_engine_version,
+            workflow_engine_parameters=workflow_engine_parameters,
+            user_id=user,
+        )
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=response["error"],
+            detail=str(e),
         )
-    return RunId(run_id=response["run_id"])
+
+    # Ping LambdaWorkflowSubmissionService to trigger processing of the new run
+    try:
+        submission_service = LambdaWorkflowSubmissionService()
+        await submission_service.submit_workflow(run, db)
+    except Exception as e:
+        logger.exception(
+            "Failed to trigger run processing request for run_id %s: %s",
+            run.id,
+            e
+        )
+    return RunId(run_id=run.id)
 
 
 @router.get(

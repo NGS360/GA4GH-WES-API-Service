@@ -25,7 +25,6 @@ from src.wes_service.schemas.run import (
     RunStatus,
     RunSummary,
 )
-from src.wes_service.services.workflow_submission_service import WorkflowSubmissionService
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +36,10 @@ class RunService:
         self,
         db: AsyncSession,
         storage: StorageBackend,
-        workflow_submission: WorkflowSubmissionService = None
     ):
         """Initialize run service."""
         self.db = db
         self.storage = storage
-        self.workflow_submission = workflow_submission
         self.settings = get_settings()
 
     async def create_run(
@@ -57,7 +54,7 @@ class RunService:
         workflow_engine_version: str | None,
         workflow_engine_parameters: str | None,
         user_id: str,
-    ) -> dict:
+    ) -> WorkflowRun:
         """
         Create a new workflow run.
 
@@ -74,10 +71,7 @@ class RunService:
             user_id: User creating the run
 
         Returns:
-            Dict of {
-                'run_id': str,
-                'error': str (optional)
-            }
+            WorkflowRun object representing the created workflow run
         """
         # Parse JSON strings
         params = json.loads(workflow_params) if workflow_params else {}
@@ -106,8 +100,10 @@ class RunService:
             self.settings.get_workflow_type_versions().keys()
         )
         if workflow_type.upper() not in supported_types:
-            return {"error": f"Unsupported workflow type: {workflow_type}. "
-                    f"Supported types: {supported_types}"}
+            error_msg = f"Unsupported workflow type: {workflow_type}. " \
+                        f"Supported types: {supported_types}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
         # Create run record
         run_id = str(uuid4())
@@ -152,45 +148,45 @@ class RunService:
         await self.db.commit()
 
         # Submit workflow for execution
-        logger.info(f"Submitting workflow {run_id} for execution")
-        submission_response = await self.workflow_submission.submit_workflow(run, self.db)
+        # logger.info(f"Submitting workflow {run_id} for execution")
+        # submission_response = await self.workflow_submission.submit_workflow(run, self.db)
 
-        if 'omics_run_id' not in submission_response:
-            logger.error("Workflow submission response did not contain omics_run_id")
-            run.state = WorkflowState.SYSTEM_ERROR
+        # if 'omics_run_id' not in submission_response:
+        #     logger.error("Workflow submission response did not contain omics_run_id")
+        #     run.state = WorkflowState.SYSTEM_ERROR
 
-            detailed_error = None
-            if run.system_logs:
-                # Get the last error message (most recent one from workflow submission)
-                for log_entry in reversed(run.system_logs):
-                    if log_entry and not log_entry.startswith("Successfully"):
-                        detailed_error = log_entry
-                        break
+        #     detailed_error = None
+        #     if run.system_logs:
+        #         # Get the last error message (most recent one from workflow submission)
+        #         for log_entry in reversed(run.system_logs):
+        #             if log_entry and not log_entry.startswith("Successfully"):
+        #                 detailed_error = log_entry
+        #                 break
 
-            if not detailed_error:
-                detailed_error = f"Error submitting workflow {run_id} for execution"
-                run.system_logs.append(detailed_error)
+        #     if not detailed_error:
+        #         detailed_error = f"Error submitting workflow {run_id} for execution"
+        #         run.system_logs.append(detailed_error)
 
-            await self.db.commit()
-            return {"error": detailed_error}
+        #     await self.db.commit()
+        #     return {"error": detailed_error}
 
-        # Update run with execution ID but keep QUEUED state
-        if not run.outputs:
-            run.outputs = {}
+        # # Update run with execution ID but keep QUEUED state
+        # if not run.outputs:
+        #     run.outputs = {}
 
-        run.workflow_run_id = submission_response['omics_run_id']
+        # run.workflow_run_id = submission_response['omics_run_id']
 
-        # Keep state as QUEUED - EventBridge events will update status and outputs
-        run.system_logs.append(
-                f"Successfully submitted for execution. "
-                f"Omics run ID: {submission_response['omics_run_id']}")
-        await self.db.commit()
-        logger.info(
-                f"Successfully submitted workflow {run_id} for execution - "
-                "run remains QUEUED until EventBridge status update"
-        )
+        # # Keep state as QUEUED - EventBridge events will update status and outputs
+        # run.system_logs.append(
+        #         f"Successfully submitted for execution. "
+        #         f"Omics run ID: {submission_response['omics_run_id']}")
+        # await self.db.commit()
+        # logger.info(
+        #         f"Successfully submitted workflow {run_id} for execution - "
+        #         "run remains QUEUED until EventBridge status update"
+        # )
 
-        return {"run_id": run_id}
+        return run
 
     async def list_runs(
         self,
