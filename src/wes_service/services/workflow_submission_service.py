@@ -72,6 +72,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             logger.error(error_msg)
             return
 
+        settings = get_settings()
         # Prepare Lambda payload
         lambda_payload = {
             'action': 'submit_workflow',
@@ -87,7 +88,8 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             'workflow_engine_parameters': run_request.workflow_engine_parameters or {},
             'tags': {
                 **(run_request.tags or {}),
-                'WESRunId': run_request.id
+                'WESRunId': run_request.id,
+                'callback_url': f"{settings.api_prefix}/internal/callbacks/omics-state-change"
             }
         }
 
