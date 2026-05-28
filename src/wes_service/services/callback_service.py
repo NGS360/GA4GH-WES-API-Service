@@ -1,6 +1,7 @@
 """Service layer for callback operations."""
 
 import logging
+from typing import Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -66,142 +67,25 @@ class CallbackService:
             f"status={payload.status}"
         )
 
-        # Get the workflow run
-        result = await self.db.execute(
-            select(WorkflowRun).where(WorkflowRun.id == payload.wes_run_id)
-        )
-        run = result.scalar_one_or_none()
+        run = await self._fetch_run(payload.wes_run_id)
 
-        if not run:
-            logger.error(f"Workflow run not found: {payload.wes_run_id}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Workflow run {payload.wes_run_id} not found",
-            )
+        if duplicate := self._check_duplicate_event(run, payload):
+            return duplicate
 
-        # Check for duplicate event (idempotency)
-        has_last_event = hasattr(run, 'last_event_id') and run.last_event_id
-        if has_last_event and run.last_event_id == payload.event_id:
-            logger.info(
-                f"Duplicate event {payload.event_id} for run {payload.wes_run_id}, "
-                f"returning cached response"
-            )
-            return CallbackResponse(
-                success=True,
-                wes_run_id=run.id,
-                previous_state=run.state.value,
-                new_state=run.state.value,
-                message=f"Event {payload.event_id} already processed",
-                already_processed=True,
-            )
+        await self._sync_omics_run_id(run, payload)
+        new_state = self._resolve_new_state(payload.status)
+        await self._record_start_time(run, payload)
 
-        # Update omics run id if provided
-        if payload.omics_run_id and not run.workflow_run_id:
-            run.workflow_run_id = payload.omics_run_id
-            attributes.flag_modified(run, "workflow_run_id")
-            await self.db.commit()
-
-        # Store previous state
         previous_state = run.state
 
-        # Map Omics status to WES state
-        new_state = self.OMICS_STATUS_MAP.get(payload.status)
-        if not new_state:
-            logger.error(f"Unknown Omics status: {payload.status}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unknown Omics status: {payload.status}",
-            )
+        if no_change := self._build_no_change_response(run, new_state):
+            return no_change
 
-        if payload.status == "RUNNING":
-            if not run.start_time:
-                run.start_time = payload.event_time
-                attributes.flag_modified(run, "start_time")
-                await self.db.commit()
+        if invalid := self._handle_invalid_transition(run, previous_state, new_state):
+            return invalid
 
-        # If no state change, return success without updating
-        if new_state == previous_state:
-            logger.info(
-                f"No state change for run {payload.wes_run_id} "
-                f"(still {new_state}), returning success"
-            )
-            return CallbackResponse(
-                success=True,
-                wes_run_id=run.id,
-                previous_state=previous_state.value,
-                new_state=new_state.value,
-                message="No state change",
-                already_processed=False,
-            )
+        self._apply_state_update(run, payload, new_state)
 
-        # Validate state transition
-        if not self._is_valid_transition(previous_state, new_state):
-            # If run is already in terminal state, don't update but return success
-            if previous_state in self.TERMINAL_STATES:
-                logger.warning(
-                    f"Run {payload.wes_run_id} already in terminal state "
-                    f"{previous_state}, ignoring update to {new_state}"
-                )
-                return CallbackResponse(
-                    success=True,
-                    wes_run_id=run.id,
-                    previous_state=previous_state.value,
-                    new_state=previous_state.value,
-                    message=f"Run already in terminal state {previous_state}",
-                    already_processed=False,
-                )
-
-            logger.error(
-                f"Invalid state transition for run {payload.wes_run_id}: "
-                f"{previous_state} -> {new_state}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid state transition: {previous_state} -> {new_state}",
-            )
-
-        # Update the workflow run
-        run.state = new_state
-
-        # Update callback tracking fields
-        if hasattr(run, 'last_callback_time'):
-            run.last_callback_time = payload.event_time
-        if hasattr(run, 'last_event_id'):
-            run.last_event_id = payload.event_id
-
-        # If status message provided, add to logs
-        if payload.status_message:
-            run.system_logs.append(f"Status: {payload.status_message}")
-            attributes.flag_modified(run, "system_logs")
-
-        # If failure reason provided, add to logs
-        if payload.failure_reason:
-            run.system_logs.append(f"Failure reason: {payload.failure_reason}")
-            attributes.flag_modified(run, "system_logs")
-
-        # If terminal state, set end time and exit code
-        if new_state in self.TERMINAL_STATES:
-            if not run.end_time:
-                run.end_time = payload.event_time
-                attributes.flag_modified(run, "end_time")
-
-            # Store log urls if provided
-            if payload.log_urls:
-                run.outputs = run.outputs or {}
-                run.outputs["log_urls"] = payload.log_urls
-                attributes.flag_modified(run, "outputs")
-
-            if new_state == WorkflowState.COMPLETE:
-                run.exit_code = 0
-                # Store output mapping if provided
-                if payload.output_mapping:
-                    run.outputs = run.outputs or {}
-                    run.outputs["output_mapping"] = payload.output_mapping
-                    attributes.flag_modified(run, "outputs")
-            else:
-                run.exit_code = 1
-
-        # Commit the transaction
         await self.db.commit()
         await self.db.refresh(run)
 
@@ -218,6 +102,189 @@ class CallbackService:
             message=f"Successfully updated state from {previous_state} to {new_state}",
             already_processed=False,
         )
+
+    # --- Private helpers ---
+
+    async def _fetch_run(self, wes_run_id: str) -> WorkflowRun:
+        """Fetch workflow run or raise 404."""
+        result = await self.db.execute(
+            select(WorkflowRun).where(WorkflowRun.id == wes_run_id)
+        )
+        run = result.scalar_one_or_none()
+        if not run:
+            logger.error(f"Workflow run not found: {wes_run_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Workflow run {wes_run_id} not found",
+            )
+        return run
+
+    def _check_duplicate_event(
+        self, run: WorkflowRun, payload: OmicsStateChangeCallback
+    ) -> Optional[CallbackResponse]:
+        """Return a cached response if the event was already processed."""
+        has_last_event = hasattr(run, 'last_event_id') and run.last_event_id
+        if has_last_event and run.last_event_id == payload.event_id:
+            logger.info(
+                f"Duplicate event {payload.event_id} for run {payload.wes_run_id}, "
+                f"returning cached response"
+            )
+            return CallbackResponse(
+                success=True,
+                wes_run_id=run.id,
+                previous_state=run.state.value,
+                new_state=run.state.value,
+                message=f"Event {payload.event_id} already processed",
+                already_processed=True,
+            )
+        return None
+
+    async def _sync_omics_run_id(
+        self, run: WorkflowRun, payload: OmicsStateChangeCallback
+    ) -> None:
+        """Backfill workflow_run_id from payload if not yet set."""
+        if payload.omics_run_id and not run.workflow_run_id:
+            run.workflow_run_id = payload.omics_run_id
+            attributes.flag_modified(run, "workflow_run_id")
+            await self.db.commit()
+
+    def _resolve_new_state(self, omics_status: str) -> WorkflowState:
+        """Map Omics status string to WorkflowState or raise 400."""
+        new_state = self.OMICS_STATUS_MAP.get(omics_status)
+        if not new_state:
+            logger.error(f"Unknown Omics status: {omics_status}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown Omics status: {omics_status}",
+            )
+        return new_state
+
+    async def _record_start_time(
+        self, run: WorkflowRun, payload: OmicsStateChangeCallback
+    ) -> None:
+        """Set start_time on first RUNNING transition."""
+        if payload.status == "RUNNING" and not run.start_time:
+            run.start_time = payload.event_time
+            attributes.flag_modified(run, "start_time")
+            await self.db.commit()
+
+    def _build_no_change_response(
+        self, run: WorkflowRun, new_state: WorkflowState
+    ) -> Optional[CallbackResponse]:
+        """Return early response if state hasn't changed."""
+        if new_state == run.state:
+            logger.info(
+                f"No state change for run {run.id} "
+                f"(still {new_state}), returning success"
+            )
+            return CallbackResponse(
+                success=True,
+                wes_run_id=run.id,
+                previous_state=run.state.value,
+                new_state=new_state.value,
+                message="No state change",
+                already_processed=False,
+            )
+        return None
+
+    def _handle_invalid_transition(
+        self,
+        run: WorkflowRun,
+        previous_state: WorkflowState,
+        new_state: WorkflowState,
+    ) -> Optional[CallbackResponse]:
+        """
+        Validate state transition.
+
+        Returns a CallbackResponse if the transition is gracefully ignored
+        (e.g. run already in terminal state), or raises HTTPException if
+        the transition is truly invalid. Returns None when valid.
+        """
+        if self._is_valid_transition(previous_state, new_state):
+            return None
+
+        # Already terminal → ignore gracefully
+        if previous_state in self.TERMINAL_STATES:
+            logger.warning(
+                f"Run {run.id} already in terminal state "
+                f"{previous_state}, ignoring update to {new_state}"
+            )
+            return CallbackResponse(
+                success=True,
+                wes_run_id=run.id,
+                previous_state=previous_state.value,
+                new_state=previous_state.value,
+                message=f"Run already in terminal state {previous_state}",
+                already_processed=False,
+            )
+
+        # Truly invalid transition
+        logger.error(
+            f"Invalid state transition for run {run.id}: "
+            f"{previous_state} -> {new_state}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid state transition: {previous_state} -> {new_state}",
+        )
+
+    def _apply_state_update(
+        self,
+        run: WorkflowRun,
+        payload: OmicsStateChangeCallback,
+        new_state: WorkflowState,
+    ) -> None:
+        """Mutate the run object with all state-change side effects."""
+        run.state = new_state
+        self._update_tracking_fields(run, payload)
+        self._append_logs(run, payload)
+        if new_state in self.TERMINAL_STATES:
+            self._handle_terminal_state(run, payload, new_state)
+
+    def _update_tracking_fields(
+        self, run: WorkflowRun, payload: OmicsStateChangeCallback
+    ) -> None:
+        """Update callback tracking metadata on the run."""
+        if hasattr(run, 'last_callback_time'):
+            run.last_callback_time = payload.event_time
+        if hasattr(run, 'last_event_id'):
+            run.last_event_id = payload.event_id
+
+    def _append_logs(
+        self, run: WorkflowRun, payload: OmicsStateChangeCallback
+    ) -> None:
+        """Append status and failure messages to system logs."""
+        if payload.status_message:
+            run.system_logs.append(f"Status: {payload.status_message}")
+            attributes.flag_modified(run, "system_logs")
+        if payload.failure_reason:
+            run.system_logs.append(f"Failure reason: {payload.failure_reason}")
+            attributes.flag_modified(run, "system_logs")
+
+    def _handle_terminal_state(
+        self,
+        run: WorkflowRun,
+        payload: OmicsStateChangeCallback,
+        new_state: WorkflowState,
+    ) -> None:
+        """Set end_time, exit_code, and outputs for terminal states."""
+        if not run.end_time:
+            run.end_time = payload.event_time
+            attributes.flag_modified(run, "end_time")
+
+        if payload.log_urls:
+            run.outputs = run.outputs or {}
+            run.outputs["log_urls"] = payload.log_urls
+            attributes.flag_modified(run, "outputs")
+
+        if new_state == WorkflowState.COMPLETE:
+            run.exit_code = 0
+            if payload.output_mapping:
+                run.outputs = run.outputs or {}
+                run.outputs["output_mapping"] = payload.output_mapping
+                attributes.flag_modified(run, "outputs")
+        else:
+            run.exit_code = 1
 
     def _is_valid_transition(
         self,
