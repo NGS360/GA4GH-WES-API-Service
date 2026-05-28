@@ -80,7 +80,7 @@ class CallbackService:
             )
 
         # Check for duplicate event (idempotency)
-        if hasattr(run, 'last_event_id') and run.last_event_id == payload.event_id:
+        if hasattr(run, 'last_event_id') and run.last_event_id and run.last_event_id == payload.event_id:
             logger.info(
                 f"Duplicate event {payload.event_id} for run {payload.wes_run_id}, "
                 f"returning cached response"
@@ -93,6 +93,12 @@ class CallbackService:
                 message=f"Event {payload.event_id} already processed",
                 already_processed=True,
             )
+
+        # Update omics run id if provided
+        if payload.omics_run_id and not run.workflow_run_id:
+            run.workflow_run_id = payload.omics_run_id
+            attributes.flag_modified(run, "workflow_run_id")
+            await self.db.commit()
 
         # Store previous state
         previous_state = run.state
@@ -161,14 +167,6 @@ class CallbackService:
             run.last_callback_time = payload.event_time
         if hasattr(run, 'last_event_id'):
             run.last_event_id = payload.event_id
-
-        # Add system log entry
-        log_msg = (
-            f"State updated via callback: {previous_state} -> {new_state} "
-            f"(Omics: {payload.status})"
-        )
-        run.system_logs.append(log_msg)
-        attributes.flag_modified(run, "system_logs")
 
         # If status message provided, add to logs
         if payload.status_message:
@@ -252,6 +250,7 @@ class CallbackService:
                 WorkflowState.RUNNING,
                 WorkflowState.CANCELED,
                 WorkflowState.SYSTEM_ERROR,
+                WorkflowState.EXECUTOR_ERROR,
             },
             WorkflowState.INITIALIZING: {
                 WorkflowState.RUNNING,

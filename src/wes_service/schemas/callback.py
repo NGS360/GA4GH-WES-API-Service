@@ -13,8 +13,8 @@ class OmicsStateChangeCallback(BaseModel):
     notifications from AWS HealthOmics.
     """
 
-    omics_run_id: str = Field(
-        ...,
+    omics_run_id: Optional[str] = Field(
+        None,
         description="AWS HealthOmics run ID",
         min_length=1,
         max_length=50,
@@ -58,8 +58,8 @@ class OmicsStateChangeCallback(BaseModel):
         description="Workflow outputs if status is COMPLETED",
     )
 
-    event_id: str = Field(
-        ...,
+    event_id: Optional[str] = Field(
+        None,
         description="EventBridge event ID for idempotency",
         min_length=1,
         max_length=100,
