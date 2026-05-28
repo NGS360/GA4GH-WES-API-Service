@@ -1,9 +1,25 @@
 """Callback schemas for internal endpoints."""
 
 from datetime import datetime
+from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
+
+
+class OmicsRunStatus(str, Enum):
+    """Valid AWS HealthOmics run statuses."""
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    CANCELLED_RUNNING = "CANCELLED_RUNNING"
+    CANCELLED_STARTING = "CANCELLED_STARTING"
+    RUNNING = "RUNNING"
+    STARTING = "STARTING"
+    PENDING = "PENDING"
+    QUEUED = "QUEUED"
+    STOPPING = "STOPPING"
+    TERMINATING = "TERMINATING"
 
 
 class OmicsStateChangeCallback(BaseModel):
@@ -13,20 +29,16 @@ class OmicsStateChangeCallback(BaseModel):
     notifications from AWS HealthOmics.
     """
 
-    omics_run_id: str = Field(
-        ...,
+    omics_run_id: Optional[str] = Field(
+        None,
         description="AWS HealthOmics run ID",
         min_length=1,
         max_length=50,
     )
 
-    status: str = Field(
+    status: OmicsRunStatus = Field(
         ...,
-        description="Current HealthOmics run status",
-        pattern=(
-            "^(COMPLETED|FAILED|CANCELLED|CANCELLED_RUNNING|CANCELLED_STARTING"
-            "|RUNNING|STARTING|PENDING|QUEUED|STOPPING|TERMINATING)$"
-        )
+        description="Current HealthOmics run status"
     )
 
     wes_run_id: str = Field(
@@ -58,8 +70,8 @@ class OmicsStateChangeCallback(BaseModel):
         description="Workflow outputs if status is COMPLETED",
     )
 
-    event_id: str = Field(
-        ...,
+    event_id: Optional[str] = Field(
+        None,
         description="EventBridge event ID for idempotency",
         min_length=1,
         max_length=100,
