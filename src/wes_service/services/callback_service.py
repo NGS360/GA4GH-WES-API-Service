@@ -80,7 +80,8 @@ class CallbackService:
             )
 
         # Check for duplicate event (idempotency)
-        if hasattr(run, 'last_event_id') and run.last_event_id and run.last_event_id == payload.event_id:
+        has_last_event = hasattr(run, 'last_event_id') and run.last_event_id
+        if has_last_event and run.last_event_id == payload.event_id:
             logger.info(
                 f"Duplicate event {payload.event_id} for run {payload.wes_run_id}, "
                 f"returning cached response"
