@@ -60,7 +60,7 @@ class RunRequest(BaseModel):
         None,
         description="Arbitrary key/value tags",
     )
-    workflow_engine_parameters: dict[str, str] | None = Field(
+    workflow_engine_parameters: dict[str, Any] | None = Field(
         None,
         description="Additional parameters for the workflow engine",
     )

@@ -63,7 +63,7 @@ async def get_current_user(
     settings = get_settings()
 
     # Skip auth if method is 'none'
-    if settings.auth_method == "none" or settings.auth_method == "api_token":
+    if settings.auth_method == "none":
         return "anonymous"
 
     # For OAuth2, this would validate bearer tokens
