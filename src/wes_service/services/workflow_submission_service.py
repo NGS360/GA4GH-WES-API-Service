@@ -73,6 +73,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             return
 
         settings = get_settings()
+        callback_url_prefix = settings.client_origin + "/" + settings.api_prefix
         # Prepare Lambda payload
         lambda_payload = {
             'action': 'submit_workflow',
@@ -89,7 +90,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             'tags': {
                 **(run_request.tags or {}),
                 'WESRunId': run_request.id,
-                'callback_url': f"{settings.api_prefix}/internal/callbacks/omics-state-change"
+                'callback_url': callback_url_prefix + "/internal/callbacks/omics-state-change"
             }
         }
 
