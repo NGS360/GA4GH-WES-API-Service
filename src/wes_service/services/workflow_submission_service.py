@@ -195,6 +195,8 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         Returns:
             Matching version dict, or None if not found
         """
+        if not aliases:
+            return None
         for alias_entry in aliases:
             if alias_entry["alias"] == alias_name:
                 alias_version = alias_entry["version"]
