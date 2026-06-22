@@ -73,7 +73,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             return
 
         settings = get_settings()
-        callback_url_prefix = settings.client_origin + "/" + settings.api_prefix
+        callback_url_prefix = settings.client_origin + settings.api_prefix
         # Prepare Lambda payload
         lambda_payload = {
             'action': 'submit_workflow',
