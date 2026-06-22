@@ -73,7 +73,6 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             return
 
         settings = get_settings()
-        callback_url_prefix = settings.client_origin + settings.api_prefix
         # Prepare Lambda payload
         lambda_payload = {
             'action': 'submit_workflow',
@@ -90,7 +89,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             'tags': {
                 **(run_request.tags or {}),
                 'WESRunId': run_request.id,
-                'callback_url': callback_url_prefix + "/internal/callbacks/omics-state-change"
+                'callback_url': settings.client_origin + "/internal/callbacks/omics-state-change"
             }
         }
 
@@ -105,7 +104,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                 InvocationType='Event',
                 Payload=json.dumps(lambda_payload)
         )
-        logger.info(f"Lambda invocation response: {response}")
+        logger.info(f"Lambda invocation response from {self.lambda_function_name}: {response}")
 
     async def _get_engine_id_from_ngs360(self, workflow_url: str) -> str:
         """
