@@ -227,7 +227,7 @@ class Settings(BaseSettings):
     )
     client_origin: str = Field(
         default="",
-        description="Origin of the client app allowed to call this service (e.g. NGS360 frontend URL)",
+        description="Origin of the client app allowed to call this service",
         )
     host: str = Field(
         default="0.0.0.0",
