@@ -89,7 +89,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             'tags': {
                 **(run_request.tags or {}),
                 'WESRunId': run_request.id,
-                'callback_url': f"{settings.api_prefix}/internal/callbacks/omics-state-change"
+                'callback_url': settings.client_origin + "/internal/callbacks/omics-state-change"
             }
         }
 
@@ -104,7 +104,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                 InvocationType='Event',
                 Payload=json.dumps(lambda_payload)
         )
-        logger.info(f"Lambda invocation response: {response}")
+        logger.info(f"Lambda invocation response from {self.lambda_function_name}: {response}")
 
     async def _get_engine_id_from_ngs360(self, workflow_url: str) -> str:
         """
@@ -195,6 +195,8 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         Returns:
             Matching version dict, or None if not found
         """
+        if not aliases:
+            return None
         for alias_entry in aliases:
             if alias_entry["alias"] == alias_name:
                 alias_version = alias_entry["version"]

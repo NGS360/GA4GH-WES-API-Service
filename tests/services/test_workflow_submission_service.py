@@ -351,6 +351,7 @@ class TestWorkflowSubmissionService:
         # Mock settings
         mock_settings = MagicMock()
         mock_settings.ngs360_api_url = "https://test-ngs360.example.com"
+        mock_settings.client_origin = "https://test-client.example.com"
         mock_get_settings.return_value = mock_settings
 
         # Mock NGS360 API response
@@ -427,6 +428,11 @@ class TestWorkflowSubmissionService:
         payload = json.loads(call_args[1]['Payload'])
         assert payload['workflow_id'] == 'arn:aws:omics:us-east-1:123:workflow/456'
         assert payload['wes_run_id'] == 'test-run-123'
+        assert payload['tags']['callback_url'] == (
+            "https://test-client.example.com/internal/callbacks/omics-state-change"
+        )
+        assert payload['tags']['WESRunId'] == 'test-run-123'
+        assert payload['tags']['project'] == 'test'
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
     @patch('src.wes_service.services.workflow_submission_service.boto3.client')

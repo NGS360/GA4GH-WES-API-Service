@@ -225,6 +225,10 @@ class Settings(BaseSettings):
         default="*",
         description="Comma-separated list of allowed CORS origins",
     )
+    client_origin: str = Field(
+        default="",
+        description="Origin of the client app allowed to call this service",
+        )
     host: str = Field(
         default="0.0.0.0",
         description="Host to bind to",
