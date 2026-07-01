@@ -27,7 +27,7 @@ dependencies = [
     "greenlet>=3.5.0",
     "flake8>=7.3.0",
     "requests>=2.33.1",
-    "cachetools>=5.3.0",
+    "cachetools>=7.1.4",
 ]
 
 [project.optional-dependencies]
