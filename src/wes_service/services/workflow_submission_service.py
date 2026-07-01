@@ -89,7 +89,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             'tags': {
                 **(run_request.tags or {}),
                 'WESRunId': run_request.id,
-                'callback_url': settings.client_origin + "/internal/callbacks/omics-state-change"
+                'callback_url': f"{settings.client_origin}{settings.api_prefix}/internal/callbacks/omics-state-change"
             }
         }
 
