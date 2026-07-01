@@ -1393,7 +1393,7 @@ requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "alembic", specifier = ">=1.18.4" },
     { name = "boto3", specifier = ">=1.43.14" },
-    { name = "cachetools", specifier = ">=5.3.0" },
+    { name = "cachetools", specifier = ">=7.1.4" },
     { name = "faker", marker = "extra == 'dev'", specifier = ">=40.19.1" },
     { name = "fastapi", specifier = ">=0.136.1" },
     { name = "flake8", specifier = ">=7.3.0" },
