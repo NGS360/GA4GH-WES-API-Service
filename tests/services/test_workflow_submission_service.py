@@ -352,6 +352,7 @@ class TestWorkflowSubmissionService:
         mock_settings = MagicMock()
         mock_settings.ngs360_api_url = "https://test-ngs360.example.com"
         mock_settings.client_origin = "https://test-client.example.com"
+        mock_settings.api_prefix = "/ga4gh/wes/v1"
         mock_get_settings.return_value = mock_settings
 
         # Mock NGS360 API response
@@ -429,7 +430,7 @@ class TestWorkflowSubmissionService:
         assert payload['workflow_id'] == 'arn:aws:omics:us-east-1:123:workflow/456'
         assert payload['wes_run_id'] == 'test-run-123'
         assert payload['tags']['callback_url'] == (
-            "https://test-client.example.com/internal/callbacks/omics-state-change"
+            "https://test-client.example.com/ga4gh/wes/v1/internal/callbacks/omics-state-change"
         )
         assert payload['tags']['WESRunId'] == 'test-run-123'
         assert payload['tags']['project'] == 'test'

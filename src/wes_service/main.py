@@ -151,7 +151,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(
         callbacks.router,
-        prefix="/internal",
+        prefix=f"{settings.api_prefix}/internal",
         include_in_schema=True,  # Include in OpenAPI docs but clearly marked as internal
     )
 
