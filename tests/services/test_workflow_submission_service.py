@@ -4,7 +4,7 @@ import pytest
 import json
 from unittest.mock import patch, MagicMock
 
-from src.wes_service.db.models import WorkflowRun
+from src.wes_service.db.models import WorkflowRun, WorkflowState
 from src.wes_service.services.workflow_submission_service import (
     LambdaWorkflowSubmissionService,
 )
@@ -481,5 +481,11 @@ class TestWorkflowSubmissionService:
             mock_db = MagicMock()
             mock_db.commit = AsyncMock()
 
-            # Test error handling - service catches exception and returns empty dict
+            # Service should catch the error and mark the run as SYSTEM_ERROR
+            # with the failure recorded in system_logs, then commit.
             await service.submit_workflow(run, mock_db)
+
+        assert run.state == WorkflowState.SYSTEM_ERROR
+        assert len(run.system_logs) == 1
+        assert "Failed to retrieve engine_id from NGS360 API" in run.system_logs[0]
+        mock_db.commit.assert_awaited_once()

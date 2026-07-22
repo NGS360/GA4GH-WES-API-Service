@@ -11,7 +11,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.wes_service.config import get_settings
-from src.wes_service.db.models import WorkflowRun
+from src.wes_service.db.models import WorkflowRun, WorkflowState
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,9 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                 f"{run_request.workflow_url}: {str(e)}"
             )
             logger.error(error_msg)
+            run_request.state = WorkflowState.SYSTEM_ERROR
+            run_request.system_logs = (run_request.system_logs or []) + [error_msg]
+            await db.commit()
             return
 
         settings = get_settings()
