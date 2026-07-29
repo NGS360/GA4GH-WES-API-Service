@@ -86,10 +86,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                 run_request.workflow_params or {}
             )
         except RuntimeError as e:
-            error_msg = (
-                f"Failed to resolve NGS360 file id in workflow_params "
-                f"for run {run_request.id}: {str(e)}"
-            )
+            error_msg = f"Failed to resolve NGS360 file in workflow_params: {str(e)}"
             logger.error(error_msg)
             run_request.state = WorkflowState.SYSTEM_ERROR
             run_request.system_logs = (run_request.system_logs or []) + [error_msg]
@@ -204,17 +201,26 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         async with httpx.AsyncClient() as client:
             response = await client.get(api_url)
 
+        if response.status_code == 404:
+            raise RuntimeError(f"NGS360 file '{file_id}' not found")
         if response.status_code != 200:
+            # Try to extract the FastAPI-style {"detail": "..."} message so we
+            # don't dump raw JSON into the run's system_logs.
+            detail = response.text
+            try:
+                detail = response.json().get("detail", response.text)
+            except ValueError:
+                pass
             raise RuntimeError(
-                f"NGS360 API returned status {response.status_code} "
-                f"for file {file_id}: {response.text}"
+                f"NGS360 API error ({response.status_code}) "
+                f"for file '{file_id}': {detail}"
             )
 
         file_data = response.json()
         uri = file_data.get("uri")
         if not uri or not uri.startswith("s3://"):
             raise RuntimeError(
-                f"NGS360 file '{file_id}' is not backed by S3 (uri='{uri}')."
+                f"NGS360 file '{file_id}' is not backed by S3 (uri='{uri}')"
             )
 
         logger.info(f"Resolved ngs360://{file_id} -> {uri}")

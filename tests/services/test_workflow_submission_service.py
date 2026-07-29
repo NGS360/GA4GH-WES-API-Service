@@ -548,7 +548,9 @@ class TestWorkflowSubmissionService:
             mock_client.get = mock_get
             mock_client_class.return_value = mock_client
 
-            with pytest.raises(RuntimeError, match="NGS360 API returned status 404"):
+            with pytest.raises(
+                RuntimeError, match="NGS360 file 'missing-file-id' not found"
+            ):
                 await service._get_s3_uri_from_ngs360("missing-file-id")
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
@@ -720,7 +722,7 @@ class TestWorkflowSubmissionService:
         ), patch.object(
             service,
             "_get_s3_uri_from_ngs360",
-            side_effect=RuntimeError("NGS360 API returned status 404 for file missing: Not Found"),
+            side_effect=RuntimeError("NGS360 file 'missing' not found"),
         ):
             from unittest.mock import AsyncMock
             mock_db = MagicMock()
@@ -730,7 +732,7 @@ class TestWorkflowSubmissionService:
 
         assert run.state == WorkflowState.SYSTEM_ERROR
         assert any(
-            "Failed to resolve NGS360 file id" in msg for msg in run.system_logs
+            "Failed to resolve NGS360 file" in msg for msg in run.system_logs
         )
         mock_lambda_client.invoke.assert_not_called()
         mock_db.commit.assert_awaited_once()
