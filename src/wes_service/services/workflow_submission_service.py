@@ -210,6 +210,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             try:
                 detail = response.json().get("detail", response.text)
             except ValueError:
+                # Body wasn't JSON — keep the raw text already in `detail`.
                 pass
             raise RuntimeError(
                 f"NGS360 API error ({response.status_code}) "
