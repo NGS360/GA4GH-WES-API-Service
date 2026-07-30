@@ -1435,7 +1435,7 @@ requires-dist = [
     { name = "faker", marker = "extra == 'dev'", specifier = ">=40.31.0" },
     { name = "fastapi", specifier = ">=0.139.0" },
     { name = "flake8", specifier = ">=7.3.0" },
-    { name = "greenlet", specifier = ">=3.5.3" },
+    { name = "greenlet", specifier = ">=3.5.4" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1" },
     { name = "passlib", extras = ["bcrypt"], specifier = ">=1.7.4" },
