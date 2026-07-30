@@ -9,11 +9,14 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import attributes
 
 from src.wes_service.config import get_settings
 from src.wes_service.db.models import WorkflowRun, WorkflowState
 
 logger = logging.getLogger(__name__)
+
+NGS360_FILE_URI_SCHEME = "ngs360://"
 
 
 class WorkflowSubmissionService(ABC):
@@ -72,6 +75,23 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             logger.error(error_msg)
             run_request.state = WorkflowState.SYSTEM_ERROR
             run_request.system_logs = (run_request.system_logs or []) + [error_msg]
+            attributes.flag_modified(run_request, "state")
+            attributes.flag_modified(run_request, "system_logs")
+            await db.commit()
+            return
+
+        # Resolve any ngs360://<file-id> values in workflow_params to their s3:// URIs
+        try:
+            resolved_params = await self._resolve_file_ids_in_params(
+                run_request.workflow_params or {}
+            )
+        except RuntimeError as e:
+            error_msg = f"Failed to resolve NGS360 file in workflow_params: {str(e)}"
+            logger.error(error_msg)
+            run_request.state = WorkflowState.SYSTEM_ERROR
+            run_request.system_logs = (run_request.system_logs or []) + [error_msg]
+            attributes.flag_modified(run_request, "state")
+            attributes.flag_modified(run_request, "system_logs")
             await db.commit()
             return
 
@@ -87,7 +107,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
                 if run_request.workflow_params else None
             ),
             'workflow_type': run_request.workflow_type,
-            'parameters': run_request.workflow_params or {},
+            'parameters': resolved_params,
             'workflow_engine_parameters': run_request.workflow_engine_parameters or {},
             'tags': {
                 **(run_request.tags or {}),
@@ -135,6 +155,77 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             f"'{workflow_engine_id}' for workflow {workflow_url}"
         )
         return workflow_engine_id
+
+    async def _resolve_file_ids_in_params(self, params):
+        """
+        Recursively walk workflow_params and replace any ngs360://<file-id>
+        string with the resolved s3:// URI from the NGS360 API.
+
+        Non-string values, and strings not starting with ngs360://, are
+        returned unchanged. A per-call cache avoids re-fetching the same
+        file id when it appears multiple times.
+        """
+        cache: dict[str, str] = {}
+
+        async def resolve(value):
+            if isinstance(value, str) and value.startswith(NGS360_FILE_URI_SCHEME):
+                if value not in cache:
+                    file_id = value[len(NGS360_FILE_URI_SCHEME):].strip("/")
+                    cache[value] = await self._get_s3_uri_from_ngs360(file_id)
+                return cache[value]
+            if isinstance(value, dict):
+                return {k: await resolve(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [await resolve(v) for v in value]
+            return value
+
+        return await resolve(params)
+
+    async def _get_s3_uri_from_ngs360(self, file_id: str) -> str:
+        """
+        Query NGS360 API to get the s3:// URI for a given file id.
+
+        Args:
+            file_id: The NGS360 file id (UUID string).
+
+        Returns:
+            The s3:// URI backing the file.
+
+        Raises:
+            RuntimeError: If the API call fails, the file is not found, or
+                the file is not backed by s3.
+        """
+        api_url = f"{self.ngs360_api_url}/api/v1/files/{file_id}"
+        logger.info(f"Querying NGS360 API for file {file_id}: {api_url}")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(api_url)
+
+        if response.status_code == 404:
+            raise RuntimeError(f"NGS360 file '{file_id}' not found")
+        if response.status_code != 200:
+            # Try to extract the FastAPI-style {"detail": "..."} message so we
+            # don't dump raw JSON into the run's system_logs.
+            detail = response.text
+            try:
+                detail = response.json().get("detail", response.text)
+            except ValueError:
+                # Body wasn't JSON — keep the raw text already in `detail`.
+                pass
+            raise RuntimeError(
+                f"NGS360 API error ({response.status_code}) "
+                f"for file '{file_id}': {detail}"
+            )
+
+        file_data = response.json()
+        uri = file_data.get("uri")
+        if not uri or not uri.startswith("s3://"):
+            raise RuntimeError(
+                f"NGS360 file '{file_id}' is not backed by S3 (uri='{uri}')"
+            )
+
+        logger.info(f"Resolved ngs360://{file_id} -> {uri}")
+        return uri
 
     def _parse_workflow_url(self, workflow_url: str) -> tuple[str, str | None]:
         """
