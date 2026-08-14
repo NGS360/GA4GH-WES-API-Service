@@ -112,12 +112,12 @@ uv run alembic upgrade head
 7. **Start the API service**
 
 ```bash
-uv run python -m src.wes_service.main
+uv run python -m wes_service.main
 ```
 
 8. **Start the workflow daemon** (in a separate terminal)
    ```bash
-   uv run python -m src.wes_service.daemon.workflow_monitor
+   uv run python -m wes_service.daemon.workflow_monitor
    ```
 
 The API will be available at `http://localhost:8000`
@@ -185,6 +185,26 @@ PORT=8000
 - `GET /ga4gh/wes/v1/redoc` - ReDoc documentation
 
 ## Usage Examples
+
+### Command Line (`wes`)
+
+This repo ships a CLI, which is usually easier than the `curl` calls below.
+
+```bash
+# from the repo root; puts `wes` on your PATH
+uv tool install './packages/wes-client[cli]'
+
+export WES_API_URL=http://localhost:8000   # service root, without /ga4gh/wes/v1
+export WES_SERVICE_KEY=dev-service-key     # or WES_API_TOKEN, or WES_USERNAME + WES_PASSWORD
+
+wes service-info
+wes runs list --limit 5
+wes runs status <run_id>
+```
+
+See [`packages/wes-client/README.md`](packages/wes-client/README.md#cli) for the
+full command reference. The same package is also the Python client —
+`from wes_client import WesClient`.
 
 ### Submit a Workflow
 
@@ -288,7 +308,7 @@ Type=simple
 User=wes
 WorkingDirectory=/opt/wes-service
 Environment="PATH=/opt/wes-service/.venv/bin"
-ExecStart=/opt/wes-service/.venv/bin/python -m src.wes_service.main
+ExecStart=/opt/wes-service/.venv/bin/python -m wes_service.main
 Restart=always
 
 [Install]
@@ -306,7 +326,7 @@ Type=simple
 User=wes
 WorkingDirectory=/opt/wes-service
 Environment="PATH=/opt/wes-service/.venv/bin"
-ExecStart=/opt/wes-service/.venv/bin/python -m src.wes_service.daemon.workflow_monitor
+ExecStart=/opt/wes-service/.venv/bin/python -m wes_service.daemon.workflow_monitor
 Restart=always
 
 [Install]
@@ -377,7 +397,7 @@ The current implementation includes:
 
 To integrate additional workflow engines:
 
-1. **Create a new executor** in `src/wes_service/daemon/executors/`
+1. **Create a new executor** in `packages/wes-service/src/wes_service/daemon/executors/`
 2. **Implement the `WorkflowExecutor` interface**
 3. **Configure the daemon** to use your executor
 

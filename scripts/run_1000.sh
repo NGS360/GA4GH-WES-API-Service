@@ -4,9 +4,14 @@
 set -e
 
 # Configuration
-WES_URL="${WES_URL:-http://localhost:8000/ga4gh/wes/v1}"
-USERNAME="${WES_USERNAME:-admin}"
-PASSWORD="${WES_PASSWORD:-password}"
+# The CLI takes the service root and adds /ga4gh/wes/v1 itself; the curl calls
+# below still need the prefixed URL, so derive it.
+export WES_API_URL="${WES_API_URL:-http://localhost:8000}"
+export WES_USERNAME="${WES_USERNAME:-admin}"
+export WES_PASSWORD="${WES_PASSWORD:-password}"
+WES_URL="${WES_API_URL}/ga4gh/wes/v1"
+USERNAME="$WES_USERNAME"
+PASSWORD="$WES_PASSWORD"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -31,16 +36,13 @@ echo ""
 # Submit example workflow
 for i in {1..1000}; do
     echo -e "\n${BLUE}[$i/1000] Submitting example workflow...${NC}"
-    RUN_ID=$(python3 scripts/wes_client.py \
-        --base-url "$WES_URL" \
-        --username "$USERNAME" \
-        --password "$PASSWORD" \
-        submit \
+    echo "{\"message\": \"Hello from WES $i\"}" > /tmp/wes-load-params.json
+    RUN_ID=$(wes runs submit \
         --workflow-url "https://raw.githubusercontent.com/common-workflow-language/cwl-v1.2/main/examples/1st-tool.cwl" \
         --workflow-type CWL \
-        --workflow-version v1.0 \
-        --workflow-params "{\"message\": \"Hello from WES $i\"}" \
-        | sed -n 's/.*Submitted workflow run: //p')
+        --workflow-type-version v1.0 \
+        --params /tmp/wes-load-params.json \
+        | awk '{print $NF}')
 
     echo -e "${GREEN}✓ Workflow submitted: $RUN_ID${NC}\n"
 done
@@ -48,10 +50,6 @@ done
 
 # List all runs
 echo -e "\n${BLUE}Listing all runs...${NC}"
-python3 scripts/wes_client.py \
-    --base-url "$WES_URL" \
-    --username "$USERNAME" \
-    --password "$PASSWORD" \
-    list --page-size 100 | python3 -m json.tool
+wes runs list --limit 100
 
 echo -e "\n${GREEN}=== Example Complete ===${NC}"

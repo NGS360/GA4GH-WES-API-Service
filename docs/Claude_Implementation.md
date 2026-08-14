@@ -3,24 +3,24 @@ I have successfully implemented a complete, production-ready GA4GH WES API servi
 ## ✅ Complete Implementation - All Tasks Finished
 
 ### 1. **Core Infrastructure**
-- ✅ FastAPI application with async/await ([`src/wes_service/main.py`](src/wes_service/main.py:1))
-- ✅ Configuration management ([`src/wes_service/config.py`](src/wes_service/config.py:1))
+- ✅ FastAPI application with async/await ([`packages/wes-service/src/wes_service/main.py`](packages/wes-service/src/wes_service/main.py:1))
+- ✅ Configuration management ([`packages/wes-service/src/wes_service/config.py`](packages/wes-service/src/wes_service/config.py:1))
 - ✅ Python 3.12 with uv package manager ([`pyproject.toml`](pyproject.toml:1))
 - ✅ Environment configuration ([`.env.example`](.env.example:1))
 
 ### 2. **Database Layer**
-- ✅ SQLAlchemy 2.0 async models ([`src/wes_service/db/models.py`](src/wes_service/db/models.py:1))
+- ✅ SQLAlchemy 2.0 async models ([`packages/wes-service/src/wes_service/db/models.py`](packages/wes-service/src/wes_service/db/models.py:1))
 - ✅ Alembic migrations ([`alembic/versions/001_initial_schema.py`](alembic/versions/001_initial_schema.py:1))
-- ✅ Async session management ([`src/wes_service/db/session.py`](src/wes_service/db/session.py:1))
+- ✅ Async session management ([`packages/wes-service/src/wes_service/db/session.py`](packages/wes-service/src/wes_service/db/session.py:1))
 
 ### 3. **Pydantic Schemas** (GA4GH WES v1.1.0 Compliant)
-- ✅ All schemas implemented in [`src/wes_service/schemas/`](src/wes_service/schemas/)
+- ✅ All schemas implemented in [`packages/wes-service/src/wes_service/schemas/`](packages/wes-service/src/wes_service/schemas/)
 - ✅ Complete validation for all 8 API endpoints
 - ✅ All 11 GA4GH workflow states supported
 
 ### 4. **Storage Abstraction**
-- ✅ [`LocalStorageBackend`](src/wes_service/core/storage.py:83) - Filesystem with security
-- ✅ [`S3StorageBackend`](src/wes_service/core/storage.py:170) - AWS S3 integration
+- ✅ [`LocalStorageBackend`](packages/wes-service/src/wes_service/core/storage.py:83) - Filesystem with security
+- ✅ [`S3StorageBackend`](packages/wes-service/src/wes_service/core/storage.py:170) - AWS S3 integration
 - ✅ Runtime backend selection
 
 ### 5. **All 8 GA4GH WES API Endpoints**
@@ -34,23 +34,23 @@ I have successfully implemented a complete, production-ready GA4GH WES API servi
 - ✅ `GET /runs/{run_id}/tasks/{task_id}` - Get task details
 
 ### 6. **Business Logic**
-- ✅ [`RunService`](src/wes_service/services/run_service.py:28) - Complete workflow operations
-- ✅ [`TaskService`](src/wes_service/services/task_service.py:14) - Task management
+- ✅ [`RunService`](packages/wes-service/src/wes_service/services/run_service.py:28) - Complete workflow operations
+- ✅ [`TaskService`](packages/wes-service/src/wes_service/services/task_service.py:14) - Task management
 - ✅ Proper authorization and error handling
 
 ### 7. **Workflow Daemon**
-- ✅ [`WorkflowMonitor`](src/wes_service/daemon/workflow_monitor.py:18) - Polls for workflows
-- ✅ [`LocalExecutor`](src/wes_service/daemon/executors/local.py:17) - Stub implementation
+- ✅ [`WorkflowMonitor`](packages/wes-service/src/wes_service/daemon/workflow_monitor.py:18) - Polls for workflows
+- ✅ [`LocalExecutor`](packages/wes-service/src/wes_service/daemon/executors/local.py:17) - Stub implementation
 - ✅ Extensible executor interface
 
 ### 8. **Authentication & Security**
-- ✅ HTTP Basic Auth with bcrypt ([`src/wes_service/core/security.py`](src/wes_service/core/security.py:1))
+- ✅ HTTP Basic Auth with bcrypt ([`packages/wes-service/src/wes_service/core/security.py`](packages/wes-service/src/wes_service/core/security.py:1))
 - ✅ OAuth2 hooks for future
 - ✅ User-based authorization
 - ✅ Path traversal protection
 
 ### 9. **Error Handling & Middleware**
-- ✅ Global exception handlers ([`src/wes_service/api/middleware/error_handler.py`](src/wes_service/api/middleware/error_handler.py:1))
+- ✅ Global exception handlers ([`packages/wes-service/src/wes_service/api/middleware/error_handler.py`](packages/wes-service/src/wes_service/api/middleware/error_handler.py:1))
 - ✅ Structured error responses
 - ✅ Comprehensive logging
 - ✅ CORS configuration
@@ -65,26 +65,26 @@ I have successfully implemented a complete, production-ready GA4GH WES API servi
   - Test settings override
 
 #### API Endpoint Tests
-- ✅ [`tests/api/test_service_info.py`](tests/api/test_service_info.py:1)
+- ✅ [`packages/wes-service/tests/api/test_service_info.py`](packages/wes-service/tests/api/test_service_info.py:1)
   - Service information validation
   - Required fields verification
   - Workflow type versions
   - System state counts
 
-- ✅ [`tests/api/test_runs.py`](tests/api/test_runs.py:1)
+- ✅ [`packages/wes-service/tests/api/test_runs.py`](packages/wes-service/tests/api/test_runs.py:1)
   - Submit workflow (minimal, with params, with attachments)
   - List runs with pagination
   - Get run status
   - Get run log
   - Cancel run (success and error cases)
 
-- ✅ [`tests/api/test_tasks.py`](tests/api/test_tasks.py:1)
+- ✅ [`packages/wes-service/tests/api/test_tasks.py`](packages/wes-service/tests/api/test_tasks.py:1)
   - List tasks with pagination
   - Get task details
   - Error handling
 
 #### Service Layer Tests
-- ✅ [`tests/services/test_run_service.py`](tests/services/test_run_service.py:1)
+- ✅ [`packages/wes-service/tests/services/test_run_service.py`](packages/wes-service/tests/services/test_run_service.py:1)
   - Create run
   - List runs
   - Get status
@@ -92,14 +92,14 @@ I have successfully implemented a complete, production-ready GA4GH WES API servi
   - System state counts
 
 #### Core Component Tests
-- ✅ [`tests/core/test_storage.py`](tests/core/test_storage.py:1)
+- ✅ [`packages/wes-service/tests/core/test_storage.py`](packages/wes-service/tests/core/test_storage.py:1)
   - Local storage backend (upload, download, delete, exists)
   - S3 storage backend (mocked)
   - Path traversal protection
   - Storage backend factory
 
 #### Integration Tests
-- ✅ [`tests/integration/test_workflow_lifecycle.py`](tests/integration/test_workflow_lifecycle.py:1)
+- ✅ [`packages/wes-service/tests/integration/test_workflow_lifecycle.py`](packages/wes-service/tests/integration/test_workflow_lifecycle.py:1)
   - Complete workflow lifecycle (submit → monitor → cancel)
   - Workflow with multiple tasks
   - Pagination across multiple runs
@@ -108,7 +108,7 @@ I have successfully implemented a complete, production-ready GA4GH WES API servi
 ### 11. **Documentation & Examples**
 - ✅ Comprehensive [`README.md`](README.md:1) - Setup and usage
 - ✅ Detailed [`ARCHITECTURE.md`](ARCHITECTURE.md:1) - Design documentation
-- ✅ Python CLI client ([`scripts/wes_client.py`](scripts/wes_client.py:1))
+- ✅ Python client library and CLI ([`packages/wes-client/`](packages/wes-client/README.md))
 - ✅ Bash example script ([`scripts/run_example.sh`](scripts/run_example.sh:1))
 - ✅ Sample CWL workflow ([`examples/workflows/hello-world.cwl`](examples/workflows/hello-world.cwl:1))
 - ✅ Example parameters ([`examples/inputs/hello-world-params.json`](examples/inputs/hello-world-params.json:1))
@@ -126,7 +126,7 @@ uv run pytest
 uv run pytest --cov=src --cov-report=html
 
 # Run specific test file
-uv run pytest tests/api/test_runs.py
+uv run pytest packages/wes-service/tests/api/test_runs.py
 
 # Run with verbose output
 uv run pytest -v
@@ -167,10 +167,10 @@ uv sync
 uv run pytest
 
 # Start API
-uv run python -m src.wes_service.main
+uv run python -m wes_service.main
 
 # Start daemon (separate terminal)
-uv run python -m src.wes_service.daemon.workflow_monitor
+uv run python -m wes_service.daemon.workflow_monitor
 
 # Access API docs
 open http://localhost:8000/ga4gh/wes/v1/docs

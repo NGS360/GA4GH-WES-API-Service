@@ -4,9 +4,14 @@
 set -e
 
 # Configuration
-WES_URL="${WES_URL:-http://localhost:8000/ga4gh/wes/v1}"
-USERNAME="${WES_USERNAME:-admin}"
-PASSWORD="${WES_PASSWORD:-password}"
+# The CLI takes the service root and adds /ga4gh/wes/v1 itself; the curl calls
+# below still need the prefixed URL, so derive it.
+export WES_API_URL="${WES_API_URL:-http://localhost:8000}"
+export WES_USERNAME="${WES_USERNAME:-admin}"
+export WES_PASSWORD="${WES_PASSWORD:-password}"
+WES_URL="${WES_API_URL}/ga4gh/wes/v1"
+USERNAME="$WES_USERNAME"
+PASSWORD="$WES_PASSWORD"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -30,28 +35,20 @@ echo ""
 
 # Submit example workflow
 echo -e "\n${BLUE}Submitting example workflow...${NC}"
-RUN_ID=$(python3 scripts/wes_client.py \
-    --base-url "$WES_URL" \
-    --username "$USERNAME" \
-    --password "$PASSWORD" \
-    submit \
+echo '{"message": "Hello from WES!"}' > /tmp/wes-example-params.json
+RUN_ID=$(wes runs submit \
     --workflow-url "https://raw.githubusercontent.com/common-workflow-language/cwl-v1.2/main/examples/1st-tool.cwl" \
     --workflow-type CWL \
-    --workflow-version v1.0 \
-    --workflow-params '{"message": "Hello from WES!"}' \
-    | sed -n 's/.*Submitted workflow run: //p')
+    --workflow-type-version v1.0 \
+    --params /tmp/wes-example-params.json \
+    | awk '{print $NF}')
 
 echo -e "${GREEN}✓ Workflow submitted: $RUN_ID${NC}\n"
 
 # Monitor workflow status
 echo "Monitoring workflow status..."
 for i in {1..10}; do
-    STATUS=$(python3 scripts/wes_client.py \
-        --base-url "$WES_URL" \
-        --username "$USERNAME" \
-        --password "$PASSWORD" \
-        status "$RUN_ID" \
-        | python3 -c "import sys, json; print(json.load(sys.stdin)['state'])")
+    STATUS=$(wes runs status "$RUN_ID")
     
     echo "Status: $STATUS"
     
@@ -64,18 +61,10 @@ done
 
 # Get final run log
 echo -e "\n${BLUE}Getting run log...${NC}"
-python3 scripts/wes_client.py \
-    --base-url "$WES_URL" \
-    --username "$USERNAME" \
-    --password "$PASSWORD" \
-    log "$RUN_ID" | python3 -m json.tool
+wes runs get "$RUN_ID"
 
 # List all runs
 echo -e "\n${BLUE}Listing all runs...${NC}"
-python3 scripts/wes_client.py \
-    --base-url "$WES_URL" \
-    --username "$USERNAME" \
-    --password "$PASSWORD" \
-    list --page-size 5 | python3 -m json.tool
+wes runs list --limit 5
 
 echo -e "\n${GREEN}=== Example Complete ===${NC}"

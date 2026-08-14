@@ -21,72 +21,70 @@ This document outlines the architecture and implementation plan for a FastAPI-ba
 
 ```
 GA4GH-WES-API-Service/
-├── src/
-│   └── wes_service/
-│       ├── __init__.py
-│       ├── main.py                    # FastAPI app factory
-│       ├── config.py                  # Configuration management
-│       ├── api/
-│       │   ├── __init__.py
-│       │   ├── deps.py               # Dependency injection
-│       │   ├── routes/
-│       │   │   ├── __init__.py
-│       │   │   ├── service_info.py   # /service-info endpoint
-│       │   │   ├── runs.py           # /runs endpoints
-│       │   │   └── tasks.py          # /runs/{id}/tasks endpoints
-│       │   └── middleware/
-│       │       ├── __init__.py
-│       │       ├── auth.py           # Authentication middleware
-│       │       └── error_handler.py  # Global error handling
-│       ├── core/
-│       │   ├── __init__.py
-│       │   ├── security.py           # Auth utilities
-│       │   └── storage.py            # Storage abstraction layer
-│       ├── db/
-│       │   ├── __init__.py
-│       │   ├── base.py               # SQLAlchemy base
-│       │   ├── session.py            # Database session management
-│       │   └── models.py             # Database models
-│       ├── schemas/
-│       │   ├── __init__.py
-│       │   ├── service_info.py       # ServiceInfo schemas
-│       │   ├── run.py                # Run-related schemas
-│       │   ├── task.py               # Task-related schemas
-│       │   └── common.py             # Shared schemas (State, ErrorResponse)
-│       ├── services/
-│       │   ├── __init__.py
-│       │   ├── run_service.py        # Run business logic
-│       │   └── task_service.py       # Task business logic
-│       └── daemon/
-│           ├── __init__.py
-│           ├── workflow_monitor.py   # Daemon main loop
-│           └── executors/
-│               ├── __init__.py
-│               ├── base.py           # Base executor interface
-│               └── local.py          # Local executor stub
-├── tests/
-│   ├── __init__.py
-│   ├── conftest.py                   # pytest fixtures
-│   ├── api/
-│   │   └── test_*.py                 # API endpoint tests
-│   ├── services/
-│   │   └── test_*.py                 # Service layer tests
-│   └── integration/
-│       └── test_*.py                 # Integration tests
-├── alembic/
-│   ├── versions/                     # Migration scripts
-│   └── env.py                        # Alembic configuration
-├── scripts/
-│   ├── wes_client.py                 # Example WES client
-│   └── run_workflows.sh              # Example workflow submission
-├── examples/
-│   ├── workflows/                    # Example CWL/WDL files
-│   └── inputs/                       # Example input parameters
-├── .env.example                      # Environment variables template
-├── pyproject.toml                    # uv/project configuration
-├── alembic.ini                       # Alembic configuration
-├── README.md                         # Updated usage guide
-└── ARCHITECTURE.md                   # This document
+├── pyproject.toml                        # uv workspace root -- not a package itself
+├── uv.lock                               # one lockfile for all three distributions
+├── packages/
+│   ├── wes-schemas/                      # the wire contract; pydantic only
+│   │   ├── pyproject.toml
+│   │   └── src/wes_schemas/
+│   │       ├── common.py                 # State enum, ErrorResponse
+│   │       ├── run.py                    # RunSummary, RunLog, RunListResponse, ...
+│   │       ├── task.py                   # TaskLog, TaskListResponse
+│   │       ├── service_info.py           # ServiceInfo
+│   │       └── callback.py               # Omics state-change callback
+│   │
+│   ├── wes-client/                       # client library + CLI; depends on wes-schemas
+│   │   ├── pyproject.toml                # [cli] extra provides the `wes` command
+│   │   └── src/wes_client/
+│   │       ├── client.py                 # AsyncWesClient
+│   │       ├── sync_client.py            # WesClient
+│   │       ├── _operations.py            # the endpoints, described as data
+│   │       ├── _transport.py             # request building, response parsing
+│   │       ├── auth.py                   # ServiceKeyAuth, BearerAuth, BasicAuth
+│   │       ├── errors.py                 # WesError hierarchy
+│   │       └── cli.py                    # `wes` command
+│   │
+│   └── wes-service/                      # the server; depends on wes-schemas
+│       ├── pyproject.toml                # dev-depends on wes-client for contract tests
+│       ├── alembic.ini                   # migrations run from this directory
+│       ├── alembic/
+│       │   ├── versions/                 # migration scripts
+│       │   └── env.py
+│       ├── src/wes_service/
+│       │   ├── main.py                   # FastAPI application factory
+│       │   ├── config.py                 # settings
+│       │   ├── api/
+│       │   │   ├── deps.py               # dependency injection
+│       │   │   ├── routes/
+│       │   │   │   ├── service_info.py   # /service-info
+│       │   │   │   ├── runs.py           # /runs
+│       │   │   │   ├── tasks.py          # /runs/{id}/tasks
+│       │   │   │   ├── callbacks.py      # /internal/callbacks
+│       │   │   │   └── _responses.py     # shared OpenAPI error declarations
+│       │   │   └── middleware/
+│       │   │       └── error_handler.py  # every error rendered as ErrorResponse
+│       │   ├── core/
+│       │   │   ├── security.py           # service key, bearer, basic auth
+│       │   │   ├── callback_auth.py
+│       │   │   └── storage.py            # storage abstraction
+│       │   ├── db/
+│       │   │   ├── base.py
+│       │   │   ├── session.py
+│       │   │   └── models.py             # SQLAlchemy models
+│       │   └── services/                 # run, task, callback, submission
+│       └── tests/
+│           ├── conftest.py
+│           ├── api/ core/ services/ integration/
+│           └── contract/                 # the client driven against the real app
+│
+├── scripts/                              # example usage via the `wes` CLI
+│   ├── run_example.sh                    # submit one run and poll it
+│   └── run_1000.sh                       # load test: submit many runs
+├── examples/                             # example CWL/WDL files and inputs
+├── docs/
+├── Dockerfile                            # builds wes-service only
+├── Makefile
+└── README.md
 ```
 
 ## Core Components

@@ -1,56 +1,39 @@
-[project]
-name = "wes-service"
-version = "1.1.0"
-description = "GA4GH Workflow Execution Service API Implementation"
-authors = [
-    {name = "Ryan Golhar", email = "ryan.golhar@bms.com"},
-    {name = "Maggie Chen", email = "yu.chen2@bms.com"}
-]
-readme = "README.md"
-requires-python = ">=3.12"
-dependencies = [
-    "fastapi>=0.139.0",
-    "uvicorn[standard]>=0.51.0",
-    "sqlalchemy>=2.0.51",
-    "alembic>=1.18.5",
-    "aiomysql>=0.3.2",
-    "pydantic>=2.13.4",
-    "pydantic-settings>=2.14.2",
-    "python-multipart>=0.0.32",
-    "python-jose[cryptography]>=3.5.0",
-    "passlib[bcrypt]>=1.7.4",
-    "python-dotenv>=1.2.2",
-    "boto3>=1.43.56",
-    "aiofiles>=25.1.0",
-    "aiosqlite>=0.22.1",
-    "httpx>=0.28.1",
-    "greenlet>=3.5.4",
-    "flake8>=7.3.0",
-    "requests>=2.34.2",
-    "cachetools>=7.1.6",
-]
+# Workspace root. Deliberately not a package itself -- there is no [project]
+# table here, so nothing is built or published from the repo root.
+#
+# The three distributions under packages/ are peers:
+#
+#   wes-schemas   the wire contract, pydantic and nothing else
+#   wes-service   the server, depends on wes-schemas
+#   wes-client    the client and CLI, depends on wes-schemas
+#
+# Dependency edges run schemas <- server and schemas <- client. The server does
+# not depend on the client at runtime; it dev-depends on it so the contract tests
+# can drive the client against the real app.
+#
+# Keeping them in one repo means a contract change and its client land in a single
+# commit and are tested together. Keeping them as separate distributions means a
+# consumer installs only what it needs: NGS360 APIServer takes wes-client, which
+# pulls httpx and pydantic, not the server's database and AWS stack.
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
-    "pytest-cov>=7.1.0",
-    "pytest-mock>=3.15.1",
-    "httpx>=0.28.1",
-    "faker>=40.36.0",
-]
+[tool.uv.workspace]
+members = ["packages/*"]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[tool.uv.sources]
+wes-schemas = { workspace = true }
+wes-client = { workspace = true }
+wes-service = { workspace = true }
 
+# Test configuration lives at the root so `uv run pytest` runs everything from
+# one place, which is also what CI does. The suites themselves belong to the
+# packages that own them.
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["packages/wes-service/tests"]
 asyncio_mode = "auto"
-addopts = "-v --cov=src --cov-report=term-missing --cov-report=html"
+addopts = "-v --cov=packages/wes-service/src --cov=packages/wes-client/src --cov-report=term-missing --cov-report=html"
 
 [tool.coverage.run]
-source = ["src"]
+source = ["packages/wes-service/src", "packages/wes-client/src"]
 omit = ["*/tests/*", "*/alembic/*"]
 
 [tool.coverage.report]
@@ -71,9 +54,3 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501"]
-
-[tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true

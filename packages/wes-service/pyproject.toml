@@ -1,0 +1,73 @@
+[project]
+name = "wes-service"
+version = "1.1.0"
+description = "GA4GH Workflow Execution Service API Implementation"
+authors = [
+    {name = "Ryan Golhar", email = "ryan.golhar@bms.com"},
+    {name = "Maggie Chen", email = "yu.chen2@bms.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.139.0",
+    "uvicorn[standard]>=0.51.0",
+    "sqlalchemy>=2.0.51",
+    "alembic>=1.18.5",
+    "aiomysql>=0.3.2",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "python-multipart>=0.0.32",
+    "python-jose[cryptography]>=3.5.0",
+    "passlib[bcrypt]>=1.7.4",
+    "python-dotenv>=1.2.2",
+    "boto3>=1.43.56",
+    "aiofiles>=25.1.0",
+    "aiosqlite>=0.22.1",
+    "httpx>=0.28.1",
+    "greenlet>=3.5.4",
+    "flake8>=7.3.0",
+    "requests>=2.34.2",
+    "cachetools>=7.1.6",
+    "wes-schemas",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
+    "httpx>=0.28.1",
+    "faker>=40.36.0",
+    # A test dependency, never a runtime one: the contract tests in tests/contract
+    # drive the client against this server's app. The server must not depend on
+    # its own client at runtime.
+    "wes-client[cli]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Stated rather than inferred. The importable package is `wes_service`; `src/` is
+# a layout directory, not a package, and must never end up on the import path.
+[tool.hatch.build.targets.wheel]
+packages = ["src/wes_service"]
+
+[tool.uv.sources]
+wes-schemas = { workspace = true }
+wes-client = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

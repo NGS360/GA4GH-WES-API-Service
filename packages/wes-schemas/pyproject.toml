@@ -1,0 +1,33 @@
+[project]
+name = "wes-schemas"
+version = "1.1.0"
+description = "Wire schemas for the GA4GH Workflow Execution Service API"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Ryan Golhar", email = "ryan.golhar@bms.com" },
+    { name = "Maggie Chen", email = "yu.chen2@bms.com" },
+]
+
+# Pydantic and nothing else, deliberately. This package is the contract shared by
+# the server, the client, and any third party; anything else added here is
+# imposed on all three.
+dependencies = [
+    "pydantic>=2.13.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wes_schemas"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]

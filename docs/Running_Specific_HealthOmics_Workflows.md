@@ -1,5 +1,27 @@
 # Running Specific Workflows in AWS Omics
 
+> [!WARNING]
+> **This document is out of date and its examples will not work.**
+>
+> It describes the daemon-based Omics executor, which was removed in February
+> 2026 (`b75bf00 remove daemon`). Three things in here are no longer true:
+>
+> - **`workflow_url=omics:<id>` / `healthomics:<id>`.** The prefix was handled by
+>   the deleted executor. The server now reads `workflow_url` as
+>   `NGS360WORKFLOWID[:ALIAS_OR_VERSION]` and resolves it against the NGS360
+>   workflow catalog. A prefixed value is parsed as a workflow called `omics`
+>   and fails to resolve — silently, because submission errors are logged rather
+>   than returned, so the run is created and then never progresses.
+> - **`WORKFLOW_EXECUTOR=omics`.** Still accepted by config, but read by nothing.
+> - **Choosing an executor at submit time.** Where a run executes is now
+>   determined by the deployment recorded against that workflow version in the
+>   NGS360 catalog, not by anything in the request.
+>
+> To submit a run today, see the CLI documentation in
+> [`packages/wes-client/README.md`](../packages/wes-client/README.md#cli).
+> This document needs a rewrite by someone who knows the current catalog and
+> Lambda submission flow.
+
 This guide provides step-by-step instructions for running specific workflows in AWS Omics using the GA4GH WES API implementation.
 
 ## Prerequisites
