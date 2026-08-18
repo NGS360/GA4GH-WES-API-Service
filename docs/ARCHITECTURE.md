@@ -621,7 +621,7 @@ masked and the DB URI password redacted.
 | `HOST`, `PORT` | `0.0.0.0`, `8000` | uvicorn bind (dev entrypoint) |
 | `LOG_LEVEL` | `INFO` | logging level; `DEBUG` also enables SQLAlchemy echo |
 | `SERVICE_*`, `AUTH_INSTRUCTIONS_URL` | — | `/service-info` payload |
-| `SUPPORTED_WES_VERSIONS`, `WORKFLOW_TYPE_VERSIONS_CWL`, `WORKFLOW_TYPE_VERSIONS_WDL`, `WORKFLOW_ENGINE_VERSIONS_cwltool`, `SUPPORTED_FILESYSTEM_PROTOCOLS` | see `.env.example` | `/service-info`; CWL/WDL keys also gate accepted `workflow_type` |
+| `SUPPORTED_WES_VERSIONS`, `WORKFLOW_TYPE_VERSIONS_CWL`, `WORKFLOW_TYPE_VERSIONS_WDL`, `WORKFLOW_ENGINE_VERSIONS_AWSBATCH`, `WORKFLOW_ENGINE_VERSIONS_AWSHEALTHOMICS`, `SUPPORTED_FILESYSTEM_PROTOCOLS` | see `.env.example` | `/service-info`; CWL/WDL keys also gate accepted `workflow_type`, and the engine keys gate accepted `workflow_engine` ([§15](#15-launcher-orchestration)) |
 | `ENABLE_CALLBACK_ENDPOINT` | `true` | 503-gates the callback route |
 | `INTERNAL_CALLBACK_API_KEY` | `""` | shared secret for callbacks |
 | `BATCH_LOG_GROUP`, `AWS_CONSOLE_REGION` | `/aws/batch/job`, `us-east-1` | CloudWatch console link for a launcher's reported log stream |
@@ -798,10 +798,21 @@ would be missing from the jobs UI operators already use. So:
 
 `POST /runs` for an `awsbatch` run therefore makes **no** AWS call: `get_submission_service`
 routes it to `ExternalDispatchSubmissionService`, which notes "awaiting external dispatch"
-in `system_logs` and leaves the run `QUEUED`. Every other engine keeps going to the Lambda
-submission service exactly as before. If we later want this service to submit Batch jobs
-itself, the seam is that factory — add a `BatchWorkflowSubmissionService` and register it;
-nothing else in the design moves.
+in `system_logs` and leaves the run `QUEUED`. `awshealthomics` — and a run naming no engine
+at all, which is what every run did before launchers — goes to the Lambda submission service
+exactly as before. If we later want this service to submit Batch jobs itself, the factory is
+the only place that changes — add a `BatchWorkflowSubmissionService` and register it in
+`SUBMISSION_STRATEGIES`; nothing else in the design moves.
+
+### Which engines a client may submit
+
+`workflow_engine` now selects the backend, so it is validated rather than assumed.
+`Settings.get_workflow_engine_versions()` advertises `awsbatch` and `awshealthomics` in
+`service-info` — the spec's discovery mechanism, and the only names `create_run` accepts;
+anything else is a 400 listing them. The same keys key `SUBMISSION_STRATEGIES`, so a run
+cannot be advertised as supported and then have nowhere to dispatch to, or dispatch on a
+name no client was told about. Registering an engine in one place and not the other fails
+`test_registry_matches_advertised_engines`.
 
 ### Executor callback
 

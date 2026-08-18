@@ -125,7 +125,8 @@ class ServiceInfo(BaseModel):
                 "supported_wes_versions": ["1.0.0", "1.1.0"],
                 "supported_filesystem_protocols": ["file", "http", "https", "s3"],
                 "workflow_engine_versions": {
-                    "cwltool": {"workflow_engine_version": ["3.1.20240116213856"]}
+                    "awsbatch": {"workflow_engine_version": ["2016-08-10"]},
+                    "awshealthomics": {"workflow_engine_version": ["2022-11-28"]},
                 },
                 "default_workflow_engine_parameters": [],
                 "system_state_counts": {

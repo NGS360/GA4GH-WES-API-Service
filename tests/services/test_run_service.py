@@ -73,8 +73,8 @@ class TestRunService:
             workflow_url="https://example.com/workflow.cwl",
             workflow_attachments=None,
             tags='{"ProjectId": "test"}',
-            workflow_engine="cwltool",
-            workflow_engine_version="3.1",
+            workflow_engine="awshealthomics",
+            workflow_engine_version="2022-11-28",
             workflow_engine_parameters=None,
             user_id="testuser",
         )
