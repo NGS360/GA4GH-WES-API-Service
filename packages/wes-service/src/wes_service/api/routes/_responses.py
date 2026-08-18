@@ -31,3 +31,8 @@ BAD_REQUEST: dict[str, Any] = {
     "model": ErrorResponse,
     "description": "The request was rejected as malformed",
 }
+
+DISABLED: dict[str, Any] = {
+    "model": ErrorResponse,
+    "description": "This endpoint is disabled in this deployment",
+}

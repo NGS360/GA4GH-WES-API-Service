@@ -158,6 +158,20 @@ class Settings(BaseSettings):
         description="AWS IAM role ARN for Omics workflow execution",
     )
 
+    # AWS Batch Configuration
+    #
+    # Batch launcher jobs are submitted by NGS360 APIServer, not by this
+    # service, so no queue or job definition is configured here. These two
+    # values exist only to turn a reported log stream into a console link.
+    batch_log_group: str = Field(
+        default="/aws/batch/job",
+        description="CloudWatch log group Batch jobs write to",
+    )
+    aws_console_region: str = Field(
+        default="us-east-1",
+        description="AWS region used when building CloudWatch console links",
+    )
+
     # Authentication Configuration
     auth_method: Literal["basic", "oauth2", "api_token", "none"] = Field(
         default="basic",
