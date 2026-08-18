@@ -15,7 +15,7 @@ from src.wes_service.schemas.run import (
     RunStatus,
 )
 from src.wes_service.services.run_service import RunService
-from src.wes_service.services.workflow_submission_service import LambdaWorkflowSubmissionService
+from src.wes_service.services.workflow_submission_service import get_submission_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -128,11 +128,13 @@ async def run_workflow(
             detail=str(e),
         )
 
-    # Ping LambdaWorkflowSubmissionService to trigger processing of the new run.
-    # Forward the caller's bearer token so NGS360 attributes the outbound
-    # workflow/file lookups to the user rather than to an anonymous service.
+    # Hand the run to whichever strategy owns its engine. Runs dispatched
+    # externally (a launcher submitted to AWS Batch by APIServer) must not be
+    # pushed at HealthOmics on their way past. Forward the caller's bearer token
+    # so NGS360 attributes the outbound workflow/file lookups to the user rather
+    # than to an anonymous service.
     try:
-        submission_service = LambdaWorkflowSubmissionService()
+        submission_service = get_submission_service(run)
         await submission_service.submit_workflow(run, db, auth_token=token)
     except Exception as e:
         logger.exception(
