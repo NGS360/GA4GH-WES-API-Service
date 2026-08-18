@@ -31,6 +31,7 @@ the web workers.
 12. [Error Handling](#12-error-handling)
 13. [Testing](#13-testing)
 14. [Known Gaps & Limitations](#14-known-gaps--limitations)
+15. [Launcher Orchestration](#15-launcher-orchestration)
 
 ---
 
@@ -409,6 +410,7 @@ This lets callers submit stable NGS360 file IDs instead of hard-coded S3 paths.
 | `state`                     | `Enum`        | indexed, default `QUEUED`                                    |
 | `project`                   | `String(50)`  | **not null** — from `tags.ProjectId`                         |
 | `task_name`                 | `String(200)` | **not null** — from `tags.TaskName` or `wes-run-{uuid}`       |
+| `parent_run_id`             | `String(36)`  | nullable FK → `workflow_runs.id`, `ON DELETE SET NULL` — from `tags.ParentRunId`; indexed with `created_at` |
 | `workflow_type`             | `String(50)`  | `CWL` / `WDL`                                                |
 | `workflow_type_version`     | `String(50)`  |                                                              |
 | `workflow_url`              | `Text`        | `NGS360WORKFLOWID[:ALIAS_OR_VERSION]`                        |
@@ -451,7 +453,8 @@ tests. `GET /runs/{id}/tasks` therefore returns an empty list for real runs.
      └─ 1c1081db9f3d  add workflow_run_id
          └─ ea7b7b3086d2  add field comment to workflow_run_id
              └─ 61019f4b738b  add project and task_name columns
-                 └─ dd9d7ebae80e  add resolved_workflow_version   ← head
+                 └─ dd9d7ebae80e  add resolved_workflow_version
+                     └─ 952781491f2f  add parent_run_id   ← head
 ```
 
 There is no `run_outputs` table; outputs live in the `outputs` JSON column.
@@ -526,7 +529,9 @@ All GA4GH endpoints are mounted under `API_PREFIX` (default `/ga4gh/wes/v1`).
 
 | Method | Path                                             | Notes                       |
 | ------ | ------------------------------------------------ | --------------------------- |
+| GET    | `/runs/{run_id}/progress`                         | Launcher state plus a rollup of its children ([§15](#15-launcher-orchestration)) |
 | POST   | `{prefix}/internal/callbacks/omics-state-change`  | `X-Internal-API-Key` auth   |
+| POST   | `{prefix}/internal/callbacks/executor-state-change` | `X-Internal-API-Key` auth; executor-agnostic |
 | GET    | `{prefix}/internal/callbacks/health`              | Unauthenticated             |
 | GET    | `/healthcheck`                                    | `{"status": "healthy"}`     |
 | GET    | `/`                                               | Service name/version/docs   |
@@ -619,6 +624,7 @@ masked and the DB URI password redacted.
 | `SUPPORTED_WES_VERSIONS`, `WORKFLOW_TYPE_VERSIONS_CWL`, `WORKFLOW_TYPE_VERSIONS_WDL`, `WORKFLOW_ENGINE_VERSIONS_cwltool`, `SUPPORTED_FILESYSTEM_PROTOCOLS` | see `.env.example` | `/service-info`; CWL/WDL keys also gate accepted `workflow_type` |
 | `ENABLE_CALLBACK_ENDPOINT` | `true` | 503-gates the callback route |
 | `INTERNAL_CALLBACK_API_KEY` | `""` | shared secret for callbacks |
+| `BATCH_LOG_GROUP`, `AWS_CONSOLE_REGION` | `/aws/batch/job`, `us-east-1` | CloudWatch console link for a launcher's reported log stream |
 | `ENV_SECRETS`, `AWS_REGION` | — | Secrets Manager lookup |
 | `LAMBDA_FUNCTION_NAME`, `LAMBDA_REGION` | — / `us-east-1` | read via `os.environ` in `LambdaWorkflowSubmissionService`, **not** via `Settings` |
 
@@ -718,6 +724,137 @@ Documented so they are not mistaken for undiscovered bugs:
 13. **Completed HealthOmics runs are retained deliberately.** Do not add
     automatic cleanup of finished runs; the run history is used downstream for
     workflow performance evaluation.
+
+---
+
+## 15. Launcher Orchestration
+
+Bioinformatics **launchers** (e.g. the RNA-Seq launcher) orchestrate work: they read a
+samplesheet, submit one child workflow per sample, wait for them, then run a gather step.
+In AWS they run as a plain Python application in an **AWS Batch job** — there is no CWL
+runner layer and no web server or status endpoint on the launcher itself. This service is
+therefore where a launcher execution is recorded and where its progress is derived from.
+
+### A launcher execution is a `WorkflowRun`
+
+No new table. A launcher run is an ordinary run with:
+
+| Field | Value |
+| --- | --- |
+| `workflow_engine` | `awsbatch` |
+| `workflow_url` | the registered NGS360 launcher workflow |
+| `workflow_params` | the launcher's inputs (also rendered as the container's CLI flags) |
+| `workflow_run_id` | the AWS Batch `jobId`, bound by the first executor callback |
+
+It reuses the state machine, listing, filtering, the callback path and the frontend's run
+views.
+
+### Parent-child lineage
+
+Children point at their launcher. A child is submitted through the normal GA4GH
+`POST /runs` carrying a reserved tag:
+
+```json
+{"ProjectId": "P-1", "TaskName": "sampleA", "ParentRunId": "<launcher run id>"}
+```
+
+`create_run` promotes `ParentRunId` into the indexed `parent_run_id` column — the same
+tag-promotion pattern as `ProjectId` → `project` and `TaskName` → `task_name`. An unknown
+parent is a 400. Because the generic ListRuns filter resolves any `WorkflowRun` attribute
+by name, children are listed with no extra server code:
+
+```
+GET /runs?filters={"parent_run_id":"<launcher run id>"}
+```
+
+That listing is also how a restarted launcher rediscovers the work it already submitted,
+which is the groundwork for launcher recovery.
+
+### Parent state versus child progress
+
+These are deliberately separate:
+
+- The **launcher's own state** comes from its Batch job, reported by the executor callback.
+- **Progress** is a `GROUP BY state` rollup over its direct children.
+
+They are not merged, because the interesting failure is exactly when they disagree: if the
+Batch job dies while 40 children are still running, the parent must be able to say
+`SYSTEM_ERROR` while progress still shows those children running. That is the orphan
+condition we want visible, not smoothed over. Equally, a failed child does not fail the
+launcher.
+
+### Who submits the Batch job
+
+**NGS360 APIServer submits; this service owns the record.** APIServer already has Batch
+submission, a `BatchJob` table, an EventBridge-driven status/log-stream update path, a
+paginated CloudWatch log viewer and the IAM to do it — and a launcher job submitted by WES
+would be missing from the jobs UI operators already use. So:
+
+1. APIServer resolves the launcher's Batch job definition from the NGS360 workflow registry.
+2. APIServer creates the parent run here (`workflow_engine=awsbatch`).
+3. APIServer submits the Batch job as `jobName=wes-<run_id>` with the env contract below.
+4. APIServer reports the `jobId` binding — or a `SubmitJob` failure — to the executor callback.
+5. Later Batch job state changes flow from EventBridge through the relay Lambda to the same callback.
+
+`POST /runs` for an `awsbatch` run therefore makes **no** AWS call: `get_submission_service`
+routes it to `ExternalDispatchSubmissionService`, which notes "awaiting external dispatch"
+in `system_logs` and leaves the run `QUEUED`. Every other engine keeps going to the Lambda
+submission service exactly as before. If we later want this service to submit Batch jobs
+itself, the seam is that factory — add a `BatchWorkflowSubmissionService` and register it;
+nothing else in the design moves.
+
+### Executor callback
+
+`POST /internal/callbacks/executor-state-change` is executor-agnostic: a per-executor status
+map translates the executor's vocabulary into WES states.
+
+| Executor | Mapping |
+| --- | --- |
+| `awsbatch` | `SUBMITTED`/`PENDING`/`RUNNABLE` → `QUEUED`, `STARTING` → `INITIALIZING`, `RUNNING` → `RUNNING`, `SUCCEEDED` → `COMPLETE`, `FAILED` → `EXECUTOR_ERROR`, `SUBMIT_FAILED` → `SYSTEM_ERROR` |
+| `omics` | the existing HealthOmics map, unchanged |
+
+A reported `log_urls.log_stream_name` becomes a CloudWatch console deep link in
+`run_log.stdout`, with the raw stream name kept in `outputs.log_stream_name` so APIServer's
+log viewer can use it. `BATCH_LOG_GROUP` and `AWS_CONSOLE_REGION` configure that link; no
+Batch credentials are needed.
+
+It takes the same `X-Internal-API-Key` as `/omics-state-change`. Both of its callers hold
+that key: the relay Lambda, and APIServer reporting the `jobId` it got back from `SubmitJob`.
+
+### Launcher container env contract
+
+Set by whoever submits the Batch job:
+
+| Var | Meaning |
+| --- | --- |
+| `WES_RUN_ID` | the launcher's own WES run id, so PAML's `get_current_task()` works |
+| `WES_API_ENDPOINT` | this service's base URL |
+| `NGS360_AUTH_TOKEN` | an `ngs360_` API key minted for the submitting user for this one job |
+| `NGS360_AUTH_KEY_ID` | that key's id, so the launcher can retire the key when it exits |
+| `NGS360_API_ENDPOINT` | required by PAML's `NGS360Platform.connect` |
+
+The launcher authenticates as the user who started it, not as a service. It calls the NGS360
+API directly (project lookup, results upload) as well as this service, and this service
+forwards the same token to NGS360 for workflow and file lookups (see
+[Token forwarding](#token-forwarding)), so one user credential covers every call and each is
+authorized against that user's roles and project access. The key's expiry, sized to the job
+definition's timeout, bounds a launcher that is killed before it can retire it.
+
+### Trying it locally
+
+`scripts/launcher_example.sh` walks the whole flow against a local service: a launcher run,
+two children tagged with its `ParentRunId`, the child listing and the progress rollup, with
+the executor callback standing in for AWS Batch.
+
+### Not yet done
+
+- **`CancelRun` for a launcher run** does not terminate the Batch job or cascade to
+  children; it only sets `CANCELING`, which is what it does for every engine today. Worth
+  revisiting: cancelling a launcher without cascading leaves children burning compute — the
+  progress rollup is what makes that visible.
+- **Relaunch/recovery.** The lineage above is the prerequisite; a relaunch would be a new
+  parent run tagged `RelaunchOf=<prior run id>`, with child reuse keyed on
+  (project, task_name, params) as the launcher already does.
 
 ---
 
