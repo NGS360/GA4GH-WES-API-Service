@@ -108,6 +108,8 @@ GA4GH-WES-API-Service/
 - workflow_engine (String)
 - workflow_engine_version (String)
 - workflow_engine_parameters (JSON)
+- workflow_run_id (String, nullable)  # id in the underlying execution system (Omics run, Batch job)
+- parent_run_id (UUID, Foreign Key -> workflow_runs.id, nullable)  # launcher run that submitted this run
 - tags (JSON)
 - start_time (DateTime)
 - end_time (DateTime)
@@ -224,6 +226,20 @@ class StorageBackend(ABC):
 - Cancels running workflow
 - Updates state to `CANCELING` then `CANCELED`
 - Returns `RunId`
+
+#### `/runs/{run_id}/progress` (GET)
+- Non-GA4GH extension for launcher runs
+- Returns `RunProgress`: the run's own `state` plus `children_total`,
+  `children_by_state` and `children_last_update` for the runs it submitted
+- Direct children only; a grandchild is reached by asking for its parent's progress
+- See [Launcher Orchestration](#launcher-orchestration)
+
+#### `/internal/callbacks/executor-state-change` (POST)
+- Non-GA4GH internal endpoint: an executor reports a run's state to this service
+- Accepts either `X-Internal-API-Key` (the HealthOmics relay Lambda) or
+  `X-Internal-Service-Key` (NGS360 APIServer, which knows the Batch job id)
+- Binds `executor_run_id` to `workflow_run_id`, maps the executor's status
+  vocabulary to a WES state, validates the transition, and is idempotent on `event_id`
 
 ### 5. Authentication & Authorization
 
@@ -415,6 +431,129 @@ Keeps API responsive while allowing long-running workflow execution in separate 
 
 ### 6. UUID for Run IDs
 UUIDs prevent enumeration attacks and allow distributed ID generation.
+
+## Launcher Orchestration
+
+Bioinformatics **launchers** (e.g. the RNA-Seq launcher) orchestrate work: they read a
+samplesheet, submit one child workflow per sample, wait for them, then run a gather step.
+In AWS they run as a plain Python application in an **AWS Batch job** — there is no CWL
+runner layer and no web server or status endpoint on the launcher itself. This service is
+therefore where a launcher execution is recorded and where its progress is derived from.
+
+### A launcher execution is a `WorkflowRun`
+
+No new table. A launcher run is an ordinary run with:
+
+| Field | Value |
+| --- | --- |
+| `workflow_engine` | `awsbatch` |
+| `workflow_url` | the registered NGS360 launcher workflow |
+| `workflow_params` | the launcher's inputs (also rendered as the container's CLI flags) |
+| `workflow_run_id` | the AWS Batch `jobId`, bound by the first executor callback |
+
+It reuses the state machine, listing, filtering, the callback path, the client, the CLI
+and the frontend's run views.
+
+### Parent-child lineage
+
+Children point at their launcher. A child is submitted through the normal GA4GH
+`POST /runs` carrying a reserved tag:
+
+```json
+{"ProjectId": "P-1", "TaskName": "sampleA", "ParentRunId": "<launcher run id>"}
+```
+
+`create_run` promotes `ParentRunId` into the indexed `parent_run_id` column — the same
+tag-promotion pattern as `ProjectId` → `project` and `TaskName` → `task_name`. An unknown
+parent is a 400. Because the generic ListRuns filter resolves any `WorkflowRun` attribute
+by name, children are listed with no extra server code:
+
+```
+GET /runs?filters={"parent_run_id":"<launcher run id>"}
+```
+
+That listing is also how a restarted launcher rediscovers the work it already submitted,
+which is the groundwork for launcher recovery.
+
+### Parent state versus child progress
+
+These are deliberately separate:
+
+- The **launcher's own state** comes from its Batch job, reported by the executor callback.
+- **Progress** is a `GROUP BY state` rollup over its direct children.
+
+They are not merged, because the interesting failure is exactly when they disagree: if the
+Batch job dies while 40 children are still running, the parent must be able to say
+`SYSTEM_ERROR` while progress still shows those children running. That is the orphan
+condition we want visible, not smoothed over. Equally, a failed child does not fail the
+launcher.
+
+### Who submits the Batch job
+
+**NGS360 APIServer submits; this service owns the record.** APIServer already has Batch
+submission, a `BatchJob` table, an EventBridge-driven status/log-stream update path, a
+paginated CloudWatch log viewer and the IAM to do it — and a launcher job submitted by WES
+would be missing from the jobs UI operators already use. So:
+
+1. APIServer resolves the launcher's Batch job definition from the NGS360 workflow registry.
+2. APIServer creates the parent run here (`workflow_engine=awsbatch`).
+3. APIServer submits the Batch job as `jobName=wes-<run_id>` with the env contract below.
+4. APIServer reports the `jobId` binding — or a `SubmitJob` failure — to the executor callback.
+5. Later Batch job state changes flow from EventBridge through the relay Lambda to the same callback.
+
+`POST /runs` for an `awsbatch` run therefore makes **no** AWS call: `get_submission_service`
+routes it to `ExternalDispatchSubmissionService`, which notes "awaiting external dispatch"
+in `system_logs` and leaves the run `QUEUED`. Every other engine keeps going to the Lambda
+submission service exactly as before. If we later want this service to submit Batch jobs
+itself, the seam is that factory — add a `BatchWorkflowSubmissionService` and register it;
+nothing else in the design moves.
+
+### Executor callback
+
+`POST /internal/callbacks/executor-state-change` is executor-agnostic: a per-executor status
+map translates the executor's vocabulary into WES states.
+
+| Executor | Mapping |
+| --- | --- |
+| `awsbatch` | `SUBMITTED`/`PENDING`/`RUNNABLE` → `QUEUED`, `STARTING` → `INITIALIZING`, `RUNNING` → `RUNNING`, `SUCCEEDED` → `COMPLETE`, `FAILED` → `EXECUTOR_ERROR`, `SUBMIT_FAILED` → `SYSTEM_ERROR` |
+| `omics` | the existing HealthOmics map, unchanged |
+
+A reported `log_urls.log_stream_name` becomes a CloudWatch console deep link in
+`run_log.stdout`, with the raw stream name kept in `outputs.log_stream_name` so APIServer's
+log viewer can use it. `BATCH_LOG_GROUP` and `AWS_CONSOLE_REGION` configure that link; no
+Batch credentials are needed.
+
+### Launcher container env contract
+
+Set by whoever submits the Batch job:
+
+| Var | Meaning |
+| --- | --- |
+| `WES_RUN_ID` | the launcher's own WES run id, so PAML's `get_current_task()` works |
+| `WES_API_ENDPOINT` | this service's base URL |
+| `WES_SERVICE_KEY` | `INTERNAL_SERVICE_API_KEY`, injected via Batch `secrets` from Secrets Manager |
+| `WES_ON_BEHALF_OF` | the submitting user, so child runs are attributed to a human |
+| `NGS360_API_ENDPOINT` | required by PAML's `NGS360Platform.connect` |
+
+### Client and CLI
+
+```bash
+wes runs list --parent $PARENT      # the runs a launcher submitted
+wes runs progress $PARENT           # its own state plus a rollup by child state
+wes runs tree $PARENT               # one line per child, colour-coded by state
+```
+
+`scripts/launcher_example.sh` walks the whole flow against a local service.
+
+### Not yet done
+
+- **`CancelRun` for a launcher run** does not terminate the Batch job or cascade to
+  children; it only sets `CANCELING`, which is what it does for every engine today. Worth
+  revisiting: cancelling a launcher without cascading leaves children burning compute — the
+  progress rollup is what makes that visible.
+- **Relaunch/recovery.** The lineage above is the prerequisite; a relaunch would be a new
+  parent run tagged `RelaunchOf=<prior run id>`, with child reuse keyed on
+  (project, task_name, params) as the launcher already does.
 
 ## Security Considerations
 
