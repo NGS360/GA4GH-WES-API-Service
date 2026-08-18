@@ -21,6 +21,7 @@ from wes_schemas.run import (
     Log,
     RunListResponse,
     RunLog,
+    RunProgress,
     RunRequest,
     RunStatus,
     RunSummary,
@@ -95,6 +96,12 @@ class RunService:
         if "TaskName" not in tags_dict and engine_params and "name" in engine_params:
             tags_dict["TaskName"] = engine_params["name"]
 
+        # A launcher passes its own run id as ParentRunId on every child it
+        # submits, which is what makes launcher progress derivable from the runs
+        # table. Promoted to a column for the same reason ProjectId and TaskName
+        # are: it is filtered and grouped on, not just displayed.
+        parent_run_id = await self._resolve_parent_run_id(tags_dict.get("ParentRunId"))
+
         # Validate workflow type
         supported_types = list(
             self.settings.get_workflow_type_versions().keys()
@@ -121,6 +128,7 @@ class RunService:
             tags=tags_dict,
             project=project_id,
             task_name=task_name,
+            parent_run_id=parent_run_id,
             user_id=user_id,
         )
 
@@ -187,6 +195,39 @@ class RunService:
         # )
 
         return run
+
+    async def _resolve_parent_run_id(self, parent_run_id: str | None) -> str | None:
+        """
+        Validate a ParentRunId tag against the runs table.
+
+        A parent that does not exist is a client mistake worth rejecting at
+        submission: accepting it would produce a child that no progress rollup
+        ever counts and that no launcher can find again, which is invisible until
+        someone wonders why a launcher reports fewer children than it submitted.
+
+        Cycles need no check -- the parent must already exist and run ids are
+        server-generated, so a run cannot name itself or a descendant.
+
+        Returns:
+            The parent run ID, or None if no ParentRunId tag was supplied.
+
+        Raises:
+            ValueError: If the named parent run does not exist.
+        """
+        if not parent_run_id:
+            return None
+
+        query = select(WorkflowRun.id).where(WorkflowRun.id == parent_run_id)
+        result = await self.db.execute(query)
+        if result.scalar_one_or_none() is None:
+            error_msg = (
+                f"Job Submission Failed: ParentRunId tag references a run that "
+                f"does not exist: {parent_run_id}"
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        return parent_run_id
 
     async def list_runs(
         self,
@@ -400,6 +441,7 @@ class RunService:
             task_logs_url=task_logs_url,
             task_logs=None,  # Deprecated
             outputs=run.outputs,
+            parent_run_id=run.parent_run_id,
         )
 
     async def cancel_run(self, run_id: str, user_id: str | None) -> str:
@@ -439,6 +481,51 @@ class RunService:
         await self.db.commit()
 
         return run.id
+
+    async def get_run_progress(self, run_id: str, user_id: str | None) -> RunProgress:
+        """
+        Roll up the states of the runs a launcher run submitted.
+
+        Counts direct children only. A launcher that submits launchers is
+        reached by walking the tree one level at a time, which keeps this a
+        single indexed GROUP BY instead of a recursive query.
+
+        Args:
+            run_id: Run ID of the launcher run
+            user_id: User ID (unused - all users have read access)
+
+        Returns:
+            RunProgress
+        """
+        run = await self._get_run(run_id, None)  # Allow read access to all users
+
+        query = (
+            select(
+                WorkflowRun.state,
+                func.count(WorkflowRun.id),
+                func.max(WorkflowRun.updated_at),
+            )
+            .where(WorkflowRun.parent_run_id == run_id)
+            .group_by(WorkflowRun.state)
+        )
+        result = await self.db.execute(query)
+        rows = result.all()
+
+        counts = {state.value: 0 for state in WorkflowState}
+        counts.update({state.value: count for state, count, _ in rows})
+
+        last_updates = [last_update for _, _, last_update in rows if last_update]
+        children_last_update = (
+            max(last_updates).isoformat() + "Z" if last_updates else None
+        )
+
+        return RunProgress(
+            run_id=run.id,
+            state=State(run.state.value),
+            children_total=sum(count for _, count, _ in rows),
+            children_by_state=counts,
+            children_last_update=children_last_update,
+        )
 
     async def get_system_state_counts(self) -> dict[str, int]:
         """Get count of runs in each state."""
@@ -510,4 +597,5 @@ class RunService:
             project=run.project,
             workflow_url=run.workflow_url,
             submitted_by=run.user_id,
+            parent_run_id=run.parent_run_id,
         )
