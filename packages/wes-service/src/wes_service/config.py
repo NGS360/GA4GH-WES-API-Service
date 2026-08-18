@@ -275,9 +275,23 @@ class Settings(BaseSettings):
         default="1.0,draft-2",
         description="Comma-separated list of supported WDL versions",
     )
-    workflow_engine_versions_cwltool: str = Field(
-        default="3.1.20240116213856",
-        description="Comma-separated list of supported cwltool versions",
+    # One field per engine this service can actually dispatch to. Neither backend
+    # is a versioned engine in the cwltool sense, so what is advertised is the
+    # AWS service API version -- a real, checkable string -- rather than an
+    # invented one. Override per deployment if a caller needs something else.
+    workflow_engine_versions_awsbatch: str = Field(
+        default="2016-08-10",
+        description=(
+            "Comma-separated list of advertised awsbatch engine versions "
+            "(AWS Batch API version)"
+        ),
+    )
+    workflow_engine_versions_awshealthomics: str = Field(
+        default="2022-11-28",
+        description=(
+            "Comma-separated list of advertised awshealthomics engine versions "
+            "(AWS HealthOmics API version)"
+        ),
     )
     supported_filesystem_protocols: str = Field(
         default="file,http,https,s3",
@@ -320,10 +334,13 @@ class Settings(BaseSettings):
         """Parse WDL versions from comma-separated string."""
         return [version.strip() for version in v.split(",") if version.strip()]
 
-    @field_validator("workflow_engine_versions_cwltool")
+    @field_validator(
+        "workflow_engine_versions_awsbatch",
+        "workflow_engine_versions_awshealthomics",
+    )
     @classmethod
-    def parse_cwltool_versions(cls, v: str) -> list[str]:
-        """Parse cwltool versions from comma-separated string."""
+    def parse_engine_versions(cls, v: str) -> list[str]:
+        """Parse engine versions from comma-separated string."""
         return [version.strip() for version in v.split(",") if version.strip()]
 
     @field_validator("supported_filesystem_protocols")
@@ -340,9 +357,24 @@ class Settings(BaseSettings):
         }
 
     def get_workflow_engine_versions(self) -> dict[str, dict[str, list[str]]]:
-        """Get workflow engine versions in the format expected by ServiceInfo."""
+        """
+        Get workflow engine versions in the format expected by ServiceInfo.
+
+        These keys are the whole contract for a run's workflow_engine: the spec
+        makes service-info the discovery mechanism and requires a submitted
+        engine to be one this instance supports, so create_run validates against
+        exactly this map and the submission factory dispatches on exactly these
+        names. Adding an engine here without registering a submission strategy
+        for it (or the reverse) is caught by
+        test_registry_matches_advertised_engines.
+        """
         return {
-            "cwltool": {"workflow_engine_version": self.workflow_engine_versions_cwltool},
+            "awsbatch": {
+                "workflow_engine_version": self.workflow_engine_versions_awsbatch,
+            },
+            "awshealthomics": {
+                "workflow_engine_version": self.workflow_engine_versions_awshealthomics,
+            },
         }
 
     @property

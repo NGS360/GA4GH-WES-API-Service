@@ -20,14 +20,18 @@ NGS360_FILE_URI_SCHEME = "ngs360://"
 
 # Deployment engine names as the NGS360 workflow registry spells them. Not the
 # same vocabulary as a run's workflow_engine, which is what a WES client asks
-# for -- EXTERNALLY_DISPATCHED_ENGINES maps between the two worlds.
+# for -- SUBMISSION_STRATEGIES maps between the two worlds.
 OMICS_DEPLOYMENT_ENGINE = "AWSHealthOmics (us-east)"
 
-# Engines whose jobs are submitted by something other than this service (today:
-# NGS360 APIServer submitting launcher containers to AWS Batch, because that is
-# where the Batch submission, job records, and log viewer already live). WES
-# still owns the run record and its state; it just does not start the job.
-EXTERNALLY_DISPATCHED_ENGINES = frozenset({"awsbatch"})
+# Engine names as a WES client spells them, and as service-info advertises them
+# (Settings.get_workflow_engine_versions).
+AWSBATCH_ENGINE = "awsbatch"
+AWSHEALTHOMICS_ENGINE = "awshealthomics"
+
+# What a run with no workflow_engine at all means. Every run that predates
+# launchers went to HealthOmics, and the spec lets the field be omitted, so
+# omission keeps meaning "this instance's default backend", not an error.
+DEFAULT_ENGINE = AWSHEALTHOMICS_ENGINE
 
 
 class WorkflowSubmissionService(ABC):
@@ -473,6 +477,47 @@ class ExternalDispatchSubmissionService(WorkflowSubmissionService):
         return {}
 
 
+# The engines this service can dispatch, and what starts each one. The keys must
+# match what service-info advertises: they are the values a client is told it may
+# submit, and dispatching on a name that was never advertised is how a run ends
+# up at a backend nobody asked for.
+#
+# If this service ever takes over Batch submission, this table is the only place
+# that has to change: add a BatchWorkflowSubmissionService and register it here.
+SUBMISSION_STRATEGIES: dict[str, type[WorkflowSubmissionService]] = {
+    AWSBATCH_ENGINE: ExternalDispatchSubmissionService,
+    AWSHEALTHOMICS_ENGINE: LambdaWorkflowSubmissionService,
+}
+
+# Engines whose jobs are submitted by something other than this service (today:
+# NGS360 APIServer submitting launcher containers to AWS Batch, because that is
+# where the Batch submission, job records, and log viewer already live). WES
+# still owns the run record and its state; it just does not start the job.
+# Derived, so the registry stays the single source of truth.
+EXTERNALLY_DISPATCHED_ENGINES = frozenset(
+    engine
+    for engine, strategy in SUBMISSION_STRATEGIES.items()
+    if strategy is ExternalDispatchSubmissionService
+)
+
+
+def normalize_engine(engine: str | None) -> str:
+    """
+    Reduce a submitted engine name to the form the registry is keyed by.
+
+    Case and surrounding whitespace are the caller's presentation, not part of
+    the name. Separators are NOT normalised: "aws-batch" is a different string
+    from an advertised engine and is meant to be rejected rather than guessed at.
+
+    Args:
+        engine: A run's workflow_engine as submitted, possibly None
+
+    Returns:
+        The normalised name, or "" if no engine was given.
+    """
+    return (engine or "").strip().lower()
+
+
 def get_submission_service(run: WorkflowRun) -> WorkflowSubmissionService:
     """
     Pick the submission strategy that owns a run's engine.
@@ -481,12 +526,23 @@ def get_submission_service(run: WorkflowRun) -> WorkflowSubmissionService:
         run: The newly created WorkflowRun
 
     Returns:
-        The strategy for that engine. Anything not listed in
-        EXTERNALLY_DISPATCHED_ENGINES -- including a run with no engine at all --
-        goes to Lambda/HealthOmics, which is where every run went before
-        launchers existed.
+        The strategy registered for that engine; the DEFAULT_ENGINE strategy if
+        the run names no engine.
+
+    Raises:
+        ValueError: If the run names an engine with no registered strategy.
+            create_run rejects those at submission, so reaching here means the
+            run was written by something that bypassed that check -- failing is
+            better than quietly handing the run to whichever backend happens to
+            be the default.
     """
-    engine = (run.workflow_engine or "").strip().lower()
-    if engine in EXTERNALLY_DISPATCHED_ENGINES:
-        return ExternalDispatchSubmissionService()
-    return LambdaWorkflowSubmissionService()
+    engine = normalize_engine(run.workflow_engine) or DEFAULT_ENGINE
+
+    strategy = SUBMISSION_STRATEGIES.get(engine)
+    if strategy is None:
+        raise ValueError(
+            f"No submission strategy for workflow_engine '{run.workflow_engine}'. "
+            f"Supported engines: {sorted(SUBMISSION_STRATEGIES)}"
+        )
+
+    return strategy()

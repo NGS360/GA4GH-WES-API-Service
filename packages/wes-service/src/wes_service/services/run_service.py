@@ -112,6 +112,8 @@ class RunService:
             logger.error(error_msg)
             raise ValueError(error_msg)
 
+        self._validate_workflow_engine(workflow_engine, workflow_engine_version)
+
         # Create run record
         run_id = str(uuid4())
         task_name = tags_dict["TaskName"] if "TaskName" in tags_dict else 'wes-run-' + run_id
@@ -195,6 +197,53 @@ class RunService:
         # )
 
         return run
+
+    def _validate_workflow_engine(
+        self,
+        workflow_engine: str | None,
+        workflow_engine_version: str | None,
+    ) -> None:
+        """
+        Check a submitted engine against the engines service-info advertises.
+
+        The engine decides which backend a run is dispatched to, so an
+        unrecognised name has to be rejected here rather than resolved by the
+        submission factory's default: a launcher submitted as "aws-batch" would
+        otherwise be handed to HealthOmics, fail there on a deployment it never
+        had, and report a HealthOmics error for a typo.
+
+        Validated against Settings.get_workflow_engine_versions rather than a
+        second list, because the spec makes that map the client's only way to
+        discover legal values -- the check and the advertisement cannot disagree.
+
+        An omitted engine stays legal and means this instance's default backend,
+        which is what every run did before engines were dispatched on.
+        workflow_engine_version is not checked: it does not affect dispatch, and
+        the spec lets a server pick the version when only the engine is named
+        (workflow_type_version is likewise unchecked).
+
+        Raises:
+            ValueError: If the engine is not advertised, or if a version was
+                given with no engine -- the spec requires the engine in that case.
+        """
+        if not workflow_engine or not workflow_engine.strip():
+            if workflow_engine_version:
+                error_msg = (
+                    "Job Submission Failed: workflow_engine is required when "
+                    "workflow_engine_version is provided"
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            return
+
+        supported_engines = sorted(self.settings.get_workflow_engine_versions())
+        if workflow_engine.strip().lower() not in supported_engines:
+            error_msg = (
+                f"Unsupported workflow engine: {workflow_engine}. "
+                f"Supported engines: {supported_engines}"
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
     async def _resolve_parent_run_id(self, parent_run_id: str | None) -> str | None:
         """
