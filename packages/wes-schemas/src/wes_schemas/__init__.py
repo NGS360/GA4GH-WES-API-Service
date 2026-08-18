@@ -1,11 +1,13 @@
 """Pydantic schemas for API validation."""
 
+from wes_schemas.callback import CallbackResponse, ExecutorStateChangeCallback
 from wes_schemas.common import TERMINAL_STATES, ErrorResponse, State
 from wes_schemas.run import (
     Log,
     RunId,
     RunListResponse,
     RunLog,
+    RunProgress,
     RunRequest,
     RunStatus,
     RunSummary,
@@ -35,8 +37,12 @@ __all__ = [
     "RunRequest",
     "RunLog",
     "RunListResponse",
+    "RunProgress",
     "Log",
     # Tasks
     "TaskLog",
     "TaskListResponse",
+    # Callbacks
+    "ExecutorStateChangeCallback",
+    "CallbackResponse",
 ]
