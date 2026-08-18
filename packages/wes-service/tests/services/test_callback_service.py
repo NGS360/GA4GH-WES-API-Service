@@ -9,7 +9,11 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from wes_service.db.models import WorkflowRun, WorkflowState
-from wes_schemas.callback import CallbackResponse, OmicsStateChangeCallback
+from wes_schemas.callback import (
+    CallbackResponse,
+    ExecutorStateChangeCallback,
+    OmicsStateChangeCallback,
+)
 from wes_service.services.callback_service import CallbackService
 
 
@@ -680,3 +684,263 @@ class TestHandleOmicsStateChangeIntegration:
             await service.handle_omics_state_change(payload)
 
         assert exc_info.value.status_code == 404
+
+
+class TestHandleExecutorStateChange:
+    """Tests for the executor-agnostic callback, exercised with AWS Batch."""
+
+    @staticmethod
+    def _batch_event(
+        run_id: str,
+        status: str,
+        event_id: str,
+        **extra,
+    ) -> ExecutorStateChangeCallback:
+        """Build one Batch job state change report."""
+        return ExecutorStateChangeCallback(
+            wes_run_id=run_id,
+            executor="awsbatch",
+            status=status,
+            executor_run_id="batch-job-abc123",
+            event_time=datetime(2024, 1, 15, 14, 0, 0, tzinfo=UTC),
+            event_id=event_id,
+            **extra,
+        )
+
+    @pytest.mark.asyncio
+    async def test_full_batch_progression(self, service, mock_db, sample_run):
+        """A launcher job's whole Batch lifecycle maps onto the WES state machine."""
+        sample_run.state = WorkflowState.QUEUED
+        sample_run.system_logs = []
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        # SUBMITTED and RUNNABLE are both QUEUED, which the run already is --
+        # reported as success with no change rather than as an error, because
+        # EventBridge sends every one of them.
+        for index, status_name in enumerate(("SUBMITTED", "PENDING", "RUNNABLE")):
+            result = await service.handle_executor_state_change(
+                self._batch_event(sample_run.id, status_name, f"evt-{index}")
+            )
+            assert result.success is True
+            assert result.new_state == "QUEUED"
+            assert sample_run.state == WorkflowState.QUEUED
+
+        starting = await service.handle_executor_state_change(
+            self._batch_event(sample_run.id, "STARTING", "evt-starting")
+        )
+        assert (starting.previous_state, starting.new_state) == ("QUEUED", "INITIALIZING")
+
+        running = await service.handle_executor_state_change(
+            self._batch_event(sample_run.id, "RUNNING", "evt-running")
+        )
+        assert (running.previous_state, running.new_state) == ("INITIALIZING", "RUNNING")
+        assert sample_run.start_time == datetime(2024, 1, 15, 14, 0, 0, tzinfo=UTC)
+
+        succeeded = await service.handle_executor_state_change(
+            self._batch_event(sample_run.id, "SUCCEEDED", "evt-succeeded")
+        )
+        assert (succeeded.previous_state, succeeded.new_state) == ("RUNNING", "COMPLETE")
+        assert sample_run.exit_code == 0
+        assert sample_run.end_time is not None
+
+    @pytest.mark.asyncio
+    async def test_binds_batch_job_id_once(self, service, mock_db, sample_run):
+        """The first report binds the Batch jobId; a later one does not overwrite it."""
+        sample_run.state = WorkflowState.QUEUED
+        sample_run.workflow_run_id = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        await service.handle_executor_state_change(
+            self._batch_event(sample_run.id, "STARTING", "evt-1")
+        )
+        assert sample_run.workflow_run_id == "batch-job-abc123"
+
+        mismatched = self._batch_event(sample_run.id, "RUNNING", "evt-2")
+        mismatched.executor_run_id = "batch-job-different"
+        await service.handle_executor_state_change(mismatched)
+
+        assert sample_run.workflow_run_id == "batch-job-abc123"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_event_id_is_a_no_op(self, service, mock_db, sample_run):
+        """At-least-once delivery is safe: a repeated event changes nothing."""
+        sample_run.state = WorkflowState.RUNNING
+        sample_run.last_event_id = "evt-running"
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        result = await service.handle_executor_state_change(
+            self._batch_event(sample_run.id, "SUCCEEDED", "evt-running")
+        )
+
+        assert result.already_processed is True
+        assert sample_run.state == WorkflowState.RUNNING
+
+    @pytest.mark.asyncio
+    async def test_failed_records_the_container_exit_code(self, service, mock_db, sample_run):
+        """A reported exit code is kept verbatim -- 137 is an OOM kill, not just "failed"."""
+        sample_run.state = WorkflowState.RUNNING
+        sample_run.system_logs = []
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        result = await service.handle_executor_state_change(
+            self._batch_event(
+                sample_run.id,
+                "FAILED",
+                "evt-failed",
+                exit_code=137,
+                failure_reason="OutOfMemoryError: container killed due to memory usage",
+            )
+        )
+
+        assert result.new_state == "EXECUTOR_ERROR"
+        assert sample_run.exit_code == 137
+        assert sample_run.end_time == datetime(2024, 1, 15, 14, 0, 0, tzinfo=UTC)
+        assert any("OutOfMemoryError" in entry for entry in sample_run.system_logs)
+
+    @pytest.mark.asyncio
+    async def test_submit_failed_is_a_system_error(self, service, mock_db, sample_run):
+        """A job that was never submitted is this service's fault, not the executor's."""
+        sample_run.state = WorkflowState.QUEUED
+        sample_run.system_logs = []
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        result = await service.handle_executor_state_change(
+            ExecutorStateChangeCallback(
+                wes_run_id=sample_run.id,
+                executor="awsbatch",
+                status="SUBMIT_FAILED",
+                event_time=datetime(2024, 1, 15, 14, 0, 0, tzinfo=UTC),
+                event_id="evt-submit-failed",
+                failure_reason="SubmitJob: ClientError",
+            )
+        )
+
+        assert result.new_state == "SYSTEM_ERROR"
+        assert sample_run.state == WorkflowState.SYSTEM_ERROR
+
+    @pytest.mark.asyncio
+    async def test_post_terminal_event_is_ignored(self, service, mock_db, sample_run):
+        """A late event on a finished run is reported as already terminal, not as an error."""
+        sample_run.state = WorkflowState.COMPLETE
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        result = await service.handle_executor_state_change(
+            self._batch_event(sample_run.id, "FAILED", "evt-late")
+        )
+
+        assert result.success is True
+        assert result.new_state == "COMPLETE"
+        assert sample_run.state == WorkflowState.COMPLETE
+
+    @pytest.mark.asyncio
+    async def test_log_stream_becomes_a_console_link(self, service, mock_db, sample_run):
+        """The CloudWatch link is set while the job runs, and the raw stream is kept."""
+        sample_run.state = WorkflowState.QUEUED
+        sample_run.stdout_url = None
+        sample_run.outputs = None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        await service.handle_executor_state_change(
+            self._batch_event(
+                sample_run.id,
+                "STARTING",
+                "evt-log",
+                log_urls={"log_stream_name": "launcher/default/abc123"},
+            )
+        )
+
+        # The console's fragment router needs the group double-escaped, so the
+        # link is checked rather than merely asserted non-empty.
+        assert "$252Faws$252Fbatch$252Fjob" in sample_run.stdout_url
+        assert "launcher$252Fdefault$252Fabc123" in sample_run.stdout_url
+        assert sample_run.outputs["log_stream_name"] == "launcher/default/abc123"
+
+    @pytest.mark.asyncio
+    async def test_unknown_executor_is_rejected(self, service, mock_db, sample_run):
+        """An executor with no status vocabulary is a 400 that names the known ones."""
+        with pytest.raises(HTTPException) as exc_info:
+            await service.handle_executor_state_change(
+                ExecutorStateChangeCallback(
+                    wes_run_id=sample_run.id,
+                    executor="slurm",
+                    status="RUNNING",
+                    event_time=datetime(2024, 1, 15, 14, 0, 0, tzinfo=UTC),
+                )
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "Unknown executor" in exc_info.value.detail
+        assert "awsbatch" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_executor_name_is_case_insensitive(self, service, mock_db, sample_run):
+        """AWSBatch and awsbatch are the same backend; casing is not a contract."""
+        sample_run.state = WorkflowState.QUEUED
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        result = await service.handle_executor_state_change(
+            ExecutorStateChangeCallback(
+                wes_run_id=sample_run.id,
+                executor="AWSBatch",
+                status="RUNNING",
+                event_time=datetime(2024, 1, 15, 14, 0, 0, tzinfo=UTC),
+                event_id="evt-case",
+            )
+        )
+
+        assert result.new_state == "RUNNING"
+
+    @pytest.mark.asyncio
+    async def test_unknown_status_is_rejected(self, service, mock_db, sample_run):
+        """A status the executor's map does not contain is a 400, not a silent skip."""
+        sample_run.state = WorkflowState.QUEUED
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        with pytest.raises(HTTPException) as exc_info:
+            await service.handle_executor_state_change(
+                self._batch_event(sample_run.id, "COMPLETED", "evt-wrong-vocab")
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "Unknown awsbatch status: COMPLETED" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_omics_reachable_through_the_generic_route(self, service, mock_db, sample_run):
+        """The Omics vocabulary is selectable by name, so one endpoint serves both."""
+        sample_run.state = WorkflowState.RUNNING
+        sample_run.system_logs = []
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        result = await service.handle_executor_state_change(
+            ExecutorStateChangeCallback(
+                wes_run_id=sample_run.id,
+                executor="omics",
+                status="COMPLETED",
+                executor_run_id="omics-999",
+                event_time=datetime(2024, 1, 15, 14, 0, 0, tzinfo=UTC),
+                event_id="evt-omics",
+            )
+        )
+
+        assert result.new_state == "COMPLETE"
+        assert sample_run.workflow_run_id == "omics-999"

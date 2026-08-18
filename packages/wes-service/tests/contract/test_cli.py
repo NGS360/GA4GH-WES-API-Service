@@ -301,3 +301,105 @@ class TestAuthErrorAdvice:
         assert result.exit_code == cli.EXIT_AUTH
         assert "on-behalf-of" in result.output
         assert "WES_SERVICE_KEY" not in result.output
+
+
+class TestLauncherCommands:
+    """--parent, `runs progress`, and `runs tree`."""
+
+    def test_list_filters_by_parent(self, invoke: Any) -> None:
+        """--parent goes out as the promoted parent_run_id filter, not as a tag."""
+        handler = recorder(httpx.Response(200, json={"runs": [], "next_page_token": ""}))
+        result = invoke(["runs", "list", "--parent", "launcher-1"], handler)
+
+        assert result.exit_code == 0
+        filters = json.loads(dict(handler.requests[0].url.params)["filters"])
+        assert filters == {"parent_run_id": "launcher-1"}
+
+    def test_progress_reports_counts(self, invoke: Any) -> None:
+        handler = recorder(
+            httpx.Response(
+                200,
+                json={
+                    "run_id": "launcher-1",
+                    "state": "RUNNING",
+                    "children_total": 3,
+                    "children_by_state": {"COMPLETE": 2, "RUNNING": 1, "QUEUED": 0},
+                    "children_last_update": "2024-01-15T15:00:00Z",
+                },
+            )
+        )
+        result = invoke(["runs", "progress", "launcher-1"], handler)
+
+        assert result.exit_code == 0
+        assert handler.requests[0].url.path.endswith("/runs/launcher-1/progress")
+        assert "3 child run(s)" in result.output
+        assert "COMPLETE" in result.output
+        # Unoccupied states are omitted rather than printed as zeroes.
+        assert "QUEUED" not in result.output
+
+    def test_progress_of_a_run_with_no_children(self, invoke: Any) -> None:
+        """Every run answers this endpoint, so a plain run must not look like an error."""
+        handler = recorder(
+            httpx.Response(
+                200,
+                json={
+                    "run_id": "r1",
+                    "state": "COMPLETE",
+                    "children_total": 0,
+                    "children_by_state": {},
+                    "children_last_update": None,
+                },
+            )
+        )
+        result = invoke(["runs", "progress", "r1"], handler)
+
+        assert result.exit_code == 0
+        assert "No child runs" in result.output
+
+    def test_progress_of_a_missing_run_exits_not_found(self, invoke: Any) -> None:
+        handler = recorder(httpx.Response(404, json={"msg": "no such run", "status_code": 404}))
+
+        assert invoke(["runs", "progress", "nope"], handler).exit_code == cli.EXIT_NOT_FOUND
+
+    def test_tree_lists_children(self, invoke: Any) -> None:
+        """The launcher's status comes first, then one line per child."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            handler.requests.append(request)  # type: ignore[attr-defined]
+            if request.url.path.endswith("/status"):
+                return httpx.Response(200, json={"run_id": "launcher-1", "state": "RUNNING"})
+            return httpx.Response(
+                200,
+                json={
+                    "runs": [
+                        {"run_id": "c1", "state": "COMPLETE", "name": "sampleA"},
+                        {"run_id": "c2", "state": "EXECUTOR_ERROR", "name": "sampleB"},
+                    ],
+                    "next_page_token": "",
+                },
+            )
+
+        handler.requests = []  # type: ignore[attr-defined]
+
+        result = invoke(["runs", "tree", "launcher-1"], handler)
+
+        assert result.exit_code == 0
+        assert "launcher-1" in result.output
+        assert "sampleA" in result.output
+        assert "sampleB" in result.output
+        filters = json.loads(dict(handler.requests[1].url.params)["filters"])
+        assert filters == {"parent_run_id": "launcher-1"}
+
+    def test_tree_of_a_run_with_no_children(self, invoke: Any) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            handler.requests.append(request)  # type: ignore[attr-defined]
+            if request.url.path.endswith("/status"):
+                return httpx.Response(200, json={"run_id": "r1", "state": "COMPLETE"})
+            return httpx.Response(200, json={"runs": [], "next_page_token": ""})
+
+        handler.requests = []  # type: ignore[attr-defined]
+
+        result = invoke(["runs", "tree", "r1"], handler)
+
+        assert result.exit_code == 0
+        assert "no child runs" in result.output
