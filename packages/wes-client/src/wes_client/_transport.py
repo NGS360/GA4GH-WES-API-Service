@@ -158,6 +158,7 @@ def build_filters(
     state: Any = None,
     workflow_url: str | None = None,
     task_name: str | None = None,
+    parent_run_id: str | None = None,
     tags: dict[str, str] | None = None,
 ) -> str | None:
     """
@@ -170,6 +171,8 @@ def build_filters(
     ``project`` filters on WES's promoted, indexed ``project`` column. Passing
     the same value inside ``tags`` as ``ProjectId`` reaches the same rows but
     cannot use the (project, created_at) index, so prefer ``project``.
+    ``parent_run_id`` -- the runs one launcher submitted -- is promoted and
+    indexed the same way, from the ``ParentRunId`` tag.
 
     Returns:
         The encoded filter string, or None when no filters were given, so the
@@ -185,6 +188,8 @@ def build_filters(
         filters["workflow_url"] = workflow_url
     if task_name is not None:
         filters["task_name"] = task_name
+    if parent_run_id is not None:
+        filters["parent_run_id"] = parent_run_id
     if tags:
         filters["tags"] = tags
 
