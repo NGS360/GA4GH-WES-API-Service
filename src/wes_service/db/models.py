@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.wes_service.db.base import Base
@@ -31,6 +31,14 @@ class WorkflowRun(Base):
     """Workflow run database model."""
 
     __tablename__ = "workflow_runs"
+    __table_args__ = (
+        # Child listings are "one parent, newest first", so the pair is indexed
+        # rather than parent_run_id alone: that would tempt the optimizer off
+        # created_at and into a filesort over wide JSON rows. A launcher fans out
+        # to hundreds of children, so this is the index that keeps its progress
+        # rollup cheap.
+        Index("ix_workflow_runs_parent_created_at", "parent_run_id", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(
         String(36),
@@ -45,6 +53,12 @@ class WorkflowRun(Base):
     )
     project: Mapped[str] = mapped_column(String(50), nullable=False)
     task_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    parent_run_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("workflow_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Launcher run that submitted this run, if any",
+    )
 
     # Workflow specification
     workflow_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -128,6 +142,14 @@ class WorkflowRun(Base):
         back_populates="run",
         cascade="all, delete-orphan",
     )
+    # Launcher lineage. No cascade: a launcher run being deleted must not take
+    # the child workflows it submitted with it -- they are independent
+    # executions whose outputs outlive the orchestration that started them.
+    parent: Mapped["WorkflowRun | None"] = relationship(
+        back_populates="children",
+        remote_side=[id],
+    )
+    children: Mapped[list["WorkflowRun"]] = relationship(back_populates="parent")
 
     # Callback tracking
     last_callback_time: Mapped[datetime | None] = mapped_column(
