@@ -73,8 +73,8 @@ class TestRunService:
             workflow_url="https://example.com/workflow.cwl",
             workflow_attachments=None,
             tags='{"ProjectId": "test"}',
-            workflow_engine="cwltool",
-            workflow_engine_version="3.1",
+            workflow_engine="awshealthomics",
+            workflow_engine_version="2022-11-28",
             workflow_engine_parameters=None,
             user_id="testuser",
         )
@@ -88,6 +88,93 @@ class TestRunService:
         assert result is not None
         assert result.workflow_type == "CWL"
         assert result.state == WorkflowState.QUEUED
+
+    async def test_create_run_without_engine_is_allowed(self, test_db, mock_storage):
+        """A run naming no engine is legal and means this instance's default."""
+        service = RunService(test_db, mock_storage)
+
+        workflow_run = await service.create_run(
+            workflow_params=None,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="https://example.com/workflow.cwl",
+            workflow_attachments=None,
+            tags='{"ProjectId": "test"}',
+            workflow_engine=None,
+            workflow_engine_version=None,
+            workflow_engine_parameters=None,
+            user_id="testuser",
+        )
+
+        assert workflow_run.workflow_engine is None
+
+    @pytest.mark.parametrize("engine", ["aws-batch", "AWS Batch", "cwltool", "batch"])
+    async def test_create_run_rejects_unadvertised_engine(
+        self, test_db, mock_storage, engine
+    ):
+        """
+        An engine service-info does not advertise is a 400, not a default.
+
+        Dispatch is keyed on this value, so accepting a name nobody advertised
+        sends the run to whichever backend happens to be the fallback.
+        """
+        service = RunService(test_db, mock_storage)
+
+        with pytest.raises(ValueError, match="Unsupported workflow engine"):
+            await service.create_run(
+                workflow_params=None,
+                workflow_type="CWL",
+                workflow_type_version="v1.0",
+                workflow_url="https://example.com/workflow.cwl",
+                workflow_attachments=None,
+                tags='{"ProjectId": "test"}',
+                workflow_engine=engine,
+                workflow_engine_version=None,
+                workflow_engine_parameters=None,
+                user_id="testuser",
+            )
+
+    @pytest.mark.parametrize("engine", ["awsbatch", "AWSBatch", "  awshealthomics  "])
+    async def test_create_run_accepts_advertised_engine_any_case(
+        self, test_db, mock_storage, engine
+    ):
+        """Case and padding are presentation; the engine name still resolves."""
+        service = RunService(test_db, mock_storage)
+
+        workflow_run = await service.create_run(
+            workflow_params=None,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="https://example.com/workflow.cwl",
+            workflow_attachments=None,
+            tags='{"ProjectId": "test"}',
+            workflow_engine=engine,
+            workflow_engine_version=None,
+            workflow_engine_parameters=None,
+            user_id="testuser",
+        )
+
+        assert workflow_run.workflow_engine == engine
+
+    async def test_create_run_rejects_engine_version_without_engine(
+        self, test_db, mock_storage
+    ):
+        """The spec requires workflow_engine when workflow_engine_version is given."""
+        service = RunService(test_db, mock_storage)
+
+        with pytest.raises(ValueError, match="workflow_engine is required"):
+            await service.create_run(
+                workflow_params=None,
+                workflow_type="CWL",
+                workflow_type_version="v1.0",
+                workflow_url="https://example.com/workflow.cwl",
+                workflow_attachments=None,
+                tags='{"ProjectId": "test"}',
+                workflow_engine=None,
+                workflow_engine_version="2022-11-28",
+                workflow_engine_parameters=None,
+                user_id="testuser",
+            )
 
     async def test_list_runs_empty(self, test_db, mock_storage):
         """Test listing runs when none exist."""

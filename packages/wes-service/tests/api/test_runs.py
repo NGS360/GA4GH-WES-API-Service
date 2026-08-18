@@ -638,6 +638,53 @@ class TestLauncherLineage:
         # message the caller sees lives in `msg`, not FastAPI's `detail`.
         assert "ParentRunId" in response.json()["msg"]
 
+    def test_submit_run_with_unsupported_engine_is_rejected(self, client: TestClient):
+        """
+        An engine service-info does not advertise is a 400 naming the ones it does.
+
+        Previously a misspelled launcher engine was accepted and dispatched to
+        HealthOmics, which failed later with a message about a service the caller
+        never asked for.
+        """
+        response = client.post(
+            "/ga4gh/wes/v1/runs",
+            data={
+                "workflow_url": "https://example.com/workflow.cwl",
+                "workflow_type": "CWL",
+                "workflow_type_version": "v1.0",
+                "workflow_engine": "aws-batch",
+                "tags": json.dumps({"ProjectId": "P-1"}),
+            },
+        )
+        assert response.status_code == 400
+        msg = response.json()["msg"]
+        assert "aws-batch" in msg
+        assert "awsbatch" in msg and "awshealthomics" in msg
+
+    def test_service_info_advertises_the_engines_runs_may_use(self, client: TestClient):
+        """
+        What service-info advertises is exactly what POST /runs accepts.
+
+        The spec makes service-info the discovery mechanism for workflow_engine,
+        so a client that reads it and submits what it found must not be rejected.
+        """
+        engines = client.get("/ga4gh/wes/v1/service-info").json()[
+            "workflow_engine_versions"
+        ]
+
+        for engine in engines:
+            response = client.post(
+                "/ga4gh/wes/v1/runs",
+                data={
+                    "workflow_url": "https://example.com/workflow.cwl",
+                    "workflow_type": "CWL",
+                    "workflow_type_version": "v1.0",
+                    "workflow_engine": engine,
+                    "tags": json.dumps({"ProjectId": "P-1"}),
+                },
+            )
+            assert response.status_code == 200, engine
+
     async def test_list_runs_filter_by_parent_run_id(self, client: TestClient, test_db):
         """?filters={"parent_run_id": …} returns only that launcher's children."""
         runs = [

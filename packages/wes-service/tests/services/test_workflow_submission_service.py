@@ -6,7 +6,11 @@ from unittest.mock import patch, MagicMock
 
 from wes_service.db.models import WorkflowRun, WorkflowState
 from wes_service.services.workflow_submission_service import (
+    EXTERNALLY_DISPATCHED_ENGINES,
+    SUBMISSION_STRATEGIES,
+    ExternalDispatchSubmissionService,
     LambdaWorkflowSubmissionService,
+    get_submission_service,
 )
 
 HTTPX_CLIENT_PATCH = (
@@ -736,3 +740,76 @@ class TestWorkflowSubmissionService:
         )
         mock_lambda_client.invoke.assert_not_called()
         mock_db.commit.assert_awaited_once()
+
+
+class TestGetSubmissionService:
+    """Tests for the engine -> strategy factory."""
+
+    def test_awsbatch_awaits_external_dispatch(self):
+        """A launcher run is not pushed at HealthOmics on its way past."""
+        run = WorkflowRun(id="run-batch", workflow_engine="awsbatch")
+
+        assert isinstance(
+            get_submission_service(run), ExternalDispatchSubmissionService
+        )
+
+    @pytest.mark.parametrize("engine", ["AWSBatch", "  awsbatch  ", "AWSBATCH"])
+    def test_engine_name_is_case_and_padding_insensitive(self, engine):
+        """Case and surrounding whitespace are presentation, not the name."""
+        run = WorkflowRun(id="run-case", workflow_engine=engine)
+
+        assert isinstance(
+            get_submission_service(run), ExternalDispatchSubmissionService
+        )
+
+    @patch('wes_service.services.workflow_submission_service.boto3.client')
+    def test_awshealthomics_goes_to_lambda(self, mock_boto3_client):
+        """The HealthOmics engine keeps its original submission path."""
+        run = WorkflowRun(id="run-omics", workflow_engine="awshealthomics")
+
+        with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):
+            assert isinstance(
+                get_submission_service(run), LambdaWorkflowSubmissionService
+            )
+
+    @patch('wes_service.services.workflow_submission_service.boto3.client')
+    def test_missing_engine_uses_the_default(self, mock_boto3_client):
+        """Runs that name no engine behave as they did before launchers existed."""
+        run = WorkflowRun(id="run-none", workflow_engine=None)
+
+        with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):
+            assert isinstance(
+                get_submission_service(run), LambdaWorkflowSubmissionService
+            )
+
+    @pytest.mark.parametrize("engine", ["aws-batch", "aws_batch", "batch", "cwltool"])
+    def test_unknown_engine_raises_instead_of_defaulting(self, engine):
+        """
+        An unregistered engine must not fall through to a backend.
+
+        create_run rejects these with 400, so this is the guard for a run written
+        by anything that bypassed that check: misrouting a launcher to HealthOmics
+        fails much later, with an error naming a service the caller never asked
+        for.
+        """
+        run = WorkflowRun(id="run-bogus", workflow_engine=engine)
+
+        with pytest.raises(ValueError, match="No submission strategy"):
+            get_submission_service(run)
+
+    def test_registry_matches_advertised_engines(self, test_settings):
+        """
+        Dispatch and service-info must name the same engines.
+
+        The spec makes service-info the client's only way to discover legal
+        engines, and create_run validates against it, so an engine advertised
+        with no strategy is a 500 waiting to happen and a strategy that is not
+        advertised is unreachable.
+        """
+        advertised = set(test_settings.get_workflow_engine_versions())
+
+        assert advertised == set(SUBMISSION_STRATEGIES)
+
+    def test_externally_dispatched_engines_is_derived(self):
+        """The documented vocabulary comes from the registry, not a second list."""
+        assert EXTERNALLY_DISPATCHED_ENGINES == frozenset({"awsbatch"})
