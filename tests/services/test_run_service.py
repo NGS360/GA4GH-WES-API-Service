@@ -147,6 +147,237 @@ class TestRunService:
         await test_db.refresh(run)
         assert run.state == WorkflowState.CANCELING
 
+    async def test_create_run_promotes_parent_run_id_tag(self, test_db, mock_storage):
+        """A ParentRunId tag becomes the indexed parent_run_id column."""
+        service = RunService(test_db, mock_storage)
+
+        parent = await service.create_run(
+            workflow_params=None,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="LAUNCHER:1.0.0",
+            workflow_attachments=None,
+            tags='{"ProjectId": "test", "TaskName": "launcher"}',
+            workflow_engine="awsbatch",
+            workflow_engine_version=None,
+            workflow_engine_parameters=None,
+            user_id="testuser",
+        )
+
+        child = await service.create_run(
+            workflow_params=None,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="https://example.com/workflow.cwl",
+            workflow_attachments=None,
+            tags=(
+                '{"ProjectId": "test", "TaskName": "sampleA", '
+                f'"ParentRunId": "{parent.id}"}}'
+            ),
+            workflow_engine="awshealthomics",
+            workflow_engine_version=None,
+            workflow_engine_parameters=None,
+            user_id="testuser",
+        )
+
+        assert parent.parent_run_id is None
+        assert child.parent_run_id == parent.id
+        # The tag is kept as well as promoted, so the submitted request stays
+        # reproducible from the record.
+        assert child.tags["ParentRunId"] == parent.id
+
+    async def test_create_run_rejects_unknown_parent(self, test_db, mock_storage):
+        """A ParentRunId naming no run is refused rather than orphaning a child."""
+        service = RunService(test_db, mock_storage)
+
+        with pytest.raises(ValueError, match="ParentRunId"):
+            await service.create_run(
+                workflow_params=None,
+                workflow_type="CWL",
+                workflow_type_version="v1.0",
+                workflow_url="https://example.com/workflow.cwl",
+                workflow_attachments=None,
+                tags='{"ProjectId": "test", "ParentRunId": "no-such-run"}',
+                workflow_engine="awshealthomics",
+                workflow_engine_version=None,
+                workflow_engine_parameters=None,
+                user_id="testuser",
+            )
+
+    async def test_parent_run_id_is_reported_by_reads(self, test_db, mock_storage):
+        """Lineage is visible in both the listing and the full run record."""
+        parent = WorkflowRun(
+            id="launcher-1",
+            state=WorkflowState.RUNNING,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="LAUNCHER:1.0.0",
+            tags={},
+            project="test-project",
+            task_name="launcher",
+        )
+        child = WorkflowRun(
+            id="child-1",
+            state=WorkflowState.QUEUED,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="https://example.com/workflow.cwl",
+            tags={},
+            project="test-project",
+            task_name="sampleA",
+            parent_run_id="launcher-1",
+        )
+        test_db.add_all([parent, child])
+        await test_db.commit()
+
+        service = RunService(test_db, mock_storage)
+
+        run_log = await service.get_run_log("child-1", None)
+        assert run_log.parent_run_id == "launcher-1"
+
+        listing = await service.list_runs(page_size=10, page_token=None, user_id=None)
+        by_id = {summary.run_id: summary for summary in listing.runs}
+        assert by_id["child-1"].parent_run_id == "launcher-1"
+        assert by_id["launcher-1"].parent_run_id is None
+
+    async def test_list_runs_filters_on_parent_run_id(self, test_db, mock_storage):
+        """The promoted column is filterable, which is how a launcher finds its own children."""
+        runs = [
+            WorkflowRun(
+                id="launcher-a",
+                state=WorkflowState.RUNNING,
+                workflow_type="CWL",
+                workflow_type_version="v1.0",
+                workflow_url="LAUNCHER:1.0.0",
+                tags={},
+                project="test-project",
+                task_name="launcher-a",
+            ),
+            WorkflowRun(
+                id="launcher-b",
+                state=WorkflowState.RUNNING,
+                workflow_type="CWL",
+                workflow_type_version="v1.0",
+                workflow_url="LAUNCHER:1.0.0",
+                tags={},
+                project="test-project",
+                task_name="launcher-b",
+            ),
+            WorkflowRun(
+                id="a-child",
+                state=WorkflowState.QUEUED,
+                workflow_type="CWL",
+                workflow_type_version="v1.0",
+                workflow_url="https://example.com/workflow.cwl",
+                tags={},
+                project="test-project",
+                task_name="sampleA",
+                parent_run_id="launcher-a",
+            ),
+            WorkflowRun(
+                id="b-child",
+                state=WorkflowState.QUEUED,
+                workflow_type="CWL",
+                workflow_type_version="v1.0",
+                workflow_url="https://example.com/workflow.cwl",
+                tags={},
+                project="test-project",
+                task_name="sampleB",
+                parent_run_id="launcher-b",
+            ),
+        ]
+        test_db.add_all(runs)
+        await test_db.commit()
+
+        service = RunService(test_db, mock_storage)
+        result = await service.list_runs(
+            page_size=10,
+            page_token=None,
+            user_id=None,
+            filters={"parent_run_id": "launcher-a"},
+        )
+
+        assert [summary.run_id for summary in result.runs] == ["a-child"]
+
+    async def test_get_run_progress_rolls_up_children(self, test_db, mock_storage):
+        """Progress counts direct children by state, and the launcher's state stays its own."""
+        parent = WorkflowRun(
+            id="launcher-1",
+            state=WorkflowState.RUNNING,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="LAUNCHER:1.0.0",
+            tags={},
+            project="test-project",
+            task_name="launcher",
+        )
+        children = [
+            WorkflowRun(
+                id=f"child-{i}",
+                state=state,
+                workflow_type="CWL",
+                workflow_type_version="v1.0",
+                workflow_url="https://example.com/workflow.cwl",
+                tags={},
+                project="test-project",
+                task_name=f"sample-{i}",
+                parent_run_id="launcher-1",
+            )
+            for i, state in enumerate(
+                [WorkflowState.COMPLETE, WorkflowState.COMPLETE, WorkflowState.RUNNING]
+            )
+        ]
+        # A grandchild: counted under its own parent, not rolled up into the
+        # launcher's totals.
+        grandchild = WorkflowRun(
+            id="grandchild",
+            state=WorkflowState.QUEUED,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="https://example.com/workflow.cwl",
+            tags={},
+            project="test-project",
+            task_name="sub-sample",
+            parent_run_id="child-0",
+        )
+        test_db.add_all([parent, *children, grandchild])
+        await test_db.commit()
+
+        service = RunService(test_db, mock_storage)
+        progress = await service.get_run_progress("launcher-1", None)
+
+        assert progress.run_id == "launcher-1"
+        assert progress.state.value == "RUNNING"
+        assert progress.children_total == 3
+        assert progress.children_by_state["COMPLETE"] == 2
+        assert progress.children_by_state["RUNNING"] == 1
+        # Every state is reported, so a caller can render a full breakdown
+        # without knowing which states happen to be occupied.
+        assert progress.children_by_state["EXECUTOR_ERROR"] == 0
+        assert progress.children_last_update is not None
+
+    async def test_get_run_progress_with_no_children(self, test_db, mock_storage):
+        """An ordinary run reports zero children rather than failing."""
+        run = WorkflowRun(
+            id="solo",
+            state=WorkflowState.COMPLETE,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="https://example.com/workflow.cwl",
+            tags={},
+            project="test-project",
+            task_name="solo",
+        )
+        test_db.add(run)
+        await test_db.commit()
+
+        service = RunService(test_db, mock_storage)
+        progress = await service.get_run_progress("solo", None)
+
+        assert progress.children_total == 0
+        assert progress.children_last_update is None
+        assert set(progress.children_by_state.values()) == {0}
+
     async def test_get_system_state_counts(self, test_db, mock_storage):
         """Test getting system state counts."""
         # Create runs in different states
