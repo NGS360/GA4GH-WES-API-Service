@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.141.1",
-    "uvicorn[standard]>=0.52.1",
+    "uvicorn[standard]>=0.52.3",
     "sqlalchemy>=2.0.51",
     "alembic>=1.19.1",
     "aiomysql>=0.3.2",
