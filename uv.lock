@@ -1441,6 +1441,6 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "requests", specifier = ">=2.34.2" },
     { name = "sqlalchemy", specifier = ">=2.0.52" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.3" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.4" },
 ]
 provides-extras = ["dev"]
