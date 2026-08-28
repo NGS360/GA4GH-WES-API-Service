@@ -96,6 +96,13 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             return
 
         settings = get_settings()
+        # Rename ProjectId -> Project on the outgoing tags so the Omics run
+        # is tagged with the AWS cost-tracking tag key. DB storage keeps
+        # ProjectId.
+        outgoing_tags = dict(run_request.tags or {})
+        if 'ProjectId' in outgoing_tags:
+            outgoing_tags['Project'] = outgoing_tags.pop('ProjectId')
+
         # Prepare Lambda payload
         lambda_payload = {
             'action': 'submit_workflow',
@@ -110,7 +117,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             'parameters': resolved_params,
             'workflow_engine_parameters': run_request.workflow_engine_parameters or {},
             'tags': {
-                **(run_request.tags or {}),
+                **outgoing_tags,
                 'WESRunId': run_request.id,
                 'callback_url': (
                     f"{settings.client_origin}{settings.api_prefix}"
