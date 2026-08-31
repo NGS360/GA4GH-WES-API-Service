@@ -83,6 +83,85 @@ class OmicsStateChangeCallback(BaseModel):
     )
 
 
+class ExecutorStateChangeCallback(BaseModel):
+    """Schema for a state change reported by any execution backend.
+
+    The executor-agnostic form of OmicsStateChangeCallback: `executor` selects
+    the status vocabulary to translate from, so one endpoint serves AWS Batch
+    launcher jobs and HealthOmics runs alike. `status` is left as a string
+    rather than an enum for that reason -- an unknown status is rejected by the
+    service with the list of statuses that executor does accept.
+    """
+
+    wes_run_id: str = Field(
+        ...,
+        description="GA4GH WES run ID to update",
+        min_length=1,
+        max_length=36,
+    )
+
+    executor: str = Field(
+        ...,
+        description='The execution backend reporting the change, e.g. "awsbatch" or "omics"',
+        min_length=1,
+        max_length=50,
+    )
+
+    status: str = Field(
+        ...,
+        description="The executor's own status name, e.g. RUNNABLE for AWS Batch",
+        min_length=1,
+        max_length=50,
+    )
+
+    executor_run_id: Optional[str] = Field(
+        None,
+        description=(
+            "The run's ID in the execution backend, e.g. an AWS Batch jobId. "
+            "Recorded on the run the first time it is reported"
+        ),
+        min_length=1,
+        max_length=50,
+    )
+
+    event_time: datetime = Field(
+        ...,
+        description="Timestamp of the state change event",
+    )
+
+    status_message: Optional[str] = Field(
+        None,
+        description="Additional status information from the executor",
+        max_length=1000,
+    )
+
+    failure_reason: Optional[str] = Field(
+        None,
+        description="Failure reason if the status indicates failure",
+        max_length=2000,
+    )
+
+    exit_code: Optional[int] = Field(
+        None,
+        description="Exit code of the executor's container, if it ran",
+    )
+
+    event_id: Optional[str] = Field(
+        None,
+        description="Event source's event ID, for idempotency",
+        min_length=1,
+        max_length=100,
+    )
+
+    log_urls: Optional[dict[str, Any]] = Field(
+        None,
+        description=(
+            'URLs and identifiers for the run\'s logs. A "log_stream_name" key is '
+            "turned into a console link and kept verbatim for log viewers"
+        ),
+    )
+
+
 class CallbackResponse(BaseModel):
     """Response from callback endpoint."""
 

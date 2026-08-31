@@ -51,7 +51,18 @@ OPERATIONS: list[tuple[str, Operation, str]] = [
     ),
     ("get_run", ops.get_run(RUN_ID), "/runs/{run_id}"),
     ("get_run_status", ops.get_run_status(RUN_ID), "/runs/{run_id}/status"),
+    ("get_run_progress", ops.get_run_progress(RUN_ID), "/runs/{run_id}/progress"),
     ("cancel_run", ops.cancel_run(RUN_ID), "/runs/{run_id}/cancel"),
+    (
+        "report_executor_state",
+        ops.report_executor_state(
+            wes_run_id=RUN_ID,
+            executor="awsbatch",
+            status="RUNNING",
+            event_time="2024-01-01T00:00:00Z",
+        ),
+        "/internal/callbacks/executor-state-change",
+    ),
     ("list_tasks", ops.list_tasks(RUN_ID), "/runs/{run_id}/tasks"),
     ("get_task", ops.get_task(RUN_ID, TASK_ID), "/runs/{run_id}/tasks/{task_id}"),
 ]
@@ -61,7 +72,9 @@ OPERATIONS: list[tuple[str, Operation, str]] = [
 UNCLIENTED_PATHS = {
     # Called by an AWS Lambda reacting to EventBridge, not by any Python
     # consumer of this package. Giving it a client method would advertise an
-    # inbound-only endpoint as something callers should use.
+    # inbound-only endpoint as something callers should use. Its
+    # executor-agnostic successor is different: NGS360 APIServer submits launcher
+    # jobs from Python, so that one has a real caller and a client operation.
     f"{API_PREFIX}/internal/callbacks/omics-state-change",
     f"{API_PREFIX}/internal/callbacks/health",
 }

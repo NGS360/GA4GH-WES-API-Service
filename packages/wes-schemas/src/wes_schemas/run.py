@@ -154,6 +154,38 @@ class RunLog(BaseModel):
     )
 
 
+class RunProgress(BaseModel):
+    """
+    Progress of a launcher run, rolled up from the runs it submitted.
+
+    The launcher's own `state` is its process lifecycle and is deliberately kept
+    separate from the child counts: a launcher that dies while its children keep
+    running reports a failed state alongside children still RUNNING, which is
+    the orphan condition an operator needs to see rather than have smoothed over.
+    """
+
+    run_id: str = Field(..., description="The launcher run ID")
+    state: State | None = Field(
+        None,
+        description="The launcher run's own state, not an aggregate of its children",
+    )
+    children_total: int = Field(
+        0,
+        description="Number of runs submitted by this run (direct children only)",
+    )
+    children_by_state: dict[str, int] = Field(
+        default_factory=dict,
+        description="Child run counts keyed by state, including states with a count of zero",
+    )
+    children_last_update: str | None = Field(
+        None,
+        description=(
+            "The most recent child update time, in ISO 8601 format. "
+            "None when there are no children"
+        ),
+    )
+
+
 class RunListResponse(BaseModel):
     """Response for listing workflow runs."""
 

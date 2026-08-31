@@ -10,15 +10,18 @@ TCP and TLS on every request.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
+from datetime import datetime
 from typing import Any, TypeVar
 
 import httpx
 from pydantic import BaseModel
 
 from wes_schemas import (
+    CallbackResponse,
     RunId,
     RunListResponse,
     RunLog,
+    RunProgress,
     RunStatus,
     RunSummary,
     ServiceInfo,
@@ -158,6 +161,7 @@ class AsyncWesClient:
                 params=op.params or None,
                 data=op.data or None,
                 files=op.files or None,
+                json=op.json_body,
                 headers=headers,
             )
         except Exception as exc:
@@ -182,6 +186,7 @@ class AsyncWesClient:
         state: State | str | None = None,
         workflow_url: str | None = None,
         task_name: str | None = None,
+        parent_run_id: str | None = None,
         tags: dict[str, str] | None = None,
     ) -> RunListResponse:
         """
@@ -200,6 +205,9 @@ class AsyncWesClient:
             state: Filter to one workflow state.
             workflow_url: Filter to one workflow.
             task_name: Filter on the TaskName tag.
+            parent_run_id: Filter to the runs one launcher submitted. Uses WES's
+                indexed ``parent_run_id`` column, promoted from the ParentRunId
+                tag.
             tags: Filter on arbitrary tag key/value pairs.
         """
         return await self._send(
@@ -210,6 +218,7 @@ class AsyncWesClient:
                 state=state,
                 workflow_url=workflow_url,
                 task_name=task_name,
+                parent_run_id=parent_run_id,
                 tags=tags,
             )
         )
@@ -222,6 +231,7 @@ class AsyncWesClient:
         state: State | str | None = None,
         workflow_url: str | None = None,
         task_name: str | None = None,
+        parent_run_id: str | None = None,
         tags: dict[str, str] | None = None,
     ) -> AsyncIterator[RunSummary]:
         """
@@ -245,6 +255,7 @@ class AsyncWesClient:
                 state=state,
                 workflow_url=workflow_url,
                 task_name=task_name,
+                parent_run_id=parent_run_id,
                 tags=tags,
             )
             if not page.runs:
@@ -315,6 +326,19 @@ class AsyncWesClient:
         """
         return await self._send(ops.get_run_status(run_id))
 
+    async def get_run_progress(self, run_id: str) -> RunProgress:
+        """
+        Return a launcher run's own state plus a rollup of its children's.
+
+        For a run that orchestrates other runs: the child counts by state are
+        what "40% done" is computed from. The launcher's own state is reported
+        separately and is not an aggregate, so a launcher that died while its
+        children kept running is visible as exactly that.
+
+        A run with no children reports zero counts rather than failing.
+        """
+        return await self._send(ops.get_run_progress(run_id))
+
     async def cancel_run(self, run_id: str) -> RunId:
         """
         Cancel a run.
@@ -323,6 +347,66 @@ class AsyncWesClient:
         rejects the attempt.
         """
         return await self._send(ops.cancel_run(run_id))
+
+    # -- executor reporting -----------------------------------------------
+
+    async def report_executor_state(
+        self,
+        *,
+        wes_run_id: str,
+        executor: str,
+        status: str,
+        event_time: datetime | str,
+        executor_run_id: str | None = None,
+        status_message: str | None = None,
+        failure_reason: str | None = None,
+        exit_code: int | None = None,
+        event_id: str | None = None,
+        log_urls: dict[str, Any] | None = None,
+    ) -> CallbackResponse:
+        """
+        Report an execution backend's state for a run.
+
+        For the service that submitted the job, not for ordinary consumers:
+        WES owns a launcher run's record but does not start its container, so the
+        submitter is what tells it the job's id, its status, and where its logs
+        are. Requires an internal credential -- ``ServiceKeyAuth`` here, or the
+        callback key held by the relay Lambda.
+
+        Args:
+            wes_run_id: The run to update.
+            executor: Backend name, e.g. "awsbatch". Selects the status
+                vocabulary WES translates from.
+            status: The backend's own status name, e.g. "RUNNABLE". Report
+                "SUBMIT_FAILED" when submission itself failed, so the run does
+                not sit QUEUED forever.
+            event_time: When the state change happened.
+            executor_run_id: The backend's job id. Recorded on first report.
+            status_message: Extra status detail, appended to the run's logs.
+            failure_reason: Why it failed, appended to the run's logs.
+            exit_code: The container's exit code, if it ran.
+            event_id: Event source's id. Repeating one makes the call a no-op,
+                which is what makes at-least-once event delivery safe.
+            log_urls: Log locations. A ``log_stream_name`` key becomes a
+                CloudWatch console link on the run.
+
+        Returns:
+            What the state went from and to, and whether it was a duplicate.
+        """
+        return await self._send(
+            ops.report_executor_state(
+                wes_run_id=wes_run_id,
+                executor=executor,
+                status=status,
+                event_time=event_time,
+                executor_run_id=executor_run_id,
+                status_message=status_message,
+                failure_reason=failure_reason,
+                exit_code=exit_code,
+                event_id=event_id,
+                log_urls=log_urls,
+            )
+        )
 
     # -- tasks ------------------------------------------------------------
 

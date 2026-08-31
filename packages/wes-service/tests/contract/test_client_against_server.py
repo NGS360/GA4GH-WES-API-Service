@@ -9,12 +9,14 @@ checks the shapes agree statically; these check the calls actually work.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
+from unittest.mock import patch
 
 import httpx
 import pytest
 
-from wes_client import AsyncWesClient, State, WesClient, WesNotFound
+from wes_client import AsyncWesClient, State, WesBadRequest, WesClient, WesNotFound
 
 PROJECT = "P-CONTRACT-1"
 
@@ -269,6 +271,97 @@ class TestTasks:
 
         with pytest.raises(WesNotFound):
             await wes.get_task(run_id, "no-such-task")
+
+
+class TestLauncherLineage:
+    """GetRunProgress, the parent filter, and the executor callback."""
+
+    async def test_progress_counts_the_children_of_a_launcher(
+        self, wes: AsyncWesClient, no_lambda_submit: Any
+    ) -> None:
+        parent_id = await _submit(wes, workflow_engine="awsbatch")
+        for sample in ("sampleA", "sampleB"):
+            await _submit(
+                wes,
+                tags={"ProjectId": PROJECT, "TaskName": sample, "ParentRunId": parent_id},
+            )
+
+        progress = await wes.get_run_progress(parent_id)
+
+        assert progress.run_id == parent_id
+        assert progress.children_total == 2
+        assert progress.children_by_state["QUEUED"] == 2
+        # The launcher's own state is reported, not an aggregate of the children.
+        assert progress.state is State.QUEUED
+
+    async def test_parent_filter_selects_only_that_launchers_children(
+        self, wes: AsyncWesClient, no_lambda_submit: Any
+    ) -> None:
+        parent_id = await _submit(wes, workflow_engine="awsbatch")
+        child_id = await _submit(
+            wes, tags={"ProjectId": PROJECT, "TaskName": "child", "ParentRunId": parent_id}
+        )
+        await _submit(wes, tags={"ProjectId": PROJECT, "TaskName": "unrelated"})
+
+        page = await wes.list_runs(parent_run_id=parent_id)
+
+        assert [run.run_id for run in page.runs] == [child_id]
+        assert page.runs[0].tags["ParentRunId"] == parent_id
+
+    async def test_report_executor_state_moves_the_run(
+        self, wes: AsyncWesClient, no_lambda_submit: Any
+    ) -> None:
+        """
+        The whole submitter-side path: bind the job id, then report its state.
+
+        The callback auth dependency reads settings directly, so it is patched
+        here; everything else -- routing, the status vocabulary, the state
+        machine -- is the real thing.
+        """
+        run_id = await _submit(wes, workflow_engine="awsbatch")
+
+        with patch("wes_service.core.callback_auth.get_settings") as mock_settings:
+            settings = mock_settings.return_value
+            settings.enable_callback_endpoint = True
+            settings.enable_service_auth = True
+            settings.INTERNAL_CALLBACK_API_KEY = ""
+            settings.INTERNAL_SERVICE_API_KEY = "contract-service-key"
+            wes._http.headers["X-Internal-Service-Key"] = "contract-service-key"
+
+            response = await wes.report_executor_state(
+                wes_run_id=run_id,
+                executor="awsbatch",
+                status="RUNNING",
+                executor_run_id="batch-job-contract-1",
+                event_time=datetime(2024, 1, 15, 14, 0, 0, tzinfo=UTC),
+                event_id="evt-contract-1",
+            )
+
+        assert response.success is True
+        assert response.new_state == "RUNNING"
+        assert (await wes.get_run_status(run_id)).state is State.RUNNING
+
+    async def test_report_executor_state_rejects_an_unknown_executor(
+        self, wes: AsyncWesClient, no_lambda_submit: Any
+    ) -> None:
+        """A bad executor name comes back as a client error the client can catch."""
+        run_id = await _submit(wes, workflow_engine="awsbatch")
+
+        with patch("wes_service.core.callback_auth.get_settings") as mock_settings:
+            settings = mock_settings.return_value
+            settings.enable_callback_endpoint = True
+            settings.enable_service_auth = True
+            settings.INTERNAL_CALLBACK_API_KEY = ""
+            settings.INTERNAL_SERVICE_API_KEY = "contract-service-key"
+            wes._http.headers["X-Internal-Service-Key"] = "contract-service-key"
+
+            with pytest.raises(WesBadRequest):
+                await wes.report_executor_state(
+                    wes_run_id=run_id,
+                    executor="slurm",
+                    status="RUNNING",
+                    event_time=datetime(2024, 1, 15, 14, 0, 0, tzinfo=UTC),
+                )
 
 
 class TestIdentityAssertion:

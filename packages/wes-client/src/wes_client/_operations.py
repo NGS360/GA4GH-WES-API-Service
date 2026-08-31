@@ -18,15 +18,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 from urllib.parse import quote
 
 from pydantic import BaseModel
 
 from wes_schemas import (
+    CallbackResponse,
     RunId,
     RunListResponse,
     RunLog,
+    RunProgress,
     RunStatus,
     ServiceInfo,
     State,
@@ -49,6 +52,10 @@ class Operation:
     params: dict[str, Any] = field(default_factory=dict)
     data: dict[str, Any] = field(default_factory=dict)
     files: list[tuple[str, tuple[str, bytes]]] = field(default_factory=list)
+    # A JSON request body, for the endpoints that take one. Distinct from
+    # ``data``, which is the form encoding RunWorkflow requires -- the two are
+    # mutually exclusive on one request.
+    json_body: dict[str, Any] | None = None
 
 
 def _segment(value: str) -> str:
@@ -74,6 +81,7 @@ def list_runs(
     state: State | str | None = None,
     workflow_url: str | None = None,
     task_name: str | None = None,
+    parent_run_id: str | None = None,
     tags: dict[str, str] | None = None,
 ) -> Operation:
     return Operation(
@@ -89,6 +97,7 @@ def list_runs(
                     state=state,
                     workflow_url=workflow_url,
                     task_name=task_name,
+                    parent_run_id=parent_run_id,
                     tags=tags,
                 ),
             }
@@ -143,8 +152,58 @@ def get_run_status(run_id: str) -> Operation:
     return Operation("GET", f"/runs/{_segment(run_id)}/status", RunStatus)
 
 
+def get_run_progress(run_id: str) -> Operation:
+    return Operation("GET", f"/runs/{_segment(run_id)}/progress", RunProgress)
+
+
 def cancel_run(run_id: str) -> Operation:
     return Operation("POST", f"/runs/{_segment(run_id)}/cancel", RunId)
+
+
+def report_executor_state(
+    *,
+    wes_run_id: str,
+    executor: str,
+    status: str,
+    event_time: datetime | str,
+    executor_run_id: str | None = None,
+    status_message: str | None = None,
+    failure_reason: str | None = None,
+    exit_code: int | None = None,
+    event_id: str | None = None,
+    log_urls: dict[str, Any] | None = None,
+) -> Operation:
+    """
+    Describe a state report to WES's internal executor callback.
+
+    Inbound-only for most consumers: the caller here is whatever submitted the
+    job -- NGS360 APIServer for launcher containers on AWS Batch -- reporting the
+    executor's job id, its status, and where its logs are. Requires an internal
+    credential (ServiceKeyAuth), not a user token.
+    """
+    return Operation(
+        "POST",
+        "/internal/callbacks/executor-state-change",
+        CallbackResponse,
+        json_body=drop_none(
+            {
+                "wes_run_id": wes_run_id,
+                "executor": executor,
+                "status": status,
+                "event_time": (
+                    event_time.isoformat()
+                    if isinstance(event_time, datetime)
+                    else event_time
+                ),
+                "executor_run_id": executor_run_id,
+                "status_message": status_message,
+                "failure_reason": failure_reason,
+                "exit_code": exit_code,
+                "event_id": event_id,
+                "log_urls": log_urls,
+            }
+        ),
+    )
 
 
 def list_tasks(

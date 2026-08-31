@@ -11,12 +11,12 @@ GA4GH WES is designed with a clean separation: the API service logs workflow req
 
 1. User registers a workflow with NGS360, which then in turn registers the workflow with the backend service (in this case AWS HealthOmics).
    a. To register a workflow, make a call to NGS360 API Service, POST /api/v1/workflows, JSON={name='workflow_name', definition_uri='uri of workflow', engine='engine (AWS HealthOmics, SevenBridges, Arvados, etc', attributes=...}.  NGS360 API will call the lambda fn which will actually do the heavy-lifting.
-   
-3. Workflow is submitted to GA4GH WES API via Launcher which uses PAML.
-4. GA4GH WES API logs workflow in DB.
-5. Daemon (lambda) submits workflow to AWS HealthOmics and updates db status info
-6. Lambda is notiified when workflow completes and updates db info
-7. Launcher queries GA4GH WES API via PAML.
+2. A launcher is started: NGS360 APIServer creates the launcher's WES run (`workflow_engine=awsbatch`) and submits the launcher container as an AWS Batch job. The run stays `QUEUED` until the executor reports back — this service makes no AWS call for it.
+3. The launcher, running in Batch, submits one child workflow per sample to GA4GH WES API via PAML, tagging each with `ParentRunId` so the children are linked to the launcher run.
+4. GA4GH WES API logs each workflow in DB.
+5. Daemon (lambda) submits the child workflows to AWS HealthOmics and updates db status info
+6. Lambda is notified when a workflow completes and updates db info. AWS Batch job state changes for the launcher itself arrive the same way, via `POST /internal/callbacks/executor-state-change`.
+7. Launcher queries GA4GH WES API via PAML; operators and the UI use `GET /runs/{run_id}/progress` for the launcher's own state plus a rollup of its children.
 
 ## Features
 

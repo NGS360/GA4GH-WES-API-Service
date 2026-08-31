@@ -18,6 +18,21 @@ logger = logging.getLogger(__name__)
 
 NGS360_FILE_URI_SCHEME = "ngs360://"
 
+# Deployment engine names as the NGS360 workflow registry spells them. Not the
+# same vocabulary as a run's workflow_engine, which is what a WES client asks
+# for -- SUBMISSION_STRATEGIES maps between the two worlds.
+OMICS_DEPLOYMENT_ENGINE = "AWSHealthOmics (us-east)"
+
+# Engine names as a WES client spells them, and as service-info advertises them
+# (Settings.get_workflow_engine_versions).
+AWSBATCH_ENGINE = "awsbatch"
+AWSHEALTHOMICS_ENGINE = "awshealthomics"
+
+# What a run with no workflow_engine at all means. Every run that predates
+# launchers went to HealthOmics, and the spec lets the field be omitted, so
+# omission keeps meaning "this instance's default backend", not an error.
+DEFAULT_ENGINE = AWSHEALTHOMICS_ENGINE
+
 
 class WorkflowSubmissionService(ABC):
     """Abstract base class for workflow submission services."""
@@ -132,12 +147,17 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         )
         logger.info(f"Lambda invocation response from {self.lambda_function_name}: {response}")
 
-    async def _get_engine_id_from_ngs360(self, workflow_url: str) -> str:
+    async def _get_engine_id_from_ngs360(
+        self,
+        workflow_url: str,
+        deployment_engine: str = OMICS_DEPLOYMENT_ENGINE,
+    ) -> str:
         """
         Query NGS360 API to get the engine_id for a given workflow URL.
 
         Args:
             workflow_url: The workflow URL in format NGS360WORKFLOWID[:ALIAS_OR_VERSION]
+            deployment_engine: Registry name of the engine to resolve against
 
         Returns:
             The workflow id on the requested engine from the NGS360 API
@@ -148,7 +168,9 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         workflow_id, suffix = self._parse_workflow_url(workflow_url)
         workflow_data = await self._fetch_workflow_from_api(workflow_id)
         selected_version = self._select_version(workflow_data, suffix, workflow_id)
-        workflow_engine_id = self._select_deployment(selected_version, suffix, workflow_id)
+        workflow_engine_id = self._select_deployment(
+            selected_version, suffix, workflow_id, deployment_engine
+        )
 
         logger.info(
             f"Successfully retrieved workflow_engine_id "
@@ -369,14 +391,19 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         version: dict,
         suffix: str | None,
         workflow_id: str,
+        deployment_engine: str = OMICS_DEPLOYMENT_ENGINE,
     ) -> str:
         """
-        Select the most recent AWSHealthOmics deployment and return its engine_id.
+        Select the most recent deployment on one engine and return its engine_id.
 
         Args:
             version: The selected version dictionary
             suffix: The alias/version suffix (for error messages)
             workflow_id: The workflow ID (for error messages)
+            deployment_engine: Registry name of the engine to deploy on. Defaults
+                to HealthOmics, which is what this service submits to; a caller
+                resolving a launcher's Batch job definition passes the Batch
+                engine name instead.
 
         Returns:
             The engine_id string from the selected deployment
@@ -385,19 +412,19 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             RuntimeError: If no deployments found or engine_id is empty
         """
         deployments = version.get("deployments", [])
-        omics_deployments = [
+        matching_deployments = [
             d for d in deployments
-            if d["engine"] == "AWSHealthOmics (us-east)"
+            if d["engine"] == deployment_engine
         ]
 
-        if not omics_deployments:
+        if not matching_deployments:
             raise RuntimeError(
                 f"Specified Alias/Version {suffix} has no deployments "
-                f"in AWSHealthOmics (us-east)."
+                f"in {deployment_engine}."
             )
 
         latest = max(
-            omics_deployments,
+            matching_deployments,
             key=lambda d: datetime.fromisoformat(d["created_at"]),
         )
 
@@ -409,3 +436,113 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             )
 
         return engine_id
+
+
+class ExternalDispatchSubmissionService(WorkflowSubmissionService):
+    """
+    Submission strategy for runs someone else starts.
+
+    A launcher run is created here so that its children have a parent to point
+    at and its state has somewhere to live, but the container is submitted to
+    AWS Batch by NGS360 APIServer, which already owns Batch submission, the job
+    records, and the CloudWatch log viewer. The run therefore stays QUEUED until
+    the executor's first state-change callback arrives.
+
+    This is a no-op with a paper trail, not a missing implementation: without it
+    the route would hand every new run to HealthOmics, including launcher runs
+    that HealthOmics has never heard of.
+    """
+
+    async def submit_workflow(self, run: WorkflowRun, db: AsyncSession) -> dict:
+        """
+        Record that the run awaits external dispatch, and start nothing.
+
+        Args:
+            run: WorkflowRun that some other service will submit
+            db: Database session, for recording the note on the run
+
+        Returns:
+            Empty dict -- there is no execution ID to report yet.
+        """
+        message = (
+            f"Run created for engine '{run.workflow_engine}' and left QUEUED: "
+            "the job is submitted externally, and state arrives by executor callback."
+        )
+        logger.info("Run %s awaiting external dispatch: %s", run.id, message)
+
+        run.system_logs = (run.system_logs or []) + [message]
+        attributes.flag_modified(run, "system_logs")
+        await db.commit()
+
+        return {}
+
+
+# The engines this service can dispatch, and what starts each one. The keys must
+# match what service-info advertises: they are the values a client is told it may
+# submit, and dispatching on a name that was never advertised is how a run ends
+# up at a backend nobody asked for.
+#
+# If this service ever takes over Batch submission, this table is the only place
+# that has to change: add a BatchWorkflowSubmissionService and register it here.
+SUBMISSION_STRATEGIES: dict[str, type[WorkflowSubmissionService]] = {
+    AWSBATCH_ENGINE: ExternalDispatchSubmissionService,
+    AWSHEALTHOMICS_ENGINE: LambdaWorkflowSubmissionService,
+}
+
+# Engines whose jobs are submitted by something other than this service (today:
+# NGS360 APIServer submitting launcher containers to AWS Batch, because that is
+# where the Batch submission, job records, and log viewer already live). WES
+# still owns the run record and its state; it just does not start the job.
+# Derived, so the registry stays the single source of truth.
+EXTERNALLY_DISPATCHED_ENGINES = frozenset(
+    engine
+    for engine, strategy in SUBMISSION_STRATEGIES.items()
+    if strategy is ExternalDispatchSubmissionService
+)
+
+
+def normalize_engine(engine: str | None) -> str:
+    """
+    Reduce a submitted engine name to the form the registry is keyed by.
+
+    Case and surrounding whitespace are the caller's presentation, not part of
+    the name. Separators are NOT normalised: "aws-batch" is a different string
+    from an advertised engine and is meant to be rejected rather than guessed at.
+
+    Args:
+        engine: A run's workflow_engine as submitted, possibly None
+
+    Returns:
+        The normalised name, or "" if no engine was given.
+    """
+    return (engine or "").strip().lower()
+
+
+def get_submission_service(run: WorkflowRun) -> WorkflowSubmissionService:
+    """
+    Pick the submission strategy that owns a run's engine.
+
+    Args:
+        run: The newly created WorkflowRun
+
+    Returns:
+        The strategy registered for that engine; the DEFAULT_ENGINE strategy if
+        the run names no engine.
+
+    Raises:
+        ValueError: If the run names an engine with no registered strategy.
+            create_run rejects those at submission, so reaching here means the
+            run was written by something that bypassed that check -- failing is
+            better than quietly handing the run to whichever backend happens to
+            be the default.
+    """
+    engine = normalize_engine(run.workflow_engine) or DEFAULT_ENGINE
+
+    strategy = SUBMISSION_STRATEGIES.get(engine)
+    if strategy is None:
+        raise ValueError(
+            f"No submission strategy for workflow_engine '{run.workflow_engine}'. "
+            f"Supported engines: {sorted(SUBMISSION_STRATEGIES)}"
+        )
+
+    return strategy()

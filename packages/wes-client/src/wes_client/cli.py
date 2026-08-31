@@ -181,6 +181,9 @@ def runs_list(
     project: Annotated[str | None, typer.Option(help="Filter to one project id.")] = None,
     state: Annotated[State | None, typer.Option(help="Filter to one workflow state.")] = None,
     task_name: Annotated[str | None, typer.Option(help="Filter on the TaskName tag.")] = None,
+    parent: Annotated[
+        str | None, typer.Option(help="Filter to the runs one launcher run submitted.")
+    ] = None,
     limit: Annotated[int, typer.Option(help="Runs per page.")] = 20,
     all_pages: Annotated[
         bool, typer.Option("--all", help="Follow pagination and list every match.")
@@ -196,13 +199,21 @@ def runs_list(
             if all_pages:
                 runs = list(
                     client.iter_runs(
-                        page_size=limit, project=project, state=state, task_name=task_name
+                        page_size=limit,
+                        project=project,
+                        state=state,
+                        task_name=task_name,
+                        parent_run_id=parent,
                     )
                 )
                 total: int | None = len(runs)
             else:
                 page = client.list_runs(
-                    page_size=limit, project=project, state=state, task_name=task_name
+                    page_size=limit,
+                    project=project,
+                    state=state,
+                    task_name=task_name,
+                    parent_run_id=parent,
                 )
                 runs = page.runs
                 total = page.total_count
@@ -260,6 +271,93 @@ def runs_status(
             console.print(client.get_run_status(run_id).state or "UNKNOWN")
         except WesError as exc:
             _fail(exc)
+
+
+@runs_app.command("progress")
+def runs_progress(
+    run_id: str,
+    as_json: Annotated[bool, typer.Option("--json", help="Emit JSON instead of a table.")] = False,
+    on_behalf_of: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    """
+    Show a launcher run's own state plus a rollup of the runs it submitted.
+
+    The launcher's state is printed separately from the child counts because it
+    is not an aggregate of them: a launcher that died while its children kept
+    running shows a failed state above children still RUNNING, which is the
+    condition worth seeing rather than averaging away.
+
+    Any run works. One with no children reports zero counts.
+    """
+    with _client(on_behalf_of) as client:
+        try:
+            progress = client.get_run_progress(run_id)
+        except WesError as exc:
+            _fail(exc)
+
+    if as_json:
+        _emit(progress)
+        return
+
+    console.print(
+        f"{progress.run_id} [cyan]{progress.state.value if progress.state else 'UNKNOWN'}[/cyan]"
+    )
+    if not progress.children_total:
+        console.print("[dim]No child runs submitted by this run.[/dim]")
+        return
+
+    table = Table(title=f"{progress.children_total} child run(s)")
+    table.add_column("state")
+    table.add_column("count", justify="right")
+    # Zero-count states are noise here; the launcher's whole vocabulary is nine
+    # states and a run usually occupies two or three of them.
+    for state_name, count in sorted(progress.children_by_state.items()):
+        if count:
+            table.add_row(state_name, str(count))
+    console.print(table)
+    if progress.children_last_update:
+        console.print(f"[dim]last child update {progress.children_last_update}[/dim]")
+
+
+@runs_app.command("tree")
+def runs_tree(
+    run_id: str,
+    limit: Annotated[int, typer.Option(help="Children per page while paging.")] = 100,
+    on_behalf_of: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    """
+    List the runs a launcher run submitted, one line each.
+
+    Direct children only. A launcher that submitted another launcher shows that
+    child here; run the command again on it to see the generation below.
+    """
+    with _client(on_behalf_of) as client:
+        try:
+            parent = client.get_run_status(run_id)
+            children = list(client.iter_runs(page_size=limit, parent_run_id=run_id))
+        except WesError as exc:
+            _fail(exc)
+
+    parent_state = parent.state.value if parent.state else "UNKNOWN"
+    console.print(f"{parent.run_id} [cyan]{parent_state}[/cyan]")
+    if not children:
+        console.print("[dim]  (no child runs)[/dim]")
+        return
+
+    for index, child in enumerate(children):
+        connector = "└─" if index == len(children) - 1 else "├─"
+        state = child.state.value if child.state else "UNKNOWN"
+        if child.state is State.COMPLETE:
+            colour = "green"
+        elif child.state in TERMINAL_STATES:
+            # Terminal and not COMPLETE means this sample will not finish on its
+            # own -- worth spotting in a hundred-line listing.
+            colour = "red"
+        else:
+            colour = "cyan"
+        console.print(
+            f"{connector} {child.run_id} [{colour}]{state}[/{colour}] {child.name or '-'}"
+        )
 
 
 @runs_app.command("cancel")

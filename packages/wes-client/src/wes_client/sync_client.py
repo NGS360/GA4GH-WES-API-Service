@@ -15,14 +15,17 @@ both go through the same logic.
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from datetime import datetime
 from typing import Any
 
 import httpx
 
 from wes_schemas import (
+    CallbackResponse,
     RunId,
     RunListResponse,
     RunLog,
+    RunProgress,
     RunStatus,
     RunSummary,
     ServiceInfo,
@@ -128,6 +131,7 @@ class WesClient:
                 params=op.params or None,
                 data=op.data or None,
                 files=op.files or None,
+                json=op.json_body,
                 headers=headers,
             )
         except Exception as exc:
@@ -152,6 +156,7 @@ class WesClient:
         state: State | str | None = None,
         workflow_url: str | None = None,
         task_name: str | None = None,
+        parent_run_id: str | None = None,
         tags: dict[str, str] | None = None,
     ) -> RunListResponse:
         """Return one page of workflow runs, newest first. See AsyncWesClient.list_runs."""
@@ -163,6 +168,7 @@ class WesClient:
                 state=state,
                 workflow_url=workflow_url,
                 task_name=task_name,
+                parent_run_id=parent_run_id,
                 tags=tags,
             )
         )
@@ -175,6 +181,7 @@ class WesClient:
         state: State | str | None = None,
         workflow_url: str | None = None,
         task_name: str | None = None,
+        parent_run_id: str | None = None,
         tags: dict[str, str] | None = None,
     ) -> Iterator[RunSummary]:
         """Yield every matching run, following pagination. See AsyncWesClient.iter_runs."""
@@ -187,6 +194,7 @@ class WesClient:
                 state=state,
                 workflow_url=workflow_url,
                 task_name=task_name,
+                parent_run_id=parent_run_id,
                 tags=tags,
             )
             if not page.runs:
@@ -232,9 +240,53 @@ class WesClient:
         """Return just a run's state. Cheaper than get_run; use this for polling."""
         return self._send(ops.get_run_status(run_id))
 
+    def get_run_progress(self, run_id: str) -> RunProgress:
+        """
+        Return a launcher run's state plus a rollup of its children's states.
+
+        See AsyncWesClient.get_run_progress.
+        """
+        return self._send(ops.get_run_progress(run_id))
+
     def cancel_run(self, run_id: str) -> RunId:
         """Cancel a run. Runs in a terminal state cannot be canceled."""
         return self._send(ops.cancel_run(run_id))
+
+    # -- executor reporting -----------------------------------------------
+
+    def report_executor_state(
+        self,
+        *,
+        wes_run_id: str,
+        executor: str,
+        status: str,
+        event_time: datetime | str,
+        executor_run_id: str | None = None,
+        status_message: str | None = None,
+        failure_reason: str | None = None,
+        exit_code: int | None = None,
+        event_id: str | None = None,
+        log_urls: dict[str, Any] | None = None,
+    ) -> CallbackResponse:
+        """
+        Report an execution backend's state for a run.
+
+        Requires an internal credential. See AsyncWesClient.report_executor_state.
+        """
+        return self._send(
+            ops.report_executor_state(
+                wes_run_id=wes_run_id,
+                executor=executor,
+                status=status,
+                event_time=event_time,
+                executor_run_id=executor_run_id,
+                status_message=status_message,
+                failure_reason=failure_reason,
+                exit_code=exit_code,
+                event_id=event_id,
+                log_urls=log_urls,
+            )
+        )
 
     # -- tasks ------------------------------------------------------------
 

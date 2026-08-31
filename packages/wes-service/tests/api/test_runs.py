@@ -586,6 +586,206 @@ class TestGetRunLog:
         assert data["request"]["workflow_type"] == "CWL"
 
 
+class TestLauncherLineage:
+    """Tests for parent/child runs and GET /runs/{run_id}/progress."""
+
+    def test_submit_child_run_with_parent_run_id_tag(self, client: TestClient):
+        """A ParentRunId tag on submission links the child to its launcher."""
+        parent = client.post(
+            "/ga4gh/wes/v1/runs",
+            data={
+                "workflow_url": "LAUNCHER:1.0.0",
+                "workflow_type": "CWL",
+                "workflow_type_version": "v1.0",
+                "workflow_engine": "awsbatch",
+                "tags": json.dumps({"ProjectId": "P-1", "TaskName": "launcher"}),
+            },
+        )
+        assert parent.status_code == 200
+        parent_id = parent.json()["run_id"]
+
+        child = client.post(
+            "/ga4gh/wes/v1/runs",
+            data={
+                "workflow_url": "https://example.com/workflow.cwl",
+                "workflow_type": "CWL",
+                "workflow_type_version": "v1.0",
+                "tags": json.dumps(
+                    {"ProjectId": "P-1", "TaskName": "sampleA", "ParentRunId": parent_id}
+                ),
+            },
+        )
+        assert child.status_code == 200
+        child_id = child.json()["run_id"]
+
+        run_log = client.get(f"/ga4gh/wes/v1/runs/{child_id}")
+        assert run_log.status_code == 200
+        assert run_log.json()["request"]["tags"]["ParentRunId"] == parent_id
+
+    def test_submit_child_run_with_unknown_parent_is_rejected(self, client: TestClient):
+        """A ParentRunId naming no run is a client error, not a 500."""
+        response = client.post(
+            "/ga4gh/wes/v1/runs",
+            data={
+                "workflow_url": "https://example.com/workflow.cwl",
+                "workflow_type": "CWL",
+                "workflow_type_version": "v1.0",
+                "tags": json.dumps({"ProjectId": "P-1", "ParentRunId": "no-such-run"}),
+            },
+        )
+        assert response.status_code == 400
+        # The error handler renders every HTTPException as ErrorResponse, so the
+        # message the caller sees lives in `msg`, not FastAPI's `detail`.
+        assert "ParentRunId" in response.json()["msg"]
+
+    def test_submit_run_with_unsupported_engine_is_rejected(self, client: TestClient):
+        """
+        An engine service-info does not advertise is a 400 naming the ones it does.
+
+        Previously a misspelled launcher engine was accepted and dispatched to
+        HealthOmics, which failed later with a message about a service the caller
+        never asked for.
+        """
+        response = client.post(
+            "/ga4gh/wes/v1/runs",
+            data={
+                "workflow_url": "https://example.com/workflow.cwl",
+                "workflow_type": "CWL",
+                "workflow_type_version": "v1.0",
+                "workflow_engine": "aws-batch",
+                "tags": json.dumps({"ProjectId": "P-1"}),
+            },
+        )
+        assert response.status_code == 400
+        msg = response.json()["msg"]
+        assert "aws-batch" in msg
+        assert "awsbatch" in msg and "awshealthomics" in msg
+
+    def test_service_info_advertises_the_engines_runs_may_use(self, client: TestClient):
+        """
+        What service-info advertises is exactly what POST /runs accepts.
+
+        The spec makes service-info the discovery mechanism for workflow_engine,
+        so a client that reads it and submits what it found must not be rejected.
+        """
+        engines = client.get("/ga4gh/wes/v1/service-info").json()[
+            "workflow_engine_versions"
+        ]
+
+        for engine in engines:
+            response = client.post(
+                "/ga4gh/wes/v1/runs",
+                data={
+                    "workflow_url": "https://example.com/workflow.cwl",
+                    "workflow_type": "CWL",
+                    "workflow_type_version": "v1.0",
+                    "workflow_engine": engine,
+                    "tags": json.dumps({"ProjectId": "P-1"}),
+                },
+            )
+            assert response.status_code == 200, engine
+
+    async def test_list_runs_filter_by_parent_run_id(self, client: TestClient, test_db):
+        """?filters={"parent_run_id": …} returns only that launcher's children."""
+        runs = [
+            WorkflowRun(
+                id="launcher-x",
+                state=WorkflowState.RUNNING,
+                workflow_type="CWL",
+                workflow_type_version="v1.0",
+                workflow_url="LAUNCHER:1.0.0",
+                tags={"ProjectId": "P-1"},
+                user_id="test_user",
+                project="P-1",
+                task_name="launcher-x",
+            ),
+            WorkflowRun(
+                id="x-child-1",
+                state=WorkflowState.QUEUED,
+                workflow_type="CWL",
+                workflow_type_version="v1.0",
+                workflow_url="https://example.com/workflow.cwl",
+                tags={"ProjectId": "P-1"},
+                user_id="test_user",
+                project="P-1",
+                task_name="sampleA",
+                parent_run_id="launcher-x",
+            ),
+            WorkflowRun(
+                id="unrelated",
+                state=WorkflowState.QUEUED,
+                workflow_type="CWL",
+                workflow_type_version="v1.0",
+                workflow_url="https://example.com/workflow.cwl",
+                tags={"ProjectId": "P-1"},
+                user_id="test_user",
+                project="P-1",
+                task_name="sampleB",
+            ),
+        ]
+        for run in runs:
+            test_db.add(run)
+        await test_db.commit()
+
+        response = client.get(
+            "/ga4gh/wes/v1/runs",
+            params={"filters": json.dumps({"parent_run_id": "launcher-x"})},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert [run["run_id"] for run in data["runs"]] == ["x-child-1"]
+        assert data["total_count"] == 1
+
+    async def test_get_run_progress(self, client: TestClient, test_db):
+        """Progress reports the launcher's own state and its children by state."""
+        parent = WorkflowRun(
+            id="launcher-y",
+            state=WorkflowState.RUNNING,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="LAUNCHER:1.0.0",
+            tags={"ProjectId": "P-1"},
+            user_id="test_user",
+            project="P-1",
+            task_name="launcher-y",
+        )
+        test_db.add(parent)
+        for index, state in enumerate(
+            [WorkflowState.COMPLETE, WorkflowState.RUNNING, WorkflowState.EXECUTOR_ERROR]
+        ):
+            test_db.add(
+                WorkflowRun(
+                    id=f"y-child-{index}",
+                    state=state,
+                    workflow_type="CWL",
+                    workflow_type_version="v1.0",
+                    workflow_url="https://example.com/workflow.cwl",
+                    tags={"ProjectId": "P-1"},
+                    user_id="test_user",
+                    project="P-1",
+                    task_name=f"sample-{index}",
+                    parent_run_id="launcher-y",
+                )
+            )
+        await test_db.commit()
+
+        response = client.get("/ga4gh/wes/v1/runs/launcher-y/progress")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["run_id"] == "launcher-y"
+        assert data["state"] == "RUNNING"
+        assert data["children_total"] == 3
+        assert data["children_by_state"]["COMPLETE"] == 1
+        assert data["children_by_state"]["RUNNING"] == 1
+        assert data["children_by_state"]["EXECUTOR_ERROR"] == 1
+        assert data["children_by_state"]["QUEUED"] == 0
+
+    def test_get_run_progress_not_found(self, client: TestClient):
+        """Progress for a run that does not exist is a 404."""
+        response = client.get("/ga4gh/wes/v1/runs/nonexistent/progress")
+        assert response.status_code == 404
+
+
 class TestCancelRun:
     """Tests for POST /runs/{run_id}/cancel endpoint."""
 
