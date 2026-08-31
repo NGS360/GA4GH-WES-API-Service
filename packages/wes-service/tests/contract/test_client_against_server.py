@@ -306,7 +306,7 @@ class TestLauncherLineage:
         page = await wes.list_runs(parent_run_id=parent_id)
 
         assert [run.run_id for run in page.runs] == [child_id]
-        assert page.runs[0].parent_run_id == parent_id
+        assert page.runs[0].tags["ParentRunId"] == parent_id
 
     async def test_report_executor_state_moves_the_run(
         self, wes: AsyncWesClient, no_lambda_submit: Any

@@ -490,7 +490,6 @@ class RunService:
             task_logs_url=task_logs_url,
             task_logs=None,  # Deprecated
             outputs=run.outputs,
-            parent_run_id=run.parent_run_id,
         )
 
     async def cancel_run(self, run_id: str, user_id: str | None) -> str:
@@ -646,5 +645,4 @@ class RunService:
             project=run.project,
             workflow_url=run.workflow_url,
             submitted_by=run.user_id,
-            parent_run_id=run.parent_run_id,
         )

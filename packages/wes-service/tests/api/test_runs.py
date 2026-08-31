@@ -620,7 +620,7 @@ class TestLauncherLineage:
 
         run_log = client.get(f"/ga4gh/wes/v1/runs/{child_id}")
         assert run_log.status_code == 200
-        assert run_log.json()["parent_run_id"] == parent_id
+        assert run_log.json()["request"]["tags"]["ParentRunId"] == parent_id
 
     def test_submit_child_run_with_unknown_parent_is_rejected(self, client: TestClient):
         """A ParentRunId naming no run is a client error, not a 500."""
