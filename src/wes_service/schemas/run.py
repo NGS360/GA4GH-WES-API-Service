@@ -39,13 +39,6 @@ class RunSummary(RunStatus):
         None,
         description="Workflow name from workflow_engine_parameters",
     )
-    parent_run_id: str | None = Field(
-        None,
-        description=(
-            "The launcher run that submitted this run, from the ParentRunId tag. "
-            "None for runs submitted directly"
-        ),
-    )
 
 
 class RunRequest(BaseModel):
@@ -139,13 +132,6 @@ class RunLog(BaseModel):
     outputs: dict[str, Any] | None = Field(
         None,
         description="The outputs from the workflow run",
-    )
-    parent_run_id: str | None = Field(
-        None,
-        description=(
-            "The launcher run that submitted this run, from the ParentRunId tag. "
-            "None for runs submitted directly"
-        ),
     )
 
 

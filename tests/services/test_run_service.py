@@ -292,7 +292,8 @@ class TestRunService:
             )
 
     async def test_parent_run_id_is_reported_by_reads(self, test_db, mock_storage):
-        """Lineage is visible in both the listing and the full run record."""
+        """Lineage is visible in both the listing and the full run record, via the
+        spec-compliant tags field rather than a bespoke response field."""
         parent = WorkflowRun(
             id="launcher-1",
             state=WorkflowState.RUNNING,
@@ -309,7 +310,7 @@ class TestRunService:
             workflow_type="CWL",
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
-            tags={},
+            tags={"ParentRunId": "launcher-1"},
             project="test-project",
             task_name="sampleA",
             parent_run_id="launcher-1",
@@ -320,12 +321,12 @@ class TestRunService:
         service = RunService(test_db, mock_storage)
 
         run_log = await service.get_run_log("child-1", None)
-        assert run_log.parent_run_id == "launcher-1"
+        assert run_log.request.tags["ParentRunId"] == "launcher-1"
 
         listing = await service.list_runs(page_size=10, page_token=None, user_id=None)
         by_id = {summary.run_id: summary for summary in listing.runs}
-        assert by_id["child-1"].parent_run_id == "launcher-1"
-        assert by_id["launcher-1"].parent_run_id is None
+        assert by_id["child-1"].tags["ParentRunId"] == "launcher-1"
+        assert "ParentRunId" not in by_id["launcher-1"].tags
 
     async def test_list_runs_filters_on_parent_run_id(self, test_db, mock_storage):
         """The promoted column is filterable, which is how a launcher finds its own children."""

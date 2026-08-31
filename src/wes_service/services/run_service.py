@@ -472,7 +472,6 @@ class RunService:
             task_logs_url=task_logs_url,
             task_logs=None,  # Deprecated
             outputs=run.outputs,
-            parent_run_id=run.parent_run_id,
         )
 
     async def cancel_run(self, run_id: str, user_id: str | None) -> str:
@@ -625,5 +624,4 @@ class RunService:
             end_time=run.end_time.isoformat() + "Z" if run.end_time else None,
             tags=run.tags,
             name=run.task_name,
-            parent_run_id=run.parent_run_id,
         )
