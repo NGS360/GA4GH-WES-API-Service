@@ -10,7 +10,7 @@ from sqlalchemy.orm import attributes
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
 from src.wes_service.schemas.callback import CallbackResponse, OmicsStateChangeCallback
-from src.wes_service.services.workflow_executor_service import (
+from src.wes_service.services.workflow_submission_service import (
     LambdaWorkflowExecutorService,
     WorkflowExecutorService,
 )

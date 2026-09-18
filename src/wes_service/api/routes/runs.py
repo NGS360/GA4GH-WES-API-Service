@@ -14,7 +14,7 @@ from src.wes_service.schemas.run import (
     RunStatus,
 )
 from src.wes_service.services.run_service import RunService
-from src.wes_service.services.workflow_executor_service import LambdaWorkflowExecutorService
+from src.wes_service.services.workflow_submission_service import LambdaWorkflowExecutorService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

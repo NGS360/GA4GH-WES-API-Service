@@ -15,8 +15,8 @@ HTTPX_CLIENT_PATCH = (
 
 
 @pytest.mark.asyncio
-class TestWorkflowSubmissionService:
-    """Tests for WorkflowSubmissionService."""
+class TestWorkflowExecutorService:
+    """Tests for WorkflowExecutorService."""
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
     @patch('src.wes_service.services.workflow_submission_service.boto3.client')
