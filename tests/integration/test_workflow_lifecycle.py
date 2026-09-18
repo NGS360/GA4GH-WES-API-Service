@@ -15,7 +15,7 @@ class TestWorkflowLifecycle:
         """Test submitting, monitoring, and completing a workflow."""
         # Mock the workflow submission service to avoid real API calls
         with patch(
-            'src.wes_service.api.routes.runs.LambdaWorkflowSubmissionService'
+            'src.wes_service.api.routes.runs.LambdaWorkflowExecutorService'
         ) as mock_service:
             # Create mock instance with async support
             mock_instance = MagicMock()
@@ -84,7 +84,7 @@ class TestWorkflowLifecycle:
         """Test workflow with multiple task logs."""
         # Mock the workflow submission service
         with patch(
-            'src.wes_service.api.routes.runs.LambdaWorkflowSubmissionService'
+            'src.wes_service.api.routes.runs.LambdaWorkflowExecutorService'
         ) as mock_service:
             mock_instance = MagicMock()
 
@@ -138,7 +138,7 @@ class TestWorkflowLifecycle:
         """Test pagination across multiple workflow runs."""
         # Mock the workflow submission service
         with patch(
-            'src.wes_service.api.routes.runs.LambdaWorkflowSubmissionService'
+            'src.wes_service.api.routes.runs.LambdaWorkflowExecutorService'
         ) as mock_service:
             mock_instance = MagicMock()
 

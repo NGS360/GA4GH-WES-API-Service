@@ -23,9 +23,19 @@ def mock_db():
 
 
 @pytest.fixture
-def service(mock_db):
-    """Create a CallbackService with a mocked DB."""
-    return CallbackService(db=mock_db)
+def mock_executor_service():
+    """Mock workflow executor service (used for Omics run deletion)."""
+    svc = MagicMock()
+    svc.delete_omics_run = AsyncMock(return_value=None)
+    return svc
+
+
+@pytest.fixture
+def service(mock_db, mock_executor_service):
+    """Create a CallbackService with a mocked DB and executor service."""
+    return CallbackService(
+        db=mock_db, executor_service=mock_executor_service
+    )
 
 
 @pytest.fixture
@@ -680,3 +690,77 @@ class TestHandleOmicsStateChangeIntegration:
             await service.handle_omics_state_change(payload)
 
         assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_complete_transition_requests_omics_deletion(
+        self, service, mock_db, sample_run, mock_executor_service
+    ):
+        """On COMPLETE, the submission service is asked to delete the Omics run."""
+        sample_run.state = WorkflowState.RUNNING
+        sample_run.system_logs = []
+        payload = OmicsStateChangeCallback(
+            wes_run_id=sample_run.id,
+            omics_run_id="omics-123",
+            status="COMPLETED",
+            event_time=datetime(2024, 1, 15, 14, 0, 0, tzinfo=UTC),
+            event_id="evt-complete-del",
+        )
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        result = await service.handle_omics_state_change(payload)
+
+        assert result.new_state == "COMPLETE"
+        mock_executor_service.delete_omics_run.assert_awaited_once_with(
+            wes_run_id=sample_run.id, omics_run_id="omics-123"
+        )
+
+    @pytest.mark.asyncio
+    async def test_failed_transition_does_not_request_deletion(
+        self, service, mock_db, sample_run, mock_executor_service
+    ):
+        """Failed runs stay on Omics (kept for debugging)."""
+        sample_run.state = WorkflowState.RUNNING
+        sample_run.system_logs = []
+        payload = OmicsStateChangeCallback(
+            wes_run_id=sample_run.id,
+            omics_run_id="omics-123",
+            status="FAILED",
+            event_time=datetime(2024, 1, 15, 14, 0, 0, tzinfo=UTC),
+            event_id="evt-failed",
+        )
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        await service.handle_omics_state_change(payload)
+
+        mock_executor_service.delete_omics_run.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_deletion_error_is_swallowed(
+        self, service, mock_db, sample_run, mock_executor_service
+    ):
+        """A deletion failure must not break the callback response."""
+        sample_run.state = WorkflowState.RUNNING
+        sample_run.system_logs = []
+        mock_executor_service.delete_omics_run.side_effect = RuntimeError(
+            "lambda unreachable"
+        )
+        payload = OmicsStateChangeCallback(
+            wes_run_id=sample_run.id,
+            omics_run_id="omics-123",
+            status="COMPLETED",
+            event_time=datetime(2024, 1, 15, 14, 0, 0, tzinfo=UTC),
+            event_id="evt-complete-err",
+        )
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_run
+        mock_db.execute.return_value = mock_result
+
+        result = await service.handle_omics_state_change(payload)
+
+        assert result.success is True
+        assert result.new_state == "COMPLETE"
+        mock_executor_service.delete_omics_run.assert_awaited_once()

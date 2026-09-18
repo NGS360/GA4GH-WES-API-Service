@@ -10,6 +10,10 @@ from sqlalchemy.orm import attributes
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
 from src.wes_service.schemas.callback import CallbackResponse, OmicsStateChangeCallback
+from src.wes_service.services.workflow_executor_service import (
+    LambdaWorkflowExecutorService,
+    WorkflowExecutorService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +44,31 @@ class CallbackService:
         WorkflowState.SYSTEM_ERROR,
     }
 
-    def __init__(self, db: AsyncSession):
-        """Initialize callback service."""
+    def __init__(
+        self,
+        db: AsyncSession,
+        executor_service: Optional[WorkflowExecutorService] = None,
+    ):
+        """Initialize callback service.
+
+        Args:
+            db: Async DB session.
+            executor_service: Workflow executor service used to request
+                Omics-side deletion of completed runs. Injectable for tests;
+                if omitted, a LambdaWorkflowExecutorService is built lazily
+                the first time deletion is requested (avoids constructing a
+                boto3 Lambda client on the callback hot path when no COMPLETE
+                event fires).
+        """
         self.db = db
+        self._executor_service = executor_service
+
+    @property
+    def executor_service(self) -> WorkflowExecutorService:
+        """Lazily build the workflow executor service."""
+        if self._executor_service is None:
+            self._executor_service = LambdaWorkflowExecutorService()
+        return self._executor_service
 
     async def handle_omics_state_change(
         self,
@@ -93,6 +119,23 @@ class CallbackService:
             f"Successfully updated run {payload.wes_run_id}: "
             f"{previous_state} -> {new_state}"
         )
+
+        # Now that the terminal state (outputs, end_time, exit_code) is
+        # durably captured in the DB, ask the executor Lambda to delete the
+        # completed run from AWS HealthOmics. Only fire for COMPLETE — failed
+        # or canceled runs are left on Omics for debugging.
+        if new_state == WorkflowState.COMPLETE and run.workflow_run_id:
+            try:
+                await self.executor_service.delete_omics_run(
+                    wes_run_id=run.id,
+                    omics_run_id=run.workflow_run_id,
+                )
+            except Exception as exc:  # noqa: BLE001 - best-effort cleanup
+                logger.error(
+                    f"Failed to request Omics run deletion for "
+                    f"wes_run_id={run.id}, omics_run_id={run.workflow_run_id}: "
+                    f"{exc}"
+                )
 
         return CallbackResponse(
             success=True,

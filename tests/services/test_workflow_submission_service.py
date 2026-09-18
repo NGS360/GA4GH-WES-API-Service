@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
 from src.wes_service.services.workflow_submission_service import (
-    LambdaWorkflowSubmissionService,
+    LambdaWorkflowExecutorService,
 )
 
 HTTPX_CLIENT_PATCH = (
@@ -32,7 +32,7 @@ class TestWorkflowSubmissionService:
             'LAMBDA_REGION': 'us-west-2',
             'LAMBDA_FUNCTION_NAME': 'test-function'
         }):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         # Verify initialization
         assert service.ngs360_api_url == "https://test-ngs360.example.com"
@@ -47,7 +47,7 @@ class TestWorkflowSubmissionService:
         mock_get_settings.return_value = mock_settings
 
         with patch.dict('os.environ', {}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         # Mock httpx response
         mock_response = MagicMock()
@@ -109,7 +109,7 @@ class TestWorkflowSubmissionService:
         mock_get_settings.return_value = mock_settings
 
         with patch.dict('os.environ', {}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         # Mock httpx response with new structure
         mock_response = MagicMock()
@@ -171,7 +171,7 @@ class TestWorkflowSubmissionService:
         mock_get_settings.return_value = mock_settings
 
         with patch.dict('os.environ', {}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         # Mock httpx response with alias
         mock_response = MagicMock()
@@ -238,7 +238,7 @@ class TestWorkflowSubmissionService:
         mock_get_settings.return_value = mock_settings
 
         with patch.dict('os.environ', {}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         # Mock httpx response with error
         mock_response = MagicMock()
@@ -270,7 +270,7 @@ class TestWorkflowSubmissionService:
         mock_get_settings.return_value = mock_settings
 
         with patch.dict('os.environ', {}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         # Mock httpx response with no versions
         mock_response = MagicMock()
@@ -305,7 +305,7 @@ class TestWorkflowSubmissionService:
         mock_get_settings.return_value = mock_settings
 
         with patch.dict('os.environ', {}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         # Mock httpx response with version but no omics deployments
         mock_response = MagicMock()
@@ -398,7 +398,7 @@ class TestWorkflowSubmissionService:
         )
 
         with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         # Mock httpx.AsyncClient context manager to prevent HTTP calls
         with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
@@ -462,7 +462,7 @@ class TestWorkflowSubmissionService:
         )
 
         with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         # Mock httpx.AsyncClient context manager to prevent HTTP calls
         with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
@@ -498,7 +498,7 @@ class TestWorkflowSubmissionService:
         mock_get_settings.return_value = mock_settings
 
         with patch.dict('os.environ', {}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -532,7 +532,7 @@ class TestWorkflowSubmissionService:
         mock_get_settings.return_value = mock_settings
 
         with patch.dict('os.environ', {}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         mock_response = MagicMock()
         mock_response.status_code = 404
@@ -561,7 +561,7 @@ class TestWorkflowSubmissionService:
         mock_get_settings.return_value = mock_settings
 
         with patch.dict('os.environ', {}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -592,7 +592,7 @@ class TestWorkflowSubmissionService:
         mock_get_settings.return_value = mock_settings
 
         with patch.dict('os.environ', {}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         calls = []
 
@@ -658,7 +658,7 @@ class TestWorkflowSubmissionService:
         )
 
         with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         with patch.object(
             service,
@@ -713,7 +713,7 @@ class TestWorkflowSubmissionService:
         )
 
         with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):
-            service = LambdaWorkflowSubmissionService()
+            service = LambdaWorkflowExecutorService()
 
         with patch.object(
             service,
@@ -736,3 +736,38 @@ class TestWorkflowSubmissionService:
         )
         mock_lambda_client.invoke.assert_not_called()
         mock_db.commit.assert_awaited_once()
+
+    @patch('src.wes_service.services.workflow_submission_service.get_settings')
+    @patch('src.wes_service.services.workflow_submission_service.boto3.client')
+    async def test_delete_omics_run_invokes_lambda_with_expected_payload(
+        self, mock_boto3_client, mock_get_settings
+    ):
+        """delete_omics_run fires the same Lambda used for submission with
+        action='delete_omics_run', InvocationType='Event', and the wes/omics
+        run ids in the payload."""
+        mock_settings = MagicMock()
+        mock_settings.ngs360_api_url = "https://test-ngs360.example.com"
+        mock_get_settings.return_value = mock_settings
+
+        mock_lambda_client = MagicMock()
+        mock_lambda_client.invoke.return_value = {"StatusCode": 202}
+        mock_boto3_client.return_value = mock_lambda_client
+
+        with patch.dict('os.environ', {'LAMBDA_FUNCTION_NAME': 'test-function'}):
+            service = LambdaWorkflowExecutorService()
+
+        await service.delete_omics_run(
+            wes_run_id="wes-run-123", omics_run_id="omics-run-789"
+        )
+
+        mock_lambda_client.invoke.assert_called_once()
+        call_kwargs = mock_lambda_client.invoke.call_args.kwargs
+        assert call_kwargs['FunctionName'] == 'test-function'
+        assert call_kwargs['InvocationType'] == 'Event'
+        payload = json.loads(call_kwargs['Payload'])
+        assert payload == {
+            'action': 'delete_omics_run',
+            'source': 'ga4ghwes',
+            'wes_run_id': 'wes-run-123',
+            'omics_run_id': 'omics-run-789',
+        }

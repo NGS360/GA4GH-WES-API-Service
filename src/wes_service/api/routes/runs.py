@@ -14,7 +14,7 @@ from src.wes_service.schemas.run import (
     RunStatus,
 )
 from src.wes_service.services.run_service import RunService
-from src.wes_service.services.workflow_submission_service import LambdaWorkflowSubmissionService
+from src.wes_service.services.workflow_executor_service import LambdaWorkflowExecutorService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -121,10 +121,10 @@ async def run_workflow(
             detail=str(e),
         )
 
-    # Ping LambdaWorkflowSubmissionService to trigger processing of the new run
+    # Ping LambdaWorkflowExecutorService to trigger processing of the new run
     try:
-        submission_service = LambdaWorkflowSubmissionService()
-        await submission_service.submit_workflow(run, db)
+        executor_service = LambdaWorkflowExecutorService()
+        await executor_service.submit_workflow(run, db)
     except Exception as e:
         logger.exception(
             "Failed to trigger run processing request for run_id %s: %s",

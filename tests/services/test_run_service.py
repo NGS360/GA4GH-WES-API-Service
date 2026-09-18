@@ -4,10 +4,10 @@ import pytest
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
 from src.wes_service.services.run_service import RunService
-from src.wes_service.services.workflow_submission_service import WorkflowSubmissionService
+from src.wes_service.services.workflow_submission_service import WorkflowExecutorService
 
 
-class MockWorkflowSubmissionService(WorkflowSubmissionService):
+class MockWorkflowExecutorService(WorkflowExecutorService):
     """Mock workflow submission service for testing."""
 
     def __init__(self):
@@ -20,11 +20,15 @@ class MockWorkflowSubmissionService(WorkflowSubmissionService):
         # Mock the NGS360 API call within submit_workflow
         return {"omics_run_id": f"omics-{run.id}", "statusCode": 200}
 
+    async def delete_omics_run(self, wes_run_id: str, omics_run_id: str) -> None:
+        """Mock deletion: no-op."""
+        return None
+
 
 @pytest.fixture
 def mock_workflow_submission():
     """Fixture for mock workflow submission service."""
-    return MockWorkflowSubmissionService()
+    return MockWorkflowExecutorService()
 
 
 @pytest.mark.asyncio

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 NGS360_FILE_URI_SCHEME = "ngs360://"
 
 
-class WorkflowSubmissionService(ABC):
+class WorkflowExecutorService(ABC):
     """Abstract base class for workflow submission services."""
 
     @abstractmethod
@@ -39,8 +39,19 @@ class WorkflowSubmissionService(ABC):
         """
         pass
 
+    @abstractmethod
+    async def delete_omics_run(self, wes_run_id: str, omics_run_id: str) -> None:
+        """
+        Request deletion of a completed run from the underlying engine.
 
-class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
+        Args:
+            wes_run_id: GA4GH WES run ID (for logging / correlation)
+            omics_run_id: Engine-side run ID to delete
+        """
+        pass
+
+
+class LambdaWorkflowExecutorService(WorkflowExecutorService):
     """Workflow submission service using AWS Lambda."""
 
     def __init__(self):
@@ -132,6 +143,31 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         )
 
         # Call Lambda function asynchronously
+        response = self.lambda_client.invoke(
+                FunctionName=self.lambda_function_name,
+                InvocationType='Event',
+                Payload=json.dumps(lambda_payload)
+        )
+        logger.info(f"Lambda invocation response from {self.lambda_function_name}: {response}")
+
+    async def delete_omics_run(self, wes_run_id: str, omics_run_id: str) -> None:
+        """
+        Request deletion of a completed Omics run via the same Lambda used
+        for submission. Fire-and-forget: the callback response is not held
+        up by Omics DeleteRun latency, and any failure is logged only.
+        """
+        lambda_payload = {
+            'action': 'delete_omics_run',
+            'source': 'ga4ghwes',
+            'wes_run_id': wes_run_id,
+            'omics_run_id': omics_run_id,
+        }
+
+        logger.info(
+            f"Lambda delete payload for wes_run_id={wes_run_id}: "
+            f"{json.dumps(lambda_payload, default=str)}"
+        )
+
         response = self.lambda_client.invoke(
                 FunctionName=self.lambda_function_name,
                 InvocationType='Event',

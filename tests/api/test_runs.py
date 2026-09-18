@@ -8,7 +8,7 @@ from src.wes_service.db.models import WorkflowRun, WorkflowState
 
 WORKFLOW_SUBMIT_PATCH = (
     'src.wes_service.services.workflow_submission_service'
-    '.LambdaWorkflowSubmissionService.submit_workflow'
+    '.LambdaWorkflowExecutorService.submit_workflow'
 )
 
 
