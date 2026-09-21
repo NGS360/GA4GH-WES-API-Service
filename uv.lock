@@ -1410,7 +1410,7 @@ requires-dist = [
     { name = "aiofiles", specifier = ">=25.1.0" },
     { name = "aiomysql", specifier = ">=0.3.2" },
     { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "alembic", specifier = ">=1.19.2" },
+    { name = "alembic", specifier = ">=1.20.0" },
     { name = "boto3", specifier = ">=1.43.92" },
     { name = "cachetools", specifier = ">=7.1.7" },
     { name = "faker", marker = "extra == 'dev'", specifier = ">=40.38.0" },
