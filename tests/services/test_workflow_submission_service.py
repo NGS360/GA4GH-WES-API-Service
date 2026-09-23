@@ -736,3 +736,77 @@ class TestWorkflowSubmissionService:
         )
         mock_lambda_client.invoke.assert_not_called()
         mock_db.commit.assert_awaited_once()
+
+    @patch('src.wes_service.services.workflow_submission_service.get_settings')
+    async def test_ngs360_lookups_forward_bearer_token(self, mock_get_settings):
+        """Both NGS360 lookups forward the caller's bearer token, and no
+        Authorization header is sent when no token is available."""
+        mock_settings = MagicMock()
+        mock_settings.ngs360_api_url = "https://test-ngs360.example.com"
+        mock_get_settings.return_value = mock_settings
+
+        with patch.dict('os.environ', {}):
+            service = LambdaWorkflowSubmissionService()
+
+        file_response = MagicMock()
+        file_response.status_code = 200
+        file_response.json.return_value = {
+            "id": "file-1", "uri": "s3://bucket/file.txt"
+        }
+        workflow_response = MagicMock()
+        workflow_response.status_code = 200
+        workflow_response.json.return_value = {
+            "aliases": [],
+            "versions": [{
+                "id": "v1", "version": 1,
+                "deployments": [{
+                    "id": "d1",
+                    "engine": "AWSHealthOmics (us-east)",
+                    "external_id": "arn:...",
+                    "created_at": "2026-01-01T00:00:00",
+                }],
+            }],
+        }
+
+        # Case 1: token present → Authorization header forwarded
+        captured: list[dict] = []
+        with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+
+            async def mock_get(url, **kwargs):
+                captured.append(kwargs)
+                return file_response if "/files/" in url else workflow_response
+            mock_client.get = mock_get
+            mock_client_class.return_value = mock_client
+
+            await service._get_s3_uri_from_ngs360("file-1", auth_token="user-tok")
+            await service._fetch_workflow_from_api("wf-1", auth_token="user-tok")
+
+        assert len(captured) == 2
+        for kwargs in captured:
+            headers = kwargs["headers"]
+            assert headers["Authorization"] == "Bearer user-tok"
+            assert headers["X-Client-Application"] == "ngs360-ga4gh"
+
+        # Case 2: no token → no Authorization header (preserves current
+        # anonymous behaviour for basic-auth callers).
+        captured.clear()
+        with patch(HTTPX_CLIENT_PATCH) as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+
+            async def mock_get(url, **kwargs):
+                captured.append(kwargs)
+                return file_response if "/files/" in url else workflow_response
+            mock_client.get = mock_get
+            mock_client_class.return_value = mock_client
+
+            await service._get_s3_uri_from_ngs360("file-1")
+            await service._fetch_workflow_from_api("wf-1")
+
+        assert len(captured) == 2
+        for kwargs in captured:
+            assert "Authorization" not in kwargs["headers"]

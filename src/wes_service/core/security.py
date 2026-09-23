@@ -165,6 +165,21 @@ async def validate_api_token(token: str, use_cache: bool = True) -> str:
     return username
 
 
+async def get_bearer_token(
+    bearer_credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(security_bearer)] = None,
+) -> str | None:
+    """
+    Return the raw incoming Bearer token, or None if the caller did not
+    send one. Used to forward the caller's credentials to NGS360 so
+    outbound reads are attributed to the actual user rather than being
+    anonymous service calls.
+    """
+    if bearer_credentials is None:
+        return None
+    return bearer_credentials.credentials
+
+
 async def get_current_user(
     basic_credentials: Annotated[HTTPBasicCredentials | None, Depends(security_basic)] = None,
     bearer_credentials: Annotated[
