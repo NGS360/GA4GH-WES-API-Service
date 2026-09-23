@@ -50,6 +50,15 @@ class WorkflowRun(Base):
     workflow_type: Mapped[str] = mapped_column(String(50), nullable=False)
     workflow_type_version: Mapped[str] = mapped_column(String(50), nullable=False)
     workflow_url: Mapped[str] = mapped_column(Text, nullable=False)
+    resolved_workflow_version: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        comment=(
+            "NGS360 workflow version resolved at submission time. "
+            "Captures the actual version used when workflow_url specifies "
+            "an alias or omits a version (which can change later)."
+        ),
+    )
     workflow_params: Mapped[dict[str, Any]] = mapped_column(
         JSON,
         nullable=True,
