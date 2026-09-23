@@ -753,4 +753,8 @@ class TestWorkflowSubmissionService:
             "Failed to resolve NGS360 file" in msg for msg in run.system_logs
         )
         mock_lambda_client.invoke.assert_not_called()
-        mock_db.commit.assert_awaited_once()
+        # Two commits: one after recording resolved_workflow_version,
+        # one after marking the run SYSTEM_ERROR from the file-resolution failure.
+        assert mock_db.commit.await_count == 2
+        # Resolved version was persisted before the file-resolution step failed.
+        assert run.resolved_workflow_version == 'test-workflow-id:1'
