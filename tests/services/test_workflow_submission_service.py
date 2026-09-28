@@ -95,10 +95,13 @@ class TestWorkflowSubmissionService:
             mock_client_class.return_value = mock_client
 
             # Test the method
-            engine_id = await service._get_engine_id_from_ngs360("test-workflow-id")
+            engine_id, resolved_version = await service._get_engine_id_from_ngs360(
+                "test-workflow-id"
+            )
 
         # Verify results
         assert engine_id == "arn:aws:omics:us-east-1:123:workflow/456/version/v2"
+        assert resolved_version == "test-workflow-id:2"
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
     async def test_get_engine_id_from_ngs360_specific_version(self, mock_get_settings):
@@ -157,10 +160,13 @@ class TestWorkflowSubmissionService:
             mock_client_class.return_value = mock_client
 
             # Test the method with specific version
-            engine_id = await service._get_engine_id_from_ngs360("test-workflow-id:1")
+            engine_id, resolved_version = await service._get_engine_id_from_ngs360(
+                "test-workflow-id:1"
+            )
 
         # Verify results - should return engine_id from version 1
         assert engine_id == "arn:aws:omics:us-east-1:123:workflow/456/version/v1"
+        assert resolved_version == "test-workflow-id:1"
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
     async def test_get_engine_id_from_ngs360_with_alias(self, mock_get_settings):
@@ -224,10 +230,13 @@ class TestWorkflowSubmissionService:
             mock_client_class.return_value = mock_client
 
             # Test the method with alias
-            engine_id = await service._get_engine_id_from_ngs360("test-workflow-id:production")
+            engine_id, resolved_version = await service._get_engine_id_from_ngs360(
+                "test-workflow-id:production"
+            )
 
         # Verify results - should return engine_id from version 2 (aliased as production)
         assert engine_id == "arn:aws:omics:us-east-1:123:workflow/456/version/v2"
+        assert resolved_version == "test-workflow-id:2"
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
     async def test_get_engine_id_from_ngs360_api_error(self, mock_get_settings):
@@ -434,6 +443,9 @@ class TestWorkflowSubmissionService:
         )
         assert payload['tags']['WESRunId'] == 'test-run-123'
         assert payload['tags']['project'] == 'test'
+
+        # Resolved workflow version was recorded on the run (workflow_id:version)
+        assert run.resolved_workflow_version == 'test-workflow-id:1'
 
     @patch('src.wes_service.services.workflow_submission_service.get_settings')
     @patch('src.wes_service.services.workflow_submission_service.boto3.client')
@@ -663,7 +675,10 @@ class TestWorkflowSubmissionService:
         with patch.object(
             service,
             "_get_engine_id_from_ngs360",
-            return_value="arn:aws:omics:us-east-1:123:workflow/456",
+            return_value=(
+                "arn:aws:omics:us-east-1:123:workflow/456",
+                "test-workflow-id:1",
+            ),
         ), patch.object(
             service,
             "_get_s3_uri_from_ngs360",
@@ -718,7 +733,10 @@ class TestWorkflowSubmissionService:
         with patch.object(
             service,
             "_get_engine_id_from_ngs360",
-            return_value="arn:aws:omics:us-east-1:123:workflow/456",
+            return_value=(
+                "arn:aws:omics:us-east-1:123:workflow/456",
+                "test-workflow-id:1",
+            ),
         ), patch.object(
             service,
             "_get_s3_uri_from_ngs360",
@@ -735,4 +753,8 @@ class TestWorkflowSubmissionService:
             "Failed to resolve NGS360 file" in msg for msg in run.system_logs
         )
         mock_lambda_client.invoke.assert_not_called()
-        mock_db.commit.assert_awaited_once()
+        # Two commits: one after recording resolved_workflow_version,
+        # one after marking the run SYSTEM_ERROR from the file-resolution failure.
+        assert mock_db.commit.await_count == 2
+        # Resolved version was persisted before the file-resolution step failed.
+        assert run.resolved_workflow_version == 'test-workflow-id:1'
