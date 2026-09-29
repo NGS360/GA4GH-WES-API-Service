@@ -95,7 +95,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         """
         # Get engine_id from NGS360 API using the workflow_url as the workflow ID
         try:
-            workflow_engine_id = await self._get_engine_id_from_ngs360(
+            workflow_engine_id, resolved_version = await self._get_engine_id_from_ngs360(
                 run_request.workflow_url, auth_token=auth_token
             )
         except RuntimeError as e:
@@ -110,6 +110,12 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             attributes.flag_modified(run_request, "system_logs")
             await db.commit()
             return
+
+        # Record the resolved workflow version so we know exactly which
+        # version was used, even if the alias or "latest" later changes.
+        run_request.resolved_workflow_version = resolved_version
+        attributes.flag_modified(run_request, "resolved_workflow_version")
+        await db.commit()
 
         # Resolve any ngs360://<file-id> values in workflow_params to their s3:// URIs
         try:
@@ -172,7 +178,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
     async def _get_engine_id_from_ngs360(
         self, workflow_url: str, auth_token: str | None = None
-    ) -> str:
+    ) -> tuple[str, str]:
         """
         Query NGS360 API to get the engine_id for a given workflow URL.
 
@@ -181,7 +187,8 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             auth_token: Caller's bearer token, forwarded on the NGS360 lookup.
 
         Returns:
-            The workflow id on the requested engine from the NGS360 API
+            (engine_id, resolved_version) — the workflow id on the requested
+            engine and the resolved NGS360 workflow version as a string.
 
         Raises:
             RuntimeError: If API call fails or workflow_engine_id not found
@@ -192,12 +199,14 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         )
         selected_version = self._select_version(workflow_data, suffix, workflow_id)
         workflow_engine_id = self._select_deployment(selected_version, suffix, workflow_id)
+        resolved_version = f"{workflow_id}:{selected_version['version']}"
 
         logger.info(
             f"Successfully retrieved workflow_engine_id "
-            f"'{workflow_engine_id}' for workflow {workflow_url}"
+            f"'{workflow_engine_id}' (resolved version '{resolved_version}') "
+            f"for workflow {workflow_url}"
         )
-        return workflow_engine_id
+        return workflow_engine_id, resolved_version
 
     async def _resolve_file_ids_in_params(self, params, auth_token: str | None = None):
         """
