@@ -608,7 +608,7 @@ class TestWorkflowSubmissionService:
 
         calls = []
 
-        async def fake_get_s3_uri(file_id):
+        async def fake_get_s3_uri(file_id, auth_token=None):
             calls.append(file_id)
             return f"s3://bucket/{file_id}.txt"
 
