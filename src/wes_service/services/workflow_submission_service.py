@@ -23,13 +23,21 @@ class WorkflowSubmissionService(ABC):
     """Abstract base class for workflow submission services."""
 
     @abstractmethod
-    async def submit_workflow(self, run: WorkflowRun, db: AsyncSession) -> dict:
+    async def submit_workflow(
+        self,
+        run: WorkflowRun,
+        db: AsyncSession,
+        auth_token: str | None = None,
+    ) -> dict:
         """
         Submit workflow for execution.
 
         Args:
             run: WorkflowRun to submit
             db: Database session for logging errors
+            auth_token: Bearer token from the incoming caller. Forwarded on
+                any outbound NGS360 reads so the requests are attributed to
+                the actual user rather than being anonymous.
 
         Returns:
             Response containing execution details (e.g., omics_run_id)
@@ -56,18 +64,39 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         settings = get_settings()
         self.ngs360_api_url = settings.ngs360_api_url
 
-    async def submit_workflow(self, run_request: WorkflowRun, db: AsyncSession):
+    def _ngs360_headers(self, auth_token: str | None) -> dict[str, str]:
+        """
+        Build headers for outbound NGS360 calls. Includes an
+        Authorization: Bearer header when a caller token is available so
+        NGS360 can attribute the request to the actual user.
+        """
+        headers = {
+            "X-Client-Application": "ngs360-ga4gh",
+            "User-Agent": "ngs360-ga4gh/1.0",
+        }
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+        return headers
+
+    async def submit_workflow(
+        self,
+        run_request: WorkflowRun,
+        db: AsyncSession,
+        auth_token: str | None = None,
+    ):
         """
         Submit workflow to Lambda function for Omics execution.
 
         Args:
-            run_request_id: ID of the workflow run to submit
+            run_request: WorkflowRun to submit
             db: Database session for logging errors
+            auth_token: Caller's bearer token, forwarded to NGS360 on
+                outbound workflow/file lookups.
         """
         # Get engine_id from NGS360 API using the workflow_url as the workflow ID
         try:
             workflow_engine_id, resolved_version = await self._get_engine_id_from_ngs360(
-                run_request.workflow_url
+                run_request.workflow_url, auth_token=auth_token
             )
         except RuntimeError as e:
             error_msg = (
@@ -91,7 +120,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         # Resolve any ngs360://<file-id> values in workflow_params to their s3:// URIs
         try:
             resolved_params = await self._resolve_file_ids_in_params(
-                run_request.workflow_params or {}
+                run_request.workflow_params or {}, auth_token=auth_token
             )
         except RuntimeError as e:
             error_msg = f"Failed to resolve NGS360 file in workflow_params: {str(e)}"
@@ -148,13 +177,14 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         logger.info(f"Lambda invocation response from {self.lambda_function_name}: {response}")
 
     async def _get_engine_id_from_ngs360(
-        self, workflow_url: str
+        self, workflow_url: str, auth_token: str | None = None
     ) -> tuple[str, str]:
         """
         Query NGS360 API to get the engine_id for a given workflow URL.
 
         Args:
             workflow_url: The workflow URL in format NGS360WORKFLOWID[:ALIAS_OR_VERSION]
+            auth_token: Caller's bearer token, forwarded on the NGS360 lookup.
 
         Returns:
             (engine_id, resolved_version) — the workflow id on the requested
@@ -164,7 +194,9 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             RuntimeError: If API call fails or workflow_engine_id not found
         """
         workflow_id, suffix = self._parse_workflow_url(workflow_url)
-        workflow_data = await self._fetch_workflow_from_api(workflow_id)
+        workflow_data = await self._fetch_workflow_from_api(
+            workflow_id, auth_token=auth_token
+        )
         selected_version = self._select_version(workflow_data, suffix, workflow_id)
         workflow_engine_id = self._select_deployment(selected_version, suffix, workflow_id)
         resolved_version = f"{workflow_id}:{selected_version['version']}"
@@ -176,7 +208,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         )
         return workflow_engine_id, resolved_version
 
-    async def _resolve_file_ids_in_params(self, params):
+    async def _resolve_file_ids_in_params(self, params, auth_token: str | None = None):
         """
         Recursively walk workflow_params and replace any ngs360://<file-id>
         string with the resolved s3:// URI from the NGS360 API.
@@ -184,6 +216,9 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         Non-string values, and strings not starting with ngs360://, are
         returned unchanged. A per-call cache avoids re-fetching the same
         file id when it appears multiple times.
+
+        The caller's bearer token, if any, is forwarded on each NGS360
+        file lookup.
         """
         cache: dict[str, str] = {}
 
@@ -191,7 +226,9 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             if isinstance(value, str) and value.startswith(NGS360_FILE_URI_SCHEME):
                 if value not in cache:
                     file_id = value[len(NGS360_FILE_URI_SCHEME):].strip("/")
-                    cache[value] = await self._get_s3_uri_from_ngs360(file_id)
+                    cache[value] = await self._get_s3_uri_from_ngs360(
+                        file_id, auth_token=auth_token
+                    )
                 return cache[value]
             if isinstance(value, dict):
                 return {k: await resolve(v) for k, v in value.items()}
@@ -201,12 +238,15 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
 
         return await resolve(params)
 
-    async def _get_s3_uri_from_ngs360(self, file_id: str) -> str:
+    async def _get_s3_uri_from_ngs360(
+        self, file_id: str, auth_token: str | None = None
+    ) -> str:
         """
         Query NGS360 API to get the s3:// URI for a given file id.
 
         Args:
             file_id: The NGS360 file id (UUID string).
+            auth_token: Caller's bearer token, forwarded on the NGS360 request.
 
         Returns:
             The s3:// URI backing the file.
@@ -219,7 +259,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         logger.info(f"Querying NGS360 API for file {file_id}: {api_url}")
 
         async with httpx.AsyncClient() as client:
-            response = await client.get(api_url)
+            response = await client.get(api_url, headers=self._ngs360_headers(auth_token))
 
         if response.status_code == 404:
             raise RuntimeError(f"NGS360 file '{file_id}' not found")
@@ -270,12 +310,15 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
             )
         return parts[0], parts[1]
 
-    async def _fetch_workflow_from_api(self, workflow_id: str) -> dict:
+    async def _fetch_workflow_from_api(
+        self, workflow_id: str, auth_token: str | None = None
+    ) -> dict:
         """
         Fetch workflow data from NGS360 API.
 
         Args:
             workflow_id: The NGS360 workflow ID
+            auth_token: Caller's bearer token, forwarded on the NGS360 request.
 
         Returns:
             Workflow data dictionary from the API
@@ -287,7 +330,7 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         logger.info(f"Querying NGS360 API for workflow {workflow_id}: {api_url}")
 
         async with httpx.AsyncClient() as client:
-            response = await client.get(api_url)
+            response = await client.get(api_url, headers=self._ngs360_headers(auth_token))
 
         if response.status_code != 200:
             raise RuntimeError(

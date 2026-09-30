@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
-from src.wes_service.api.deps import CurrentUser, DatabaseSession, Storage
+from src.wes_service.api.deps import CurrentToken, CurrentUser, DatabaseSession, Storage
 from src.wes_service.schemas.run import (
     RunId,
     RunListResponse,
@@ -78,6 +78,7 @@ async def run_workflow(
     db: DatabaseSession,
     storage: Storage,
     user: CurrentUser,
+    token: CurrentToken,
     workflow_params: Annotated[str | None, Form()] = None,
     workflow_type: Annotated[str, Form()] = ...,
     workflow_type_version: Annotated[str, Form()] = ...,
@@ -121,10 +122,12 @@ async def run_workflow(
             detail=str(e),
         )
 
-    # Ping LambdaWorkflowSubmissionService to trigger processing of the new run
+    # Ping LambdaWorkflowSubmissionService to trigger processing of the new run.
+    # Forward the caller's bearer token so NGS360 attributes the outbound
+    # workflow/file lookups to the user rather than to an anonymous service.
     try:
         submission_service = LambdaWorkflowSubmissionService()
-        await submission_service.submit_workflow(run, db)
+        await submission_service.submit_workflow(run, db, auth_token=token)
     except Exception as e:
         logger.exception(
             "Failed to trigger run processing request for run_id %s: %s",
