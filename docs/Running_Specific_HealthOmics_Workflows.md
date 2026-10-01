@@ -23,13 +23,12 @@ setup see [aws_omics_usage.md](aws_omics_usage.md).
 No WES-side executor configuration is needed. There is no `WORKFLOW_EXECUTOR`
 setting; submission is always Lambda-based.
 
-## Method 1: Launcher + PAML (recommended)
+## Method 1: PAML (recommended)
 
 For real sample-sheet driven batches, use
-[PAML](https://github.com/NGS360/PAML/) with the
-[WGS Launcher](https://github.com/bms-ips/WGS-Launcher-new/). PAML has GA4GH WES
-support built in and handles per-sample fan-out, status aggregation, retries, and
-output collection — none of which the scripts in this repo do.
+[PAML](https://github.com/NGS360/PAML/). It has GA4GH WES support built in and
+handles per-sample fan-out, status aggregation, retries, and output collection —
+none of which the scripts in this repo do.
 
 ## Method 2: A shell loop
 

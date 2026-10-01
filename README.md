@@ -505,4 +505,4 @@ MIT — see the LICENSE file.
 ## Support
 
 - GA4GH WES spec: https://github.com/ga4gh/workflow-execution-service-schemas
-- PAML / Launcher: https://github.com/NGS360/PAML/
+- PAML: https://github.com/NGS360/PAML/
