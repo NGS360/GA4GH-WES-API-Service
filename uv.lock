@@ -1463,7 +1463,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.20.0" },
     { name = "boto3", specifier = ">=1.43.102" },
     { name = "cachetools", specifier = ">=7.2.0" },
-    { name = "faker", marker = "extra == 'dev'", specifier = ">=40.39.0" },
+    { name = "faker", marker = "extra == 'dev'", specifier = ">=40.40.0" },
     { name = "fastapi", specifier = ">=0.142.2" },
     { name = "flake8", specifier = ">=7.4.1" },
     { name = "greenlet", specifier = ">=3.5.6" },
