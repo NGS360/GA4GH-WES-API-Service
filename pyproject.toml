@@ -9,17 +9,17 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.142.2",
+    "fastapi>=0.143.0",
     "uvicorn[standard]>=0.54.0",
     "sqlalchemy>=2.1.0",
     "alembic>=1.20.0",
     "aiomysql>=0.3.2",
-    "pydantic>=2.13.5",
+    "pydantic>=2.14.0",
     "pydantic-settings>=2.15.0",
     "python-multipart>=0.0.32",
     "python-jose[cryptography]>=3.5.0",
     "passlib[bcrypt]>=1.7.4",
-    "python-dotenv>=1.2.3",
+    "python-dotenv>=1.2.4",
     "boto3>=1.43.110",
     "aiofiles>=25.1.0",
     "aiosqlite>=0.22.1",
@@ -27,7 +27,7 @@ dependencies = [
     "greenlet>=3.5.6",
     "flake8>=7.4.1",
     "requests>=2.34.2",
-    "cachetools>=7.2.0",
+    "cachetools>=7.2.1",
 ]
 
 [project.optional-dependencies]
