@@ -270,7 +270,7 @@ class TestSubmitWorkflow:
                 # Missing workflow_url and workflow_type_version
             },
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
 
 
 class TestListRuns:
