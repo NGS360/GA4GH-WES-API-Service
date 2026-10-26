@@ -79,10 +79,10 @@ async def run_workflow(
     storage: Storage,
     user: CurrentUser,
     token: CurrentToken,
+    workflow_type: Annotated[str, Form()],
+    workflow_type_version: Annotated[str, Form()],
+    workflow_url: Annotated[str, Form()],
     workflow_params: Annotated[str | None, Form()] = None,
-    workflow_type: Annotated[str, Form()] = ...,
-    workflow_type_version: Annotated[str, Form()] = ...,
-    workflow_url: Annotated[str, Form()] = ...,
     workflow_attachment: Annotated[
         list[UploadFile] | None,
         File(),
