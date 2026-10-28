@@ -52,6 +52,26 @@ graph LR
     C -->|GET /runs/id/status| W
 ```
 
+### Launcher runs
+
+A pipeline launcher that fans out one workflow per sample runs as an AWS Batch
+job and is itself a WES run:
+
+1. NGS360 APIServer creates the launcher's run here (`workflow_engine=awsbatch`)
+   and submits the launcher container to AWS Batch. This service makes no AWS
+   call for it; the run stays `QUEUED` until the executor reports back on
+   `POST /internal/callbacks/executor-state-change`.
+2. The launcher submits its child runs through PAML, tagging each with
+   `ParentRunId`. Those go to HealthOmics exactly as above, and are linked to
+   the launcher run.
+3. `GET /runs?filters={"parent_run_id": "<run_id>"}` lists a launcher's children,
+   and `GET /runs/{run_id}/progress` reports the launcher's own state plus a
+   rollup of theirs.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and
+[`scripts/launcher_example.sh`](scripts/launcher_example.sh) for the flow end to
+end against a local service.
+
 ## Features
 
 - ✅ **GA4GH WES v1.1.0** — all 8 specified endpoints

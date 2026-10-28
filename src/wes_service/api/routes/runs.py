@@ -11,10 +11,11 @@ from src.wes_service.schemas.run import (
     RunId,
     RunListResponse,
     RunLog,
+    RunProgress,
     RunStatus,
 )
 from src.wes_service.services.run_service import RunService
-from src.wes_service.services.workflow_submission_service import LambdaWorkflowSubmissionService
+from src.wes_service.services.workflow_submission_service import get_submission_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -50,6 +51,8 @@ async def list_runs(
     - task_name: Filter by task name (extracted from tags.TaskName)
     - state: Filter by workflow state
     - project: Filter by project ID (extracted from tags.ProjectId)
+    - parent_run_id: Filter by launcher run (extracted from tags.ParentRunId),
+      i.e. list the children one launcher submitted
     """
     # Parse filters if provided
     parsed_filters = {}
@@ -117,16 +120,21 @@ async def run_workflow(
             user_id=user,
         )
     except ValueError as e:
+        # Everything create_run raises ValueError for -- a missing ProjectId, an
+        # unsupported workflow_type, a ParentRunId naming no run -- is the
+        # caller's mistake, not a fault in this service.
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
 
-    # Ping LambdaWorkflowSubmissionService to trigger processing of the new run.
-    # Forward the caller's bearer token so NGS360 attributes the outbound
-    # workflow/file lookups to the user rather than to an anonymous service.
+    # Hand the run to whichever strategy owns its engine. Runs dispatched
+    # externally (a launcher submitted to AWS Batch by APIServer) must not be
+    # pushed at HealthOmics on their way past. Forward the caller's bearer token
+    # so NGS360 attributes the outbound workflow/file lookups to the user rather
+    # than to an anonymous service.
     try:
-        submission_service = LambdaWorkflowSubmissionService()
+        submission_service = get_submission_service(run)
         await submission_service.submit_workflow(run, db, auth_token=token)
     except Exception as e:
         logger.exception(
@@ -179,6 +187,31 @@ async def get_run_status(
     """
     service = RunService(db, None)  # type: ignore
     return await service.get_run_status(run_id, user)
+
+
+@router.get(
+    "/runs/{run_id}/progress",
+    response_model=RunProgress,
+    tags=["Workflow Runs"],
+    summary="GetRunProgress",
+    description="Get a run's own state plus a rollup of the runs it submitted",
+)
+async def get_run_progress(
+    run_id: str,
+    db: DatabaseSession,
+    user: CurrentUser,
+) -> RunProgress:
+    """
+    Get progress of a launcher run.
+
+    A launcher orchestrates work by submitting child runs tagged with its own
+    run ID, so its progress is a rollup of those children's states. This is a
+    WES extension: GA4GH has no notion of a run that submits other runs.
+
+    Non-launcher runs are valid here too and simply report no children.
+    """
+    service = RunService(db, None)  # type: ignore
+    return await service.get_run_progress(run_id, user)
 
 
 @router.post(

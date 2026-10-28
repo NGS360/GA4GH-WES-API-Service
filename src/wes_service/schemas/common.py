@@ -36,6 +36,24 @@ class State(str, Enum):
     PREEMPTED = "PREEMPTED"
 
 
+#: States a run does not leave. Anything polling a run needs this to know when to
+#: stop, and getting it wrong means either an infinite wait or a premature one --
+#: so it lives beside the enum rather than being redefined by each caller.
+#:
+#: CANCELING is deliberately absent: a cancellation in progress still becomes
+#: CANCELED. UNKNOWN is absent too, because it is what the service reports when it
+#: cannot currently determine the state, not a resting place.
+TERMINAL_STATES = frozenset(
+    {
+        State.COMPLETE,
+        State.EXECUTOR_ERROR,
+        State.SYSTEM_ERROR,
+        State.CANCELED,
+        State.PREEMPTED,
+    }
+)
+
+
 class ErrorResponse(BaseModel):
     """Error response schema."""
 

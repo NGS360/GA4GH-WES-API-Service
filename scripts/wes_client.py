@@ -272,9 +272,9 @@ def parse_arguments() -> argparse.Namespace:
     )
     submit_parser.add_argument(
         "--workflow-engine",
-        choices=["cwltool", "awsbatch", "awshealthomics"],
-        default="cwltool",
-        help="Workflow Engine",
+        choices=["awsbatch", "awshealthomics"],
+        default=None,
+        help="Workflow engine; omit for the service's default backend",
     )
 
     # List command
