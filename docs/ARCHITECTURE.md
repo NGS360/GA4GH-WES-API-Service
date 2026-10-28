@@ -542,9 +542,17 @@ Set by whoever submits the Batch job:
 | --- | --- |
 | `WES_RUN_ID` | the launcher's own WES run id, so PAML's `get_current_task()` works |
 | `WES_API_ENDPOINT` | this service's base URL |
-| `WES_SERVICE_KEY` | `INTERNAL_SERVICE_API_KEY`, injected via Batch `secrets` from Secrets Manager |
-| `WES_ON_BEHALF_OF` | the submitting user, so child runs are attributed to a human |
+| `NGS360_AUTH_TOKEN` | an `ngs360_` API key minted for the submitting user for this one job |
+| `NGS360_AUTH_KEY_ID` | that key's id, so the launcher can retire the key when it exits |
 | `NGS360_API_ENDPOINT` | required by PAML's `NGS360Platform.connect` |
+
+The launcher authenticates as the user who started it, not as a service. It calls the NGS360
+API directly (project lookup, results upload) as well as this service, and this service
+forwards the same token to NGS360 for workflow and file lookups, so one user credential
+covers every call and each is authorized against that user's roles and project access. The
+internal service key would cover only this service, and anything holding it may assert any
+user, so it is not handed to launcher containers. The key's expiry, sized to the job
+definition's timeout, bounds a launcher that is killed before it can retire it.
 
 ### Client and CLI
 
