@@ -47,6 +47,17 @@ class WorkflowSubmissionService(ABC):
         """
         pass
 
+    @abstractmethod
+    async def cancel_omics_run(self, wes_run_id: str, omics_run_id: str) -> None:
+        """
+        Request cancellation of an in-flight run on the underlying engine.
+
+        Args:
+            wes_run_id: GA4GH WES run ID (for logging / correlation)
+            omics_run_id: Engine-side run ID to cancel
+        """
+        pass
+
 
 class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
     """Workflow submission service using AWS Lambda."""
@@ -169,6 +180,35 @@ class LambdaWorkflowSubmissionService(WorkflowSubmissionService):
         )
 
         # Call Lambda function asynchronously
+        response = self.lambda_client.invoke(
+                FunctionName=self.lambda_function_name,
+                InvocationType='Event',
+                Payload=json.dumps(lambda_payload)
+        )
+        logger.info(f"Lambda invocation response from {self.lambda_function_name}: {response}")
+
+    async def cancel_omics_run(self, wes_run_id: str, omics_run_id: str) -> None:
+        """
+        Request cancellation of an in-flight Omics run via the same Lambda
+        used for submission.
+
+        Fire-and-forget: the HTTP cancel response is not held up by Omics
+        CancelRun latency. The run is already CANCELING in the WES DB; the
+        move to CANCELED happens when Omics emits its CANCELLED run status
+        change event back through the callback endpoint.
+        """
+        lambda_payload = {
+            'action': 'cancel_omics_run',
+            'source': 'ga4ghwes',
+            'wes_run_id': wes_run_id,
+            'omics_run_id': omics_run_id,
+        }
+
+        logger.info(
+            f"Lambda cancel payload for wes_run_id={wes_run_id}: "
+            f"{json.dumps(lambda_payload, default=str)}"
+        )
+
         response = self.lambda_client.invoke(
                 FunctionName=self.lambda_function_name,
                 InvocationType='Event',
