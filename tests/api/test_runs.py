@@ -2,6 +2,8 @@
 
 import io
 import json
+from unittest.mock import MagicMock, patch
+
 from fastapi.testclient import TestClient
 
 from src.wes_service.db.models import WorkflowRun, WorkflowState
@@ -10,6 +12,25 @@ WORKFLOW_SUBMIT_PATCH = (
     'src.wes_service.services.workflow_submission_service'
     '.LambdaWorkflowSubmissionService.submit_workflow'
 )
+
+# cancel_run builds the submission service itself, so patch it where it is
+# looked up rather than where it is defined. Without this the test would
+# construct a real boto3 Lambda client and attempt an invoke.
+WORKFLOW_CANCEL_PATCH = (
+    'src.wes_service.services.run_service.LambdaWorkflowSubmissionService'
+)
+
+
+def _mock_submission_service(mock_service):
+    """Wire a patched submission service class with an async cancel_omics_run."""
+    mock_instance = MagicMock()
+
+    async def mock_cancel_omics_run(wes_run_id, omics_run_id):
+        return None
+
+    mock_instance.cancel_omics_run = mock_cancel_omics_run
+    mock_service.return_value = mock_instance
+    return mock_instance
 
 
 class TestPAMLFunctions:
@@ -463,6 +484,9 @@ class TestCancelRun:
             workflow_type="CWL",
             workflow_type_version="v1.0",
             workflow_url="https://example.com/workflow.cwl",
+            # Required: a run is only cancellable once the backend has
+            # reported its run id, which is what CancelRun needs.
+            workflow_run_id="mock-omics-123",
             tags={},
             user_id="test_user",
             project="test-project",
@@ -471,7 +495,10 @@ class TestCancelRun:
         test_db.add(run)
         await test_db.commit()
 
-        response = client.post("/ga4gh/wes/v1/runs/test-run-789/cancel")
+        with patch(WORKFLOW_CANCEL_PATCH) as mock_service:
+            _mock_submission_service(mock_service)
+            response = client.post("/ga4gh/wes/v1/runs/test-run-789/cancel")
+
         assert response.status_code == 200
         data = response.json()
         assert data["run_id"] == "test-run-789"
@@ -480,6 +507,42 @@ class TestCancelRun:
         test_db.expire(run)
         await test_db.refresh(run)
         assert run.state == WorkflowState.CANCELING
+
+    async def test_cancel_run_without_backend_run_id(
+        self, client: TestClient, test_db
+    ):
+        """A run still being started on the backend cannot be canceled yet."""
+        run = WorkflowRun(
+            id="test-run-no-backend-id",
+            state=WorkflowState.QUEUED,
+            workflow_type="CWL",
+            workflow_type_version="v1.0",
+            workflow_url="https://example.com/workflow.cwl",
+            workflow_run_id=None,
+            tags={},
+            user_id="test_user",
+            project="test-project",
+            task_name="test-task",
+        )
+        test_db.add(run)
+        await test_db.commit()
+
+        with patch(WORKFLOW_CANCEL_PATCH) as mock_service:
+            _mock_submission_service(mock_service)
+            response = client.post(
+                "/ga4gh/wes/v1/runs/test-run-no-backend-id/cancel"
+            )
+
+        assert response.status_code == 400
+        assert "cannot be canceled yet" in response.json()["detail"]
+
+        # The run is left untouched rather than marked CANCELED, so it is not
+        # reported as cancelled while it goes on to run on the backend.
+        test_db.expire(run)
+        await test_db.refresh(run)
+        assert run.state == WorkflowState.QUEUED
+        # And nothing was sent to the backend.
+        mock_service.assert_not_called()
 
     async def test_cancel_completed_run(self, client: TestClient, test_db):
         """Test that completed runs cannot be canceled."""

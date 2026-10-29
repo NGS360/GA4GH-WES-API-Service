@@ -64,16 +64,30 @@ class TestWorkflowLifecycle:
         assert log["request"]["workflow_type"] == "CWL"
         assert log["request"]["workflow_params"]["input"] == "test.txt"
 
-        # 5. Simulate workflow execution (normally done by daemon)
+        # 5. Simulate workflow execution (normally done by daemon). The
+        # backend run id arrives on the same callback that moves the run out
+        # of QUEUED, and cancelling requires it.
         run = await test_db.get(WorkflowRun, run_id)
         run.state = WorkflowState.RUNNING
+        run.workflow_run_id = "mock-omics-123"
         await test_db.commit()
 
         response = client.get(f"/ga4gh/wes/v1/runs/{run_id}/status")
         assert response.json()["state"] == "RUNNING"
 
         # 6. Cancel the workflow
-        response = client.post(f"/ga4gh/wes/v1/runs/{run_id}/cancel")
+        with patch(
+            'src.wes_service.services.run_service.LambdaWorkflowSubmissionService'
+        ) as mock_cancel_service:
+            mock_cancel_instance = MagicMock()
+
+            async def mock_cancel_omics_run(wes_run_id, omics_run_id):
+                return None
+            mock_cancel_instance.cancel_omics_run = mock_cancel_omics_run
+            mock_cancel_service.return_value = mock_cancel_instance
+
+            response = client.post(f"/ga4gh/wes/v1/runs/{run_id}/cancel")
+
         assert response.status_code == 200
 
         # 7. Verify it's canceling
