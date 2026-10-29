@@ -76,6 +76,14 @@ class CallbackService:
         new_state = self._resolve_new_state(payload.status)
         await self._record_start_time(run, payload)
 
+        # Once a cancel has been requested, only terminal updates matter: record
+        # any terminal outcome as CANCELED, and ignore progress the backend made
+        # before the cancel took effect.
+        if run.state == WorkflowState.CANCELING:
+            if new_state not in self.TERMINAL_STATES:
+                return self._build_no_change_response(run, run.state)
+            new_state = WorkflowState.CANCELED
+
         previous_state = run.state
 
         if no_change := self._build_no_change_response(run, new_state):

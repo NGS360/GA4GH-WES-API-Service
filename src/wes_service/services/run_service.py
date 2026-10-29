@@ -25,6 +25,9 @@ from src.wes_service.schemas.run import (
     RunStatus,
     RunSummary,
 )
+from src.wes_service.services.workflow_submission_service import (
+    LambdaWorkflowSubmissionService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -388,6 +391,10 @@ class RunService:
         """
         Cancel a workflow run.
 
+        Moves the run to CANCELING and asks the executor Lambda to actually
+        cancel it on AWS HealthOmics. The run reaches CANCELED once Omics
+        reports a terminal status back through the callback endpoint.
+
         Args:
             run_id: Run ID
             user_id: User ID for authorization
@@ -410,15 +417,43 @@ class RunService:
             WorkflowState.EXECUTOR_ERROR,
             WorkflowState.SYSTEM_ERROR,
             WorkflowState.CANCELED,
+            WorkflowState.CANCELING,
         ]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot cancel run in state {run.state.value}",
             )
 
+        # The run has been handed to the execution backend, but the backend has
+        # not reported its run id yet, so there is nothing we can cancel there.
+        # Refusing keeps us from marking the run CANCELED while it goes on to
+        # start and run to completion on the backend unnoticed.
+        if not run.workflow_run_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Run is still being started on the execution backend and "
+                    "cannot be canceled yet. Try again shortly."
+                ),
+            )
+
         # Update state to CANCELING
         run.state = WorkflowState.CANCELING
         await self.db.commit()
+
+        # Call the executor Lambda to cancel the run on AWS HealthOmics.
+        try:
+            submission_service = LambdaWorkflowSubmissionService()
+            await submission_service.cancel_omics_run(
+                wes_run_id=run.id,
+                omics_run_id=run.workflow_run_id,
+            )
+        except Exception as exc:  # noqa: BLE001 - best-effort cancellation
+            logger.error(
+                f"Failed to request Omics run cancellation for "
+                f"wes_run_id={run.id}, "
+                f"omics_run_id={run.workflow_run_id}: {exc}"
+            )
 
         return run.id
 
