@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 
-from src.wes_service.api.deps import DatabaseSession
+from src.wes_service.api.deps import CurrentUser, DatabaseSession
 from src.wes_service.config import Settings, get_settings
 from src.wes_service.schemas.service_info import (
     ServiceInfo,
@@ -24,6 +24,7 @@ router = APIRouter()
     description="Get information about the workflow execution service",
 )
 async def get_service_info(
+    user: CurrentUser,
     db: DatabaseSession,
     settings: Settings = Depends(get_settings),
 ) -> ServiceInfo:
@@ -32,6 +33,7 @@ async def get_service_info(
 
     Returns metadata about the WES service including supported workflow
     types, versions, filesystem protocols, and current system state.
+    Requires authentication: the run counts it reports are not public.
     """
 
     # Get system state counts
