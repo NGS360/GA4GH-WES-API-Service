@@ -80,3 +80,14 @@ def test_service_info_state_counts(client: TestClient):
 
     for state in expected_states:
         assert state in state_counts
+
+
+def test_service_info_requires_authentication(app):
+    """Without credentials the endpoint answers 401 (it reports run counts)."""
+    from fastapi.testclient import TestClient
+
+    from src.wes_service.core.security import get_current_user
+
+    app.dependency_overrides.pop(get_current_user, None)
+    response = TestClient(app).get("/ga4gh/wes/v1/service-info")
+    assert response.status_code == 401
