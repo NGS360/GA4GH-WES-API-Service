@@ -360,6 +360,21 @@ horizontally. Two consequences of running multiple workers:
 - Migrations must be applied out of band (`make migrate-upgrade`); the app does
   not run them at startup.
 
+### Container image
+
+The [`Dockerfile`](Dockerfile) builds a slim Python image with the locked
+runtime dependencies (`uv sync --locked --no-dev`), runs as non-root uid
+`10001`, exposes port `8000`, and starts the same gunicorn command as the
+Procfile. Health check: `GET /healthcheck`.
+
+```bash
+docker build -t wes-service .
+# Apply migrations as a one-off task (never on web start):
+docker run --rm --env-file wes.env wes-service alembic upgrade head
+# Web
+docker run --rm --env-file wes.env -p 127.0.0.1:8000:8000 wes-service
+```
+
 ### Behind Nginx
 
 ```nginx

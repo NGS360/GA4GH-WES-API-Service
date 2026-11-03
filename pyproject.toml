@@ -28,6 +28,7 @@ dependencies = [
     "flake8>=7.4.1",
     "requests>=2.34.2",
     "cachetools>=7.2.2",
+    "gunicorn>=23.0.0",
 ]
 
 [project.optional-dependencies]
